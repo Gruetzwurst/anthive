@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ANTHIVE – Bodenkachel-Erweiterung</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; background:#191513; color:#f2e5d6; }
+    body { margin:0 auto; max-width:1000px; padding:24px; }
+    h1 { margin:0 0 8px; font-size:1.5rem; } h2 { margin:28px 0 8px; font-size:1.15rem; }
+    p { margin:0 0 16px; color:#c9b7a7; }
+    section { margin:0 0 28px; padding:14px; background:#2a231e; border:1px solid #554438; border-radius:8px; }
+    .mosaic { display:grid; grid-template-columns:repeat(8, 96px); grid-auto-rows:96px; width:max-content; max-width:100%; overflow:auto; }
+    .wall-mosaic { display:grid; grid-template-columns:repeat(6, 96px); grid-auto-rows:96px; width:max-content; max-width:100%; overflow:auto; }
+    img { display:block; width:96px; height:96px; image-rendering:pixelated; image-rendering:crisp-edges; }
+    .line { display:flex; overflow:auto; width:max-content; max-width:100%; }
+    .caption { margin:8px 0 12px; color:#d5c4b5; font-weight:600; }
+    .key { display:flex; flex-wrap:wrap; gap:12px; color:#bfae9f; font-size:.9rem; }
+    .swatch { display:inline-block; width:10px; height:10px; margin-right:5px; border:1px solid #8b7664; }
+    @media (max-width:820px) { body { padding:14px; } section { overflow:auto; } }
+  </style>
+</head>
+<body>
+  <h1>ANTHIVE – Bodenkachel-Erweiterung</h1>
+  <p>24 × 24-Pixel-Kacheln, vierfach vergrößert. Die Musterflächen zeigen Varianten mehrfach neben- und untereinander.</p>
+  <div id="materials"></div>
+  <h2>Übergänge zwischen den Bodenschichten</h2>
+  <p>Jede Kante liegt achtmal nebeneinander, um horizontale Nähte sichtbar zu machen.</p>
+  <div id="transitions"></div>
+  <h2>Freiliegende Erd- und Gesteinskanten</h2>
+  <p>Jedes Muster zeigt linke und rechte Wandkante mit Material dazwischen. Die rechte Kante nutzt dieselbe Kachel horizontal gespiegelt.</p>
+  <div id="edges"></div>
+<script>
+const materials = [
+  ['Oberboden','topsoil'], ['Kompakte Erde','compact-earth'], ['Lehm','clay'],
+  ['Steinschicht','stone-layer'], ['Tiefengestein','deep-rock']
+];
+const transitions = [
+  ['Oberboden → kompakte Erde','topsoil-to-compact-earth'],
+  ['Kompakte Erde → Lehm','compact-earth-to-clay'],
+  ['Lehm → Steinschicht','clay-to-stone-layer'],
+  ['Steinschicht → Tiefengestein','stone-layer-to-deep-rock']
+];
+const edges = [
+  ['Oberboden-Wandkante','topsoil-wall-edge'], ['Kompakte-Erde-Wandkante','compact-earth-wall-edge'],
+  ['Lehm-Wandkante','clay-wall-edge'], ['Steinschicht-Wandkante','stone-layer-wall-edge'],
+  ['Tiefengestein-Wandkante','deep-rock-wall-edge']
+];
+const base='../world-tile-sample/tiles/';
+for (const [label,key] of materials) {
+  const section=document.createElement('section');
+  section.innerHTML=`<div class="caption">${label} · 4 Varianten (Referenz + 3 neue), Muster 8 × 4 Kacheln</div>`;
+  const grid=document.createElement('div'); grid.className='mosaic';
+  const files=[`${base}${key}.png`,...Array.from({length:3},(_,i)=>`tiles/${key}-v${i+1}.png`)];
+  for(let y=0;y<4;y++) for(let x=0;x<8;x++) { const im=document.createElement('img'); im.src=files[(x+y)%4]; im.alt=label; grid.append(im); }
+  section.append(grid); document.getElementById('materials').append(section);
+}
+for (const [label,key] of transitions) {
+  const section=document.createElement('section'); section.innerHTML=`<div class="caption">${label}</div>`;
+  const line=document.createElement('div'); line.className='line';
+  for(let i=0;i<8;i++){const im=document.createElement('img');im.src=`tiles/${key}.png`;im.alt=label;line.append(im);}
+  section.append(line);document.getElementById('transitions').append(section);
+}
+for (const [label,key] of edges) {
+  const section=document.createElement('section'); section.innerHTML=`<div class="caption">${label} · links + gespiegelt rechts, 8 Kacheln hoch</div>`;
+  const grid=document.createElement('div');grid.className='wall-mosaic';
+  const materialKey=key.replace('-wall-edge','');
+  for(let y=0;y<8;y++) for(let x=0;x<6;x++){
+    const im=document.createElement('img');
+    if(x===0){im.src=`tiles/${key}.png`;im.alt=`${label}, linke Kante`;}
+    else if(x===5){im.src=`tiles/${key}.png`;im.alt=`${label}, horizontal gespiegelt`;im.style.transform='scaleX(-1)';}
+    else {im.src=`tiles/${materialKey}-v${(x+y)%3+1}.png`;im.alt=label;}
+    grid.append(im);
+  }
+  section.append(grid);document.getElementById('edges').append(section);
+}
+</script>
+</body>
+</html>

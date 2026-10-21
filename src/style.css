@@ -1,0 +1,58 @@
+:root {
+  color-scheme: dark;
+  background: #171717;
+  font-family: system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  display: grid;
+  place-items: center;
+  background: #171717;
+}
+
+#game {
+  width: min(100vw, 177.78vh);
+  aspect-ratio: 16 / 9;
+  max-height: 100vh;
+  overflow: hidden;
+  background: #252525;
+}
+
+#game canvas {
+  display: block;
+  touch-action: none;
+}
+
+#orientation-message {
+  display: none;
+}
+
+@media (orientation: portrait) {
+  #game {
+    display: none;
+  }
+
+  #orientation-message {
+    position: fixed;
+    inset: 0;
+    margin: 0;
+    padding: 2rem;
+    display: grid;
+    place-items: center;
+    color: #f2ead8;
+    text-align: center;
+    font-size: 1.25rem;
+  }
+}

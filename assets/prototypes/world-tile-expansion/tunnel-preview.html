@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ANTHIVE – Tunnelkachel-Vorschau</title>
+    <style>
+      :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #171614; color: #eee5d6; }
+      body { margin: 0; padding: 24px; }
+      main { max-width: 1200px; margin: 0 auto; }
+      h1 { margin: 0 0 8px; font-size: 1.35rem; }
+      p { color: #c9bda9; line-height: 1.5; }
+      img { display: block; image-rendering: pixelated; max-width: 100%; height: auto; border: 1px solid #645746; }
+      .atlas { width: 600px; margin-top: 20px; }
+      .legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 12px 0 20px; color: #d9ccb8; }
+      .legend span::before { content: ''; display: inline-block; width: 12px; height: 12px; margin-right: 7px; vertical-align: -1px; background: var(--swatch); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>ANTHIVE – geschichteter Boden mit verzweigtem Tunnel</h1>
+      <p>Grafikvorschau mit bestehenden Bodentexturen, geraden Wandkanten und den ergänzten Eckkacheln. Die rechte Abzweigung verläuft durch mehrere Schichten. Dies ist eine isolierte Grafikprüfung, keine Änderung der Spielwelt.</p>
+      <div class="legend">
+        <span style="--swatch:#bf7c27">Oberboden</span>
+        <span style="--swatch:#79502f">Kompakte Erde</span>
+        <span style="--swatch:#b8321b">Lehm</span>
+        <span style="--swatch:#666b7b">Steinschicht</span>
+        <span style="--swatch:#6323d1">Tiefengestein</span>
+        <span style="--swatch:#c09863">Tunnel</span>
+      </div>
+      <img src="ground-tunnel-layout-preview.png" alt="Fünf Bodenschichten mit verzweigtem, verbundenem Tunnelabschnitt">
+      <h2>Eckkachel-Atlas (5 Materialien × 2 Eckformen)</h2>
+      <p>Jede Zelle ist 24 × 24 Pixel. Durch Spiegelung und Drehung können die Eckformen in andere Richtungen verwendet werden.</p>
+      <img class="atlas" src="ground-corners-24px.png" alt="Atlas mit inneren und äußeren Tunnel-Eckkacheln für fünf Bodentypen">
+    </main>
+  </body>
+</html>

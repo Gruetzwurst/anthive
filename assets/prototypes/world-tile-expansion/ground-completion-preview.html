@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ANTHIVE – Bodenmuster-Ergänzung</title>
+    <style>
+      :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #171614; color: #eee5d6; }
+      body { margin: 0; padding: 24px; }
+      main { max-width: 1200px; margin: 0 auto; }
+      h1 { margin: 0 0 8px; font-size: 1.35rem; }
+      h2 { margin: 28px 0 8px; font-size: 1.05rem; }
+      p { color: #c9bda9; line-height: 1.5; }
+      img { image-rendering: pixelated; }
+      .tunnel { display: block; width: min(100%, 900px); height: auto; border: 1px solid #645746; }
+      .material { display: grid; grid-template-columns: 150px 1fr; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid #3f3931; }
+      .edges { display: flex; flex-wrap: wrap; gap: 4px; }
+      .edges img { width: 72px; height: 72px; }
+      .edge-cell { display: flex; gap: 2px; }
+      .edge-cell img:nth-child(2) { transform: scaleX(-1); }
+      .transitions { display: flex; flex-wrap: wrap; gap: 12px; }
+      .transitions img { width: 192px; height: 192px; border: 1px solid #645746; }
+      .atlas { display: block; width: min(100%, 720px); height: auto; image-rendering: pixelated; border: 1px solid #645746; }
+      @media (max-width: 620px) { body { padding: 14px; } .material { grid-template-columns: 1fr; } .edges img { width: 56px; height: 56px; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>ANTHIVE – ergänzte Bodenkacheln</h1>
+      <p>Isolierte Grafikvorschau. Sie zeigt die bestehenden Schichten mit einem verzweigten Tunnel, zusätzliche Wandkanten samt Spiegelung und die Übergänge an Schichtecken. Nichts davon ist in die laufende Spielszene eingebunden.</p>
+      <img class="tunnel" src="ground-tunnel-layout-preview.png" alt="Tunnelvorschau in fünf Bodenschichten">
+
+      <h2>Wandkanten · drei Varianten je Bodentyp</h2>
+      <p>Jede Probe ist mehrfach angeordnet; die gespiegelte Kachel zeigt die gegenüberliegende Wand.</p>
+      <div class="material"><strong>Oberboden</strong><div class="edges"><span class="edge-cell"><img src="tiles/topsoil-wall-edge.png"><img src="tiles/topsoil-wall-edge.png"></span><span class="edge-cell"><img src="tiles/topsoil-wall-edge-v2.png"><img src="tiles/topsoil-wall-edge-v2.png"></span><span class="edge-cell"><img src="tiles/topsoil-wall-edge-v3.png"><img src="tiles/topsoil-wall-edge-v3.png"></span></div></div>
+      <div class="material"><strong>Kompakte Erde</strong><div class="edges"><span class="edge-cell"><img src="tiles/compact-earth-wall-edge.png"><img src="tiles/compact-earth-wall-edge.png"></span><span class="edge-cell"><img src="tiles/compact-earth-wall-edge-v2.png"><img src="tiles/compact-earth-wall-edge-v2.png"></span><span class="edge-cell"><img src="tiles/compact-earth-wall-edge-v3.png"><img src="tiles/compact-earth-wall-edge-v3.png"></span></div></div>
+      <div class="material"><strong>Lehm</strong><div class="edges"><span class="edge-cell"><img src="tiles/clay-wall-edge.png"><img src="tiles/clay-wall-edge.png"></span><span class="edge-cell"><img src="tiles/clay-wall-edge-v2.png"><img src="tiles/clay-wall-edge-v2.png"></span><span class="edge-cell"><img src="tiles/clay-wall-edge-v3.png"><img src="tiles/clay-wall-edge-v3.png"></span></div></div>
+      <div class="material"><strong>Steinschicht</strong><div class="edges"><span class="edge-cell"><img src="tiles/stone-layer-wall-edge.png"><img src="tiles/stone-layer-wall-edge.png"></span><span class="edge-cell"><img src="tiles/stone-layer-wall-edge-v2.png"><img src="tiles/stone-layer-wall-edge-v2.png"></span><span class="edge-cell"><img src="tiles/stone-layer-wall-edge-v3.png"><img src="tiles/stone-layer-wall-edge-v3.png"></span></div></div>
+      <div class="material"><strong>Tiefengestein</strong><div class="edges"><span class="edge-cell"><img src="tiles/deep-rock-wall-edge.png"><img src="tiles/deep-rock-wall-edge.png"></span><span class="edge-cell"><img src="tiles/deep-rock-wall-edge-v2.png"><img src="tiles/deep-rock-wall-edge-v2.png"></span><span class="edge-cell"><img src="tiles/deep-rock-wall-edge-v3.png"><img src="tiles/deep-rock-wall-edge-v3.png"></span></div></div>
+
+      <h2>Übergänge an Schichtecken</h2>
+      <p>Die vier Kacheln entsprechen den vorhandenen Übergängen zwischen benachbarten Bodentypen; ihre Eckform ergänzt die bestehenden geraden Übergänge.</p>
+      <img class="atlas" src="layer-corner-transitions-preview.png" alt="Vergrößerte Vorschau der vier Eckübergänge zwischen den Bodenschichten">
+      <div class="transitions">
+        <img src="tiles/topsoil-compact-earth-corner-transition.png" alt="Oberboden zu kompakter Erde">
+        <img src="tiles/compact-earth-clay-corner-transition.png" alt="Kompakte Erde zu Lehm">
+        <img src="tiles/clay-stone-layer-corner-transition.png" alt="Lehm zu Steinschicht">
+        <img src="tiles/stone-layer-deep-rock-corner-transition.png" alt="Steinschicht zu Tiefengestein">
+      </div>
+    </main>
+  </body>
+</html>

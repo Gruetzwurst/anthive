@@ -143,3 +143,29 @@ test('large and framed excavation steps agree with combined shortage and foreign
   assert.deepEqual(large.materials.balance,framed.materials.balance);
   balanced(large);balanced(framed);
 });
+
+test('lowering test grade releases blocked active digging for executable work, cleanup and reassignment',()=>{
+  const {world,excavation}=fixture('stone');
+  excavation.addOrder([cell(3)]);
+  excavation.advance(1);
+  assert.equal(excavation.getBuilders()[0].job.phase,'digging');
+  excavation.setDiggingGrade(0);
+  world.tiles[1][2].terrain='topsoil';
+  excavation.addOrder([{column:2,row:1}]);
+  excavation.materials.produce(point(2),2);
+  excavation.advance(50);
+  assert.equal(world.tiles[1][2].state,'open');
+  assert.notEqual(world.tiles[2][3].state,'open');
+  assert.equal(excavation.materials.balance.stored,3);
+  assert.equal(excavation.getOrders().length,1,'blocked stone order stays queued');
+  balanced(excavation);
+  excavation.setDiggingGrade(3);
+  until(excavation,()=>excavation.materials.balance.stored===7);
+  balanced(excavation);
+
+  const pending=fixture('stone').excavation;
+  pending.addOrder([cell(3)]);pending.advance(1);pending.setDiggingGrade(0);
+  pending.advance(1,1,()=>false);
+  assert.equal(pending.getBuilders()[0].readyToLeave,true);
+  assert.equal(pending.materials.balance.produced,0);
+});

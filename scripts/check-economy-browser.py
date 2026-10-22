@@ -292,7 +292,13 @@ try:
         assert check_layout()['priority'] == 'water'
         screenshot('anthive-a4-mobile-landscape.png')
         click(586, 20, touch=True)
-        assert page('return document.querySelector("#workforce-panel").open;')
+        # Wait for the observable dialog state after synthetic touch dispatch.
+        for _ in range(50):
+            if page('return document.querySelector("#workforce-panel").open;'):
+                break
+            time.sleep(0.1)
+        else:
+            raise AssertionError('Touch did not open the workforce dialog')
         screenshot('anthive-b1-mobile-groups.png')
         native_click('[data-action="close-workforce"]')
         command('WebDriver:Navigate', {'url': f'http://127.0.0.1:{vite_port}/?view=pond'})

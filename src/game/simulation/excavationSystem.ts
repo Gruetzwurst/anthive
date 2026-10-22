@@ -46,6 +46,13 @@ export class ExcavationSystem {
   setDiggingGrade(grade: number): void {
     if (!Number.isInteger(grade) || grade < 0) throw new RangeError('Digging grade must be a nonnegative integer');
     this.grade = grade;
+    for (const worker of this.builders.values()) {
+      const job = worker.job;
+      if (job?.kind === 'dig' && requiredDiggingGrade(job.target!, this.tile(job.target!)!) > grade) {
+        this.clearJob(worker);
+        worker.status = 'Grabkraft fehlt · Auftrag wartet';
+      }
+    }
   }
   addBuilder(id: string, position: WorldPoint): void {
     if (!id.trim() || this.builders.has(id)) throw new Error('Builder needs a unique non-empty ID');

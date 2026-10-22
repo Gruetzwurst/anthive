@@ -13,7 +13,7 @@ Anzeige liest die bestehenden Modelle; keine zweite Uhr, Inventar oder simuliert
 - [x] Read-Modell: Test zuerst für nutzbare getrennte Bestände, echte Quellenzustände, Priorität und getrennte Warn-/Erholungsstufen; Anzeigen dürfen Simulation nicht verändern.
 - [x] Phaser-Panel und Szene anbinden; echte Pointer-Bedienung aller Prioritäten prüfen, aktive Auswahl und Weiterlaufen realer Transporte kontrollieren; keine Kartenbewegung/Grabaufträge durch HUD-Eingabe.
 - [x] Mehrtagestests des bestehenden Kreislaufs mit tatsächlicher Tageslänge und allen drei Prioritäten; Quellerschöpfung/Erholung, Lagergrenzen, Bedarf und frühe Verlustfreiheit prüfen. Keine eigenmächtigen Balanceänderungen.
-- [ ] Vollständige Tests, Welttests, Build, Browserprüfung bei normaler und kleiner Querformatgröße, Graben und Teich weiter prüfen; frisches unabhängiges Review. Ergebnisbericht, Commit/Push auf Featurebranch. Stopp vor B1.
+- [x] Vollständige Tests, Welttests, Build, Browserprüfung bei normaler und kleiner Querformatgröße, Graben und Teich weiter prüfen; frisches unabhängiges Review. Ergebnisbericht, Commit/Push auf Featurebranch. Stopp vor B1.
 
 ## Review Focus
 
@@ -28,3 +28,7 @@ Falsche Lagergutschrift durch unterwegs befindliche Ladung; vermischte Baustoffb
 - Testpräzisierung: Der erste Mehrtagestest verlangte ständig positive Vorräte und zwingende Quellenerschöpfung im normalen Verlauf. Das sind keine beschlossenen Regeln: Nahrungsbevorzugung darf vorübergehend Wasserwarnungen auslösen; bei laufender Regeneration muss eine Quelle nicht exakt leer werden. Korrigierte Abnahme verlangt Nichtnegativität/Kapazitätsgrenzen, tatsächliche Anfangs- und Wiederbelieferung, alle acht Tage volle Arbeitsleistung und keine Verluste. Quellenerschöpfung wird separat tatsächlich herbeigeführt und Wiederaufnahme geprüft, ohne Produktionswerte zu ändern.
 - Balancingbefund: Mit vorhandenen 7 Sammlerinnen + 2 ruhenden Baumeisterinnen + Königin und dauerhaftem Vorrang Nahrung fällt Wasser an Tag 5 auf 0; sammelt sich nach knapp 1,9 Mangeltagen wieder, volle Erholung bis Tag 8. Kein dauerhafter Ausschluss, keine Leistungseinbuße oder Verluste. Bestehende Heuristik bleibt unverändert, Befund im Bericht ausweisen.
 - Browserharness: Laden zunächst irrtümlich an mehr als einem DOM-Canvas erkannt; Phaser verwendet genau einen sichtbaren Canvas. Ladebedingung korrigiert; keine Änderung am Spiel erforderlich.
+
+- Frisches unabhängiges Review von `98951a7..de7db7e`: keine bestätigten Critical/Important/Minor-Befunde, 80/80 Tests unabhängig grün; Screenshots und Browserharness geprüft. Erster Reviewer am Modell-Nutzungslimit ausgefallen; vollständige Ersatzprüfung durch verfügbares Modell mit frischem Kontext durchgeführt.
+- Review-Abgrenzungen bestätigt: dokumentierter Wasserengpass bei Nahrungsvorrang bleibt unverändertes Balancing; Abraum/Ladungsabholung und vollständige Materialbilanz B2; Speichern, Gruppenverwaltung und Brut später; kein tatsächlicher iPhone-Test; Quellenentleerung nicht im normalen Verlauf erzwingen, sondern separat testen. Keine zusätzlichen Designregeln beschlossen und keine Befunde vertagt.
+- Abschluss: Ergebnisbericht ergänzt, Featurebranch sichern. Stopppunkt vor B1 bleibt verbindlich; keine B-Systeme begonnen.

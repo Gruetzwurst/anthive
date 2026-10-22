@@ -16,6 +16,7 @@ import type { WorldTile } from './worldTypes.ts';
 export const worldMap = startingWorld.tiles;
 export const worldResources = startingWorld.resources;
 export const worldDecorations = startingWorld.decorations;
+export const worldStorageChambers = startingWorld.storageChambers;
 export const nestChamberCenter = startingWorld.landmarks.nestChamberCenter;
 export const queenChamberCenter = startingWorld.landmarks.queenChamberCenter;
 export const broodChamberCenters = startingWorld.landmarks.broodChamberCenters;

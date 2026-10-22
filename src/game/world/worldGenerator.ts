@@ -140,6 +140,21 @@ function createStartingResources(landmarks: WorldLandmarks): WorldResource[] {
   return [{ id: 'surface-food-source', kind: 'foodSource', position: landmarks.surfaceFoodSource }];
 }
 
+function createStartingStorageChambers(landmarks: WorldLandmarks): StartingWorld['storageChambers'] {
+  // Use the exact same bounds as createStartingTiles, excluding access tunnels.
+  return [
+    {
+      id: 'food-store', resource: 'food', position: { ...landmarks.foodStoreCenter },
+      areaTiles: (storageEndColumn - storageStartColumn) * (storageBottomRow - storageTopRow),
+    },
+    {
+      id: 'building-material-store', resource: 'buildingMaterial',
+      position: { ...landmarks.buildingMaterialStoreCenter },
+      areaTiles: (materialStoreRightColumn - materialStoreLeftColumn) * (materialStoreBottomRow - materialStoreTopRow),
+    },
+  ];
+}
+
 function createStartingDecorations(): WorldDecoration[] {
   const atSurface = (column: number): WorldPoint => pointAtTile(column + 0.5, surfaceRow(column));
   const atDepth = (column: number, depth: number): WorldPoint => pointAtTile(column + 0.5, surfaceRow(column) + depth);
@@ -190,6 +205,7 @@ export function createStartingWorld(): StartingWorld {
     tiles: createStartingTiles(),
     resources: createStartingResources(landmarks),
     decorations: createStartingDecorations(),
+    storageChambers: createStartingStorageChambers(landmarks),
     landmarks,
     dimensions: WORLD_CONFIG,
   };

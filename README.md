@@ -48,6 +48,18 @@ The modular world files are:
 
 Run `npm run test:world` to check map dimensions and bounds, layer placement, reference-map scenery, the connected seven-chamber nest, mostly solid underground, rubble walkability, and that already-open tiles are no longer valid dig targets. This check uses Node's built-in TypeScript stripping and requires Node 22.12 or newer; the production build still supports the Node versions listed above.
 
+### A1 resource foundation (2026-10-22)
+
+`src/game/simulation/` contains the Phaser-independent resource foundation. `createResourceSimulation(world, config?, initialStocks?)` creates one configurable game clock and a resource system from the existing food source, pond and individual furnished start stores. Call `simulation.advance(realSeconds)` to advance the clock and regenerate sources exactly once. The default test day is 600 seconds. A depleted food source rests for two game days, then regenerates at 20 units/day up to 200. Finite small-water sources are supported by the same API; no new puddles are placed in the map.
+
+Each store has its own ID, position, resource, capacity and stock. `takeFromSource(id, requested)` and `takeFromStore(id, requested)` return the real `{ resource, amount }` removed. `depositInStore(id, load)` returns the accepted amount; the caller retains the remainder. Only operational, reachable stores can receive/supply resources. `getStoreTotals(resource)` sums usable stores only; individual snapshots still expose inaccessible stock without deleting it. Returned snapshots and registration inputs do not expose mutable internal state.
+
+`simulationConfig.ts` holds provisional source/time/capacity values (10 food/water or 8 building-material units per tile). The existing 54-tile food store and 48-tile material store therefore have test capacities of 540 and 384. Stores start empty unless explicit valid stocks are provided; A1 does not choose a new starting colony or grant demo resources. No water store is invented: a real chamber and routes must be added deliberately during A2.
+
+This is the tested data foundation, **not yet a running transport economy**. The active scene still shows the previous food animation and digging/material demo. It does not instantiate a competing economy or tick an unused second timer. Connecting real pickups/deliveries is A2; integrating the existing digging-material counter is B2. No consumption, shortage, UI, brood or egg-allocation system has been added. The side-view pond and existing gameplay graphics remain intact; `?view=pond` still opens the map at the pond.
+
+Run **`npm test`** (Node 22.12+; verified here with Node 24.22.1) for all tests, including clock, sources, individual stores, world adapter and existing graphics/world checks. The command explicitly uses `--test-isolation=none`: in this environment the default isolated runner reported file-level results without individual test results, so the full suite runs in one process for verifiable per-test output. `npm run test:world` remains available for the original world-only check. See `docs/A1-RESSOURCEN-ERGEBNIS.md` for the handoff and `planung/00-START-HIER-CODEX-ARBEITSPLAN-UND-KONSISTENZPRUEFUNG.md` for the authoritative order. Stop after A1; A2 requires user approval.
+
 Before this draft, the placeholder files were copied to `versions/2026-10-20-before-world-camera/`. If you want to return to that version, ask Codex to restore it.
 
 The earlier, smaller world-and-camera draft is preserved in `versions/2026-10-20-before-expanded-world/`.

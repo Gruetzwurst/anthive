@@ -11,7 +11,10 @@ export type TerrainKind =
 
 export type TileState = 'unknown' | 'discovered' | 'open' | 'rubble';
 
-export type WorldResourceKind = 'foodSource' | 'food' | 'water' | 'mineral';
+export const RESOURCE_KINDS = ['food', 'water', 'buildingMaterial'] as const;
+export type ResourceKind = typeof RESOURCE_KINDS[number];
+// A source/landmark kind is distinct from the material extracted from it.
+export type WorldResourceKind = ResourceKind | 'foodSource' | 'mineral';
 export type BroodChamberKind = 'gathering' | 'building' | 'care' | 'combat';
 export type WorldDecorationKind =
   | 'forest' | 'flowerPatch' | 'pond' | 'mountain' | 'treeStump' | 'ruins' | 'watchtower'
@@ -29,6 +32,14 @@ export type WorldResource = {
   id: string;
   kind: WorldResourceKind;
   position: WorldPoint;
+};
+
+// Metadata for the existing furnished start chambers, not a new room builder.
+export type WorldStorageChamber = {
+  id: string;
+  resource: ResourceKind;
+  position: WorldPoint;
+  areaTiles: number;
 };
 
 // Visible landmarks from the concept map. Decorations do not affect collision,
@@ -54,6 +65,7 @@ export type StartingWorld = {
   tiles: WorldTile[][];
   resources: WorldResource[];
   decorations: WorldDecoration[];
+  storageChambers: WorldStorageChamber[];
   landmarks: WorldLandmarks;
   dimensions: { columns: number; rows: number; tileSize: number };
 };

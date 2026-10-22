@@ -63,7 +63,43 @@ export class AdultSupplySystem {
       nonNegativeFinite(population[key], key);
       if (!Number.isInteger(population[key])) throw new RangeError(`${key} must be an integer`);
     }
-    if (gameDays === 0) return { workerLosses: 0 };
+    const survivors = { ...population };
+    let remainingDays = gameDays, workerLosses = 0;
+    // Split exactly at stock depletion, full recovery, risk onset and death.
+    // Each interval therefore consumes only for adults alive in that interval.
+    while (remainingDays > EPS) {
+      const workerDemand = survivors.activeWorkers + survivors.restingWorkers * this.config.restingConsumptionFactor;
+      let step = remainingDays, atRisk = false;
+      for (const kind of ['food', 'water'] as const) {
+        const rate = workerDemand * this.config.workerPerDay[kind] + survivors.queens * this.config.queenPerDay[kind];
+        const stock = this.resources.getStoreTotals(kind).amount;
+        const state = this.states[kind];
+        const fed = rate === 0 || stock > EPS;
+        if (rate > 0 && stock > EPS) step = Math.min(step, stock / rate);
+        if (fed && state.shortageDays > 0) {
+          step = Math.min(step, this.config.recoveryDays * (1 - state.recoveryProgress));
+        } else if (!fed) {
+          const untilRisk = this.config.mortalityAfterDays - state.shortageDays;
+          if (untilRisk > EPS) step = Math.min(step, untilRisk);
+          else atRisk = true;
+        }
+      }
+      const alive = survivors.activeWorkers + survivors.restingWorkers;
+      const lossRate = alive * this.config.workerLossFractionPerDay;
+      if (atRisk && lossRate > 0) step = Math.min(step, (1 - this.lossProgress) / lossRate);
+      step = Math.min(remainingDays, Math.max(EPS, step));
+      const result = this.advanceInterval(step, survivors);
+      workerLosses += result.workerLosses;
+      // The adapter uses this same stable active-before-resting ordering.
+      const activeLosses = Math.min(survivors.activeWorkers, result.workerLosses);
+      survivors.activeWorkers -= activeLosses;
+      survivors.restingWorkers -= result.workerLosses - activeLosses;
+      remainingDays = Math.max(0, remainingDays - step);
+    }
+    return { workerLosses };
+  }
+
+  private advanceInterval(gameDays: number, population: AdultPopulation): { workerLosses: number } {
     const workerDemand = population.activeWorkers + population.restingWorkers * this.config.restingConsumptionFactor;
     let riskDays = 0;
     for (const kind of ['food', 'water'] as const) {

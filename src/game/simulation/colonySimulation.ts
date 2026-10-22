@@ -45,8 +45,10 @@ export function createColonySimulation(
           });
           // Stable IDs make the provisional loss selection deterministic; never
           // include the queen or create replacement workers automatically.
-          const candidates = [...collectors.map(worker => ({ id: worker.id, collector: true })),
-            ...other.map(worker => ({ id: worker.id, collector: false }))].sort((a, b) => a.id.localeCompare(b.id));
+          const candidates = [...collectors.map(worker => ({ id: worker.id, collector: true,
+            resting: worker.phase === 'idle' || worker.phase === 'waiting' })),
+            ...other.map(worker => ({ id: worker.id, collector: false, resting: worker.resting }))]
+            .sort((a, b) => Number(a.resting) - Number(b.resting) || a.id.localeCompare(b.id));
           for (const worker of candidates.slice(0, result.workerLosses)) {
             if (worker.collector) {
               const retired = simulation.gathering.retireCollector(worker.id);

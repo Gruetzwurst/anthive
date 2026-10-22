@@ -105,3 +105,30 @@ test('usable stores can jointly supply demand and invalid input cannot mutate st
   assert.throws(() => supply.advance(1, { ...population, activeWorkers: NaN }));
   assert.deepEqual(resources.listStores(), before);
 });
+
+test('large steps consume only while workers are alive and cannot invent a water shortage', () => {
+  const bulk = fixture(0, 1000), frames = fixture(0, 1000);
+  const adults = { activeWorkers: 100, restingWorkers: 0, queens: 1 };
+  bulk.supply.advance(10, adults);
+  let alive = 100;
+  for (let i = 0; i < 1000; i++) alive -= frames.supply.advance(0.01, { ...adults, activeWorkers: alive }).workerLosses;
+  assert.equal(bulk.supply.snapshot.workerLosses, 18);
+  assert.equal(bulk.supply.snapshot.workerLosses, frames.supply.snapshot.workerLosses);
+  assert.ok(bulk.resources.getStore('water').amount > 25);
+  close(bulk.resources.getStore('water').amount, frames.resources.getStore('water').amount);
+  close(bulk.supply.snapshot.water.shortageDays, 0);
+});
+
+test('full recovery inside a large step clears the preceding episode mortality fraction', () => {
+  const bulk = fixture(), split = fixture();
+  for (const entry of [bulk, split]) {
+    entry.supply.advance(8, population);
+    refill(entry.resources, 10);
+  }
+  bulk.supply.advance(7.3, population);
+  split.supply.advance(1, population);
+  split.supply.advance(6.3, population);
+  assert.equal(bulk.supply.snapshot.workerLosses, 0);
+  assert.equal(bulk.supply.snapshot.workerLosses, split.supply.snapshot.workerLosses);
+  close(bulk.supply.snapshot.food.shortageDays, 6.3);
+});

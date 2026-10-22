@@ -32,23 +32,23 @@
 **Files:** neu src/game/simulation/constructionPlanning.ts; Test tests/construction-planning.test.mjs; Konfiguration simulationConfig.ts.
 **Interfaces:** Cell unverändert WorldCellCoordinate; PlanType = tunnel + drei Lager + vier spezialisierte Brutkammern + rest. lineSelection(start,end), rectangleSelection(start,end), mergeSelection(...groups), isConnectedSelection(cells), constructionMaterialEstimate(type, area). Einheitliche immutable Kopien.
 
-- [ ] RED: L-Form, überlappende Rechtecke, rückwärts gezeichnetes Rechteck, diagonaler Strich kardinal zusammenhängend, Inseln ungültig, Kopien, bekannte Kosten 12×2/20×3/16×2 und Tunnel 0. Run node --experimental-strip-types --test --test-isolation=none tests/construction-planning.test.mjs → fehlendes Modul.
-- [ ] GREEN: kleinste reine Implementierung; gleiche Tests erfolgreich. Commit.
+- [x] RED: L-Form, überlappende Rechtecke, rückwärts gezeichnetes Rechteck, diagonaler Strich kardinal zusammenhängend, Inseln ungültig, Kopien, bekannte Kosten 12×2/20×3/16×2 und Tunnel 0. Run node --experimental-strip-types --test --test-isolation=none tests/construction-planning.test.mjs → fehlendes Modul.
+- [x] GREEN: kleinste reine Implementierung; gleiche Tests erfolgreich. Commit.
 
 ## Task 2: Bestehende Grabaufträge zu B3 erweitern
 
 **Files:** excavationSystem.ts; Test tests/construction-orders.test.mjs und bestehende B2-Tests.
 **Interfaces:** addOrder(cells, type='tunnel'): number; getOrders() kompatible aktive Liste; getConstructionOrders() vollständige Kopien mit id/type/cells/paused/status/blockReason/excavated/total/partialDigSeconds/materialRequired; pauseOrder(id), resumeOrder(id), cancelOrder(id), drainConstructionNotices(). Job verweist auf stabile Auftrags-ID/-daten; Terrain bleibt bestehende Welt.
 
-- [ ] RED: Fernkammer bleibt blockiert ohne Terrainänderung; späterer Tunnel verbindet und frühere Kammer erhält wieder Vorrang. Umgekehrt eingereihte Rechteckkacheln werden ab erreichbarem Rand gegraben. Pausierter erster Auftrag erlaubt zweiten, Wiederaufnahme behält ID/Rang; Pause während laufendem Graben beendet nur diese Kachel. Abbruch bei Graben/Laden/Transport erhält Bilanz; Sperre/Trägerverlust erhält anteiligen Grabfortschritt. Keine spätere Baustelle allein wegen reservierter aktueller Kachel starten. Warnungen bei neuer Sperre, unveränderte Sperre/manuelle Pause ohne Spam, Behebung/erneutes Problem erneut. Unfertige Kammer aktiviert keine Kapazität; Kopien/ungültige APIs mutieren nichts.
-- [ ] GREEN: Aufträge persistent ergänzen; freie erreichbare Zielkachel in zusammenhängendem Plan deterministisch wählen; eine aktive Grabaktion bis B4; Status + Problemwechsel erfassen. Alte getOrders()-Semantik nur für aktive Aushübe beibehalten. Fokus-Tests und bestehende B2-/B1-Integration erfolgreich. Commit.
+- [x] RED: Fernkammer bleibt blockiert ohne Terrainänderung; späterer Tunnel verbindet und frühere Kammer erhält wieder Vorrang. Umgekehrt eingereihte Rechteckkacheln werden ab erreichbarem Rand gegraben. Pausierter erster Auftrag erlaubt zweiten, Wiederaufnahme behält ID/Rang; Pause während laufendem Graben beendet nur diese Kachel. Abbruch bei Graben/Laden/Transport erhält Bilanz; Sperre/Trägerverlust erhält anteiligen Grabfortschritt. Keine spätere Baustelle allein wegen reservierter aktueller Kachel starten. Warnungen bei neuer Sperre, unveränderte Sperre/manuelle Pause ohne Spam, Behebung/erneutes Problem erneut. Unfertige Kammer aktiviert keine Kapazität; Kopien/ungültige APIs mutieren nichts.
+- [x] GREEN: Aufträge persistent ergänzen; freie erreichbare Zielkachel in zusammenhängendem Plan deterministisch wählen; eine aktive Grabaktion bis B4; Status + Problemwechsel erfassen. Alte getOrders()-Semantik nur für aktive Aushübe beibehalten. Fokus-Tests und bestehende B2-/B1-Integration erfolgreich. Commit.
 
 ## Task 3: Bedienung und sichtbare Baustellen
 
 **Files:** neu ui/ConstructionPanel.ts; WorldScene.ts, EconomyHud.ts, style.css; scripts/check-economy-browser.py.
 **Interfaces:** Native Dialog zum Start eines Plans (Typ), Werkzeugwahl, Bestätigung/Verwerfen in kompakter Zeichenleiste; Liste/Details mit Pause/Fortsetzen/Abbruch. Szenenauswahl durch Klick auf markierten Plan. Rendering liest getConstructionOrders(), zeigt Status + kurze wechselbasierte Meldungen. Pure Geometrie aus Task 1, Modellaktionen Task 2.
 
-- [ ] Browser RED: Bauen-Button/Planformular fehlen, echte Pinsel-/Rechteckeingaben und Bestätigung legen nichts an.
+- [x] Browser RED: Bauen-Button/Planformular fehlen, echte Pinsel-/Rechteckeingaben und Bestätigung legen nichts an.
 - [ ] GREEN: vorhandenen Stil und Zeichen-/Kamera-Fluss erweitern. Zeichnen erzeugt Vorschau, erst Bestätigen legt Plan an; Werkzeuge im Entwurf kombinierbar. Außerhalb Zeichnen Klick auswählbar/Kamera ziehbar. Dialog blockiert Karteneingabe; Touch mit bestehender echter Hardwareemulation. Aushub/Einrichtung/Materialvorschau getrennt sichtbar; keine virtuelle Betriebsbereitschaft.
 - [ ] Gesamttests, Welttests, Build und Browser vollständig erfolgreich; Screenshots Teich/Details/Querformat prüfen. Unabhängiges Gesamt-Review, Befunde mit RED→GREEN beheben, Ergebnisbericht/README, Commit/Push. Stopp vor B4.
 
@@ -56,3 +56,6 @@
 
 - Vorab: git status sauber, B2 auf GitHub identisch (8a95e61), Schutz durch bestehende B2-Commits/Remote. Keine ungesicherten lokalen Dateien.
 - Interfaces Task 1 → Task 2: dieselben Cell-Typen, zusammenhängende Kopien und PlanType. Task 2 → Task 3: Snapshots statt paralleler UI-Zähler, mutierende Aktionen ausschließlich bestehendes Modell. Materialvorschau ist keine konsumierende Einrichtung; Einrichtung und Kammerkapazität bleiben spätere Phasen.
+
+- Task 1 fertig (5f1873f): fehlendes Geometriemodul rot, 4/4 Tests grün. Task 2 fertig (06691a0): neun neue Auftragsprüfungen zuerst rot, anschließend einschließlich B2/B1 grün; weitere vier Pause-/Trägerverlustprüfungen grün. Modell-Gesamtlauf 130/130, anschließend aktueller Gesamtstand 134/134; Welt 10/10 und Build grün.
+- Task 3 Browser-RED gesehen: „B3 construction controls missing“. Native Bauplanung, kombinierbare Zeichenleiste, Karte/Details, Statusmarkierungen und Meldungen angebunden; Browser-GREEN läuft. Keine Aktivierung von Einrichtung oder Kapazität.

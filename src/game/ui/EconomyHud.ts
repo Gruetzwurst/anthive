@@ -21,7 +21,7 @@ export class EconomyHud {
   private warning: Phaser.GameObjects.Text;
   private buttons: Array<{ priority: GatheringPriority; body: Phaser.GameObjects.Rectangle; label: Phaser.GameObjects.Text }> = [];
 
-  constructor(scene: Phaser.Scene, onPriority: (priority: GatheringPriority) => void, onWorkforce?: () => void) {
+  constructor(scene: Phaser.Scene, onPriority: (priority: GatheringPriority) => void, onWorkforce?: () => void, onConstruction?: () => void) {
     const bounds = ECONOMY_HUD_BOUNDS;
     scene.add.rectangle(bounds.x, bounds.y, bounds.width, bounds.height, 0x211e19, 0.96)
       .setOrigin(0).setStrokeStyle(1, 0x71604a).setScrollFactor(0).setDepth(20);
@@ -37,6 +37,15 @@ export class EconomyHud {
       groups.on(Phaser.Input.Events.POINTER_DOWN,
         (_pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
           event.stopPropagation(); onWorkforce();
+        });
+    }
+    if (onConstruction) {
+      const build = scene.add.rectangle(478, 9, 65, 21, 0x39352e).setOrigin(0).setScrollFactor(0)
+        .setDepth(21).setStrokeStyle(1, 0x71604a).setInteractive({ useHandCursor: true });
+      text(510.5, 19.5, 'Bauen', 10).setOrigin(.5);
+      build.on(Phaser.Input.Events.POINTER_DOWN,
+        (_pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
+          event.stopPropagation(); onConstruction();
         });
     }
     this.food = text(18, 31, '', 11).setColor('#e5bd77');

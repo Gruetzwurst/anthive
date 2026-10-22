@@ -5,6 +5,7 @@ Starts its own local Vite server; screenshots go to node_modules/.cache/.
 import base64
 import json
 import socket
+import sys
 import subprocess
 import tempfile
 import time
@@ -181,6 +182,86 @@ try:
         command('WebDriver:SetWindowRect', {'width': 1280, 'height': 800})
         command('WebDriver:Navigate', {'url': f'http://127.0.0.1:{vite_port}/'})
         hook()
+        assert page('return !!document.querySelector("#construction-panel");'), 'B3 construction controls missing'
+        # B3: real controls, combined rectangle/brush, explicit confirmation,
+        # remote planning, pause/resume, map details and a later connecting tunnel.
+        def start_plan(kind, touch=False):
+            click(510, 20, touch=touch)
+            assert page('return document.querySelector("#construction-panel").open;')
+            page("document.querySelector('#construction-panel [name=chamberType]').value=" + json.dumps(kind) + "; return true;")
+            native_click('[data-action="draw-plan"]')
+            assert page('return !document.querySelector("#construction-draft").hidden;')
+
+        def draw_cells(start, end, tool, touch=False):
+            page("const el=document.querySelector('[name=draftTool]'); el.value=" + json.dumps(tool) + "; el.dispatchEvent(new Event('change',{bubbles:true})); return true;")
+            coordinates=page("const cells="+json.dumps([start,end])+"; return cells.map(([column,row])=>[(column+.5)*24-scene.cameras.main.scrollX,(row+.5)*24-scene.cameras.main.scrollY]);")
+            click(*coordinates[0], move=coordinates[1], touch=touch)
+
+        def check_construction_touch():
+            command('WebDriver:SetWindowRect', {'width': 844, 'height': 480})
+            page('scene.cameras.main.centerOn(155*24,38*24); window.__b3TouchCount=scene.excavation.getConstructionOrders().length; return true;')
+            time.sleep(.2)
+            start_plan('water', touch=True)
+            draw_cells([154,37],[156,38],'rectangle', touch=True)
+            assert page('return scene.draftCells.length;') == 6
+            assert page('return scene.input.manager.activePointer.wasTouch;')
+            native_click('[data-action="confirm-plan"]')
+            assert page("const plans=scene.excavation.getConstructionOrders(); return plans.length===window.__b3TouchCount+1 && plans.at(-1).type==='water';")
+            page("const dialog=document.querySelector('#construction-panel'); dialog.scrollTop=dialog.scrollHeight; return true;")
+            screenshot('anthive-b3-mobile-details.png')
+            native_click('[data-action="cancel-order"]')
+            native_click('[data-action="close-construction"]')
+            print('PASS: B3 real touch rectangle, confirmation, scrollable details and cancellation')
+
+        page("window.__b3Camera=[scene.cameras.main.scrollX,scene.cameras.main.scrollY]; scene.cameras.main.centerOn(150*24,38*24); return true;")
+        time.sleep(.1)
+        start_plan('food')
+        draw_cells([148,37],[150,39],'rectangle')
+        draw_cells([150,39],[153,39],'brush')
+        assert page('return scene.draftCells.length;') == 12
+        assert page('return scene.excavation.getConstructionOrders().length;') == 0
+        native_click('[data-action="confirm-plan"]')
+        assert page("const o=scene.excavation.getConstructionOrders()[0]; window.__b3First=o.id; return o.type==='food' && o.total===12 && o.status==='blocked' && o.materialRequired===24;")
+        assert '24 benötigt' in page("return document.querySelector('[data-role=construction-detail]').textContent;")
+        native_click('[data-action="pause-order"]')
+        assert page('return scene.excavation.getConstructionOrders()[0].paused;')
+        native_click('[data-action="resume-order"]')
+        assert not page('return scene.excavation.getConstructionOrders()[0].paused;')
+        screenshot('anthive-b3-plan-details.png')
+        native_click('[data-action="close-construction"]')
+        coordinates=page('return [(149.5)*24-scene.cameras.main.scrollX,(38.5)*24-scene.cameras.main.scrollY];')
+        click(*coordinates)
+        assert page('return document.querySelector("#construction-panel").open;')
+        native_click('[data-action="close-construction"]')
+        start_plan('tunnel')
+        draw_cells([148,35],[148,36],'brush')
+        native_click('[data-action="confirm-plan"]')
+        native_click('[data-action="close-construction"]')
+        print(json.dumps({'b3':page("""
+          for(let i=0;i<2400 && scene.excavation.getConstructionOrders()[0].excavated<1;i++)scene.update(0,100);
+          const plans=scene.excavation.getConstructionOrders();
+          if(plans[0].excavated<1 || plans[1].status!=='completed')throw Error('B3 actual tunnel did not unlock earlier chamber');
+          if(scene.gathering.resources.getStoreTotals('food').capacity!==540)throw Error('Unfurnished chamber granted capacity');
+          scene.updateEconomyHud();return plans.map(o=>({id:o.id,type:o.type,status:o.status,excavated:o.excavated}));
+        """)}))
+        click(*coordinates)
+        native_click('[data-action="cancel-order"]')
+        assert page('return scene.excavation.getConstructionOrders()[0].status;') == 'cancelled'
+        screenshot('anthive-b3-cancelled.png')
+        native_click('[data-action="close-construction"]')
+        start_plan('tunnel')
+        draw_cells([151,37],[152,37],'brush')
+        native_click('[data-action="discard-plan"]')
+        assert page('return scene.excavation.getConstructionOrders().length;') == 2
+        page('scene.cameras.main.setScroll(...window.__b3Camera); return true;')
+        time.sleep(.1)
+        if '--construction-only' in sys.argv:
+            check_construction_touch()
+            command('Marionette:Quit', {'flags': ['eForceQuit']})
+            browser.wait(timeout=10)
+            browser = None
+            print('PASS: focused B3 desktop and touch planning')
+            sys.exit(0)
         before = check_layout()
         for priority, x in [('water', 536), ('food', 214), ('balanced', 375)]:
             click(x, 80)
@@ -307,6 +388,7 @@ try:
             raise AssertionError('Touch did not open the workforce dialog')
         screenshot('anthive-b1-mobile-groups.png')
         native_click('[data-action="close-workforce"]')
+        check_construction_touch()
         command('WebDriver:Navigate', {'url': f'http://127.0.0.1:{vite_port}/?view=pond'})
         hook()
         check_layout()
@@ -314,7 +396,7 @@ try:
         command('Marionette:Quit', {'flags': ['eForceQuit']})
         browser.wait(timeout=10)
         browser = None
-        print('PASS: A4/B1/B2 priorities, groups, physical transfer, 50% digging, full-store continuation, ground cleanup, conserved material, rest, warnings, pond')
+        print('PASS: B3 real combined tools, confirmation, pause/resume, FIFO connection, details, cancellation, discard; A4/B1/B2 priorities, groups, physical transfer, 50% digging, full-store continuation, ground cleanup, conserved material, rest, warnings, pond')
 finally:
     if browser is not None:
         browser.terminate()

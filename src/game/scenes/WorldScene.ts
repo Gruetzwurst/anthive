@@ -32,6 +32,12 @@ import { startingWorld } from '../world/worldGenerator';
 import { ExcavationSystem, requiredDiggingGrade } from '../simulation/excavationSystem';
 import { createWorkforceSimulation } from '../simulation/workforceSimulation';
 import { WorkforcePanel } from '../ui/WorkforcePanel';
+import { ConstructionPanel, constructionStatusLabel } from '../ui/ConstructionPanel';
+import type { DrawingTool } from '../ui/ConstructionPanel';
+import { lineSelection, rectangleSelection, mergeSelection } from '../simulation/constructionPlanning';
+import type { PlanType } from '../simulation/constructionPlanning';
+import { CONSTRUCTION_CONFIG } from '../simulation/simulationConfig';
+import { cellKey } from '../world/gridPathfinding';
 import { EconomyHud, isEconomyHudPoint } from '../ui/EconomyHud';
 import { buildEconomyOverview } from '../ui/economyOverview';
 
@@ -55,6 +61,17 @@ export class WorldScene extends Phaser.Scene {
   private ants: Array<{ id: string; body: Phaser.GameObjects.Container; load: Phaser.GameObjects.Ellipse }> = [];
   private economyHud!: EconomyHud;
   private workforcePanel!: WorkforcePanel;
+  private constructionPanel!: ConstructionPanel;
+  private planning = false;
+  private drawingTool: DrawingTool = 'brush';
+  private planType: PlanType = 'tunnel';
+  private draftCells: DigCell[] = [];
+  private dragMoved = false;
+  private constructionGraphics!: Phaser.GameObjects.Graphics;
+  private constructionLabels = new Map<number, Phaser.GameObjects.Text>();
+  private constructionSignature = '';
+  private constructionNotice = '';
+  private constructionNoticeSeconds = 0;
   private overviewRefreshSeconds = 0;
   private sourceReachability = new Map<string, boolean>();
   private renderedDroppedLoads = new Set<string>();
@@ -101,7 +118,8 @@ export class WorldScene extends Phaser.Scene {
     });
     this.drawWorld();
     this.excavationGraphics = this.add.graphics().setDepth(2);
-    this.digPreviewGraphics = this.add.graphics().setDepth(3);
+    this.digPreviewGraphics = this.add.graphics().setDepth(4);
+    this.constructionGraphics = this.add.graphics().setDepth(3);
     this.drawFoodMarkers();
     this.buildingMaterialPileGraphics = this.add.graphics().setDepth(4);
     this.drawBuildingMaterialPile();
@@ -116,11 +134,19 @@ export class WorldScene extends Phaser.Scene {
         this.updateEconomyHud();
       },
     );
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.workforcePanel.destroy());
+    this.constructionPanel = new ConstructionPanel(document.querySelector('#game')!, {
+      start: type => this.startDraft(type),
+      tool: tool => { this.drawingTool = tool; },
+      confirm: () => this.confirmDraft(), discard: () => this.discardDraft(),
+      pause: id => { this.excavation.pauseOrder(id); this.updateConstruction(); },
+      resume: id => { this.excavation.resumeOrder(id); this.updateConstruction(); },
+      cancel: id => { this.excavation.cancelOrder(id); this.updateConstruction(); },
+    });
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => { this.workforcePanel.destroy(); this.constructionPanel.destroy(); });
     this.economyHud = new EconomyHud(this, priority => {
       this.gathering.gathering.setPriority(priority);
       this.updateEconomyHud();
-    }, () => this.workforcePanel.open());
+    }, () => this.workforcePanel.open(), () => this.constructionPanel.open());
     this.refreshSourceReachability();
     this.updateEconomyHud();
     this.frameWorld();
@@ -134,6 +160,15 @@ export class WorldScene extends Phaser.Scene {
     if (changedCells.length) this.refreshSourceReachability();
     this.syncBuilderVisuals();
     this.syncMaterialPiles();
+    const notices = this.excavation.drainConstructionNotices();
+    if (notices.length) {
+      this.constructionNotice = notices.map(notice => notice.message).join(' · ');
+      this.constructionNoticeSeconds = CONSTRUCTION_CONFIG.noticeSeconds;
+    }
+    if (this.constructionNoticeSeconds > 0) {
+      this.constructionNoticeSeconds -= delta / 1000;
+      this.digStatus?.setText(this.constructionNotice);
+    }
     const collectors = new Map(this.gathering.gathering.getCollectors().map(ant => [ant.id, ant]));
     const visibleWorkers = new Map(this.gathering.getWorkers().filter(worker => worker.actualWork !== 'building').map(worker => [worker.id, worker]));
     this.createAnts();
@@ -175,6 +210,7 @@ export class WorldScene extends Phaser.Scene {
 
   private updateEconomyHud(): void {
     this.workforcePanel.update(this.gathering.getWorkers());
+    this.updateConstruction();
     this.economyHud.update(buildEconomyOverview(this.gathering, {
       otherWorkerCount: this.gathering.getWorkers().filter(worker => worker.actualWork !== 'gathering').length,
       sourceReachability: this.sourceReachability,
@@ -433,15 +469,15 @@ export class WorldScene extends Phaser.Scene {
   private createDigControls(): void {
     this.add.rectangle(8, 310, 624, 44, 0x211e19, 0.94).setOrigin(0).setScrollFactor(0).setDepth(9);
     this.digStatus = this.add
-      .text(18, 315, 'Zieh vom Tunnel in die Erde, um einen Grabweg zu beauftragen.', {
+      .text(18, 315, 'Bauen: Plan zeichnen · Baustelle anklicken: Details', {
         color: COLORS.text,
         fontFamily: 'system-ui, sans-serif',
         fontSize: '10px',
       })
       .setScrollFactor(0)
-      .setDepth(10);
+      .setDepth(10).setWordWrapWidth(600);
 
-    this.add.text(18, 337, 'Tunnel ziehen: Graben · freie Fläche: Kamera', {
+    this.add.text(18, 337, 'Karte ziehen: verschieben · Bauen: Pinsel / Rechteck', {
       color: COLORS.text, fontFamily: 'system-ui, sans-serif', fontSize: '9px',
     }).setScrollFactor(0).setDepth(10);
 
@@ -525,51 +561,63 @@ export class WorldScene extends Phaser.Scene {
     });
   }
 
+  private startDraft(type: PlanType): void {
+    this.planType = type; this.planning = true; this.drawingTool = 'brush';
+    this.draftCells = []; this.previewCells = []; this.dragMode = 'none';
+    this.renderDigPreview(); this.constructionPanel.showDraft(type);
+  }
+  private confirmDraft(): void {
+    const id = this.excavation.addOrder(this.draftCells, this.planType);
+    this.discardDraft(); this.updateConstruction(); this.constructionPanel.selectOrder(id);
+  }
+  private discardDraft(): void {
+    this.planning = false; this.draftCells = []; this.previewCells = []; this.dragMode = 'none';
+    this.digStart = null; this.digPreviewGraphics.clear(); this.constructionPanel.hideDraft(); this.input.setDefaultCursor('grab');
+  }
   private startDrag(pointer: Phaser.Input.Pointer): void {
-    if (!pointer.isDown || this.workforcePanel.isOpen || isEconomyHudPoint(pointer.x, pointer.y) || pointer.y >= 310) return;
+    if (!pointer.isDown || pointer.event?.target !== this.game.canvas || this.workforcePanel.isOpen || this.constructionPanel.isOpen
+      || isEconomyHudPoint(pointer.x, pointer.y) || pointer.y >= 310) return;
     const cell = this.pointerCell(pointer);
-    if (cell && isOpenTile(worldMap[cell.row][cell.column])) {
-      this.dragMode = 'dig';
-      this.digStart = cell;
-      this.previewCells = [cell];
-      this.renderDigPreview();
-      this.input.setDefaultCursor('crosshair');
-      return;
+    this.dragMoved = false;
+    if (this.planning && this.drawingTool !== 'pan' && cell) {
+      this.dragMode = 'dig'; this.digStart = cell; this.previewCells = [cell];
+      this.renderDigPreview(); this.input.setDefaultCursor('crosshair'); return;
     }
-
-    this.dragMode = 'camera';
-    this.lastPointerX = pointer.x;
-    this.lastPointerY = pointer.y;
+    this.dragMode = 'camera'; this.lastPointerX = pointer.x; this.lastPointerY = pointer.y;
     this.input.setDefaultCursor('grabbing');
   }
-
   private moveCamera(pointer: Phaser.Input.Pointer): void {
     if (this.dragMode === 'dig' && this.digStart && pointer.isDown) {
+      if (isEconomyHudPoint(pointer.x, pointer.y) || pointer.y >= 310) return;
       const endpoint = this.pointerCell(pointer);
       if (endpoint) {
-        this.previewCells = this.lineCells(this.digStart, endpoint);
+        this.previewCells = this.drawingTool === 'rectangle' ? rectangleSelection(this.digStart, endpoint)
+          : mergeSelection(this.previewCells, lineSelection(this.previewCells[this.previewCells.length - 1], endpoint));
         this.renderDigPreview();
       }
       return;
     }
     if (this.dragMode !== 'camera' || !pointer.isDown) return;
-
+    const dx = this.lastPointerX - pointer.x, dy = this.lastPointerY - pointer.y;
+    if (Math.abs(dx) + Math.abs(dy) > 2) this.dragMoved = true;
     const camera = this.cameras.main;
-    const maxX = Math.max(0, worldSize.width - camera.width);
-    const maxY = Math.max(0, worldSize.height - camera.height);
-    camera.scrollX = Phaser.Math.Clamp(camera.scrollX + this.lastPointerX - pointer.x, 0, maxX);
-    camera.scrollY = Phaser.Math.Clamp(camera.scrollY + this.lastPointerY - pointer.y, 0, maxY);
-    this.lastPointerX = pointer.x;
-    this.lastPointerY = pointer.y;
+    camera.scrollX = Phaser.Math.Clamp(camera.scrollX + dx, 0, Math.max(0, worldSize.width - camera.width));
+    camera.scrollY = Phaser.Math.Clamp(camera.scrollY + dy, 0, Math.max(0, worldSize.height - camera.height));
+    this.lastPointerX = pointer.x; this.lastPointerY = pointer.y;
   }
-
-  private stopDrag(): void {
-    if (this.dragMode === 'dig') this.commitDigOrder();
-    this.dragMode = 'none';
-    this.digStart = null;
-    this.previewCells = [];
-    this.digPreviewGraphics.clear();
-    this.input.setDefaultCursor('grab');
+  private stopDrag(pointer: Phaser.Input.Pointer): void {
+    const insideMap = pointer.x >= 0 && pointer.x < 640 && pointer.y > 110 && pointer.y < 310;
+    if (this.dragMode === 'dig' && insideMap) {
+      this.draftCells = mergeSelection(this.draftCells, this.previewCells);
+      this.constructionPanel.updateDraft(this.draftCells.length);
+    } else if (this.dragMode === 'camera' && !this.dragMoved && !this.planning && insideMap) {
+      const cell = this.pointerCell(pointer);
+      const order = cell && this.excavation.getConstructionOrders().find(order => order.status !== 'cancelled'
+        && order.status !== 'completed' && order.cells.some(candidate => cellKey(candidate) === cellKey(cell)));
+      if (order) { this.updateConstruction(); this.constructionPanel.selectOrder(order.id); }
+    }
+    this.dragMode = 'none'; this.digStart = null; this.previewCells = [];
+    this.renderDigPreview(); this.input.setDefaultCursor(this.planning && this.drawingTool !== 'pan' ? 'crosshair' : 'grab');
   }
 
   private pointerCell(pointer: Phaser.Input.Pointer): DigCell | null {
@@ -588,51 +636,22 @@ export class WorldScene extends Phaser.Scene {
     return requiredDiggingGrade(cell, worldMap[cell.row][cell.column]);
   }
 
-  private lineCells(start: DigCell, end: DigCell): DigCell[] {
-    const cells: DigCell[] = [];
-    let x = start.column;
-    let y = start.row;
-    const dx = Math.abs(end.column - start.column);
-    const dy = Math.abs(end.row - start.row);
-    const stepX = start.column < end.column ? 1 : -1;
-    const stepY = start.row < end.row ? 1 : -1;
-    let error = dx - dy;
-
-    while (true) {
-      const cell = worldMap[y]?.[x];
-      if (!cell || cell.terrain === 'air' || cell.terrain === 'surface') break;
-      cells.push({ column: x, row: y });
-      if (isDiggableTile(cell) && this.requiredGrade({ column: x, row: y }) > this.diggingGrade) break;
-      if (x === end.column && y === end.row) break;
-
-      const doubledError = 2 * error;
-      if (doubledError > -dy) {
-        error -= dy;
-        x += stepX;
-      }
-      if (doubledError < dx) {
-        error += dx;
-        y += stepY;
-      }
-    }
-    return cells;
-  }
-
   private renderDigPreview(): void {
     this.digPreviewGraphics.clear();
-    this.previewCells.forEach(({ column, row }, index) => {
+    const cells = mergeSelection(this.draftCells, this.previewCells);
+    cells.forEach(({ column, row }, index) => {
       const cell = worldMap[row][column];
-      if (cell.state === 'open') return;
+      const invalid = !terrainDefinitions[cell.terrain].diggable;
       const blockedByHardness = isDiggableTile(cell)
         && this.requiredGrade({ column, row }) > this.diggingGrade;
-      this.digPreviewGraphics.fillStyle(blockedByHardness ? 0xd86654 : 0xf0c66d, 0.8);
+      this.digPreviewGraphics.fillStyle(blockedByHardness || invalid ? 0xd86654 : 0xf0c66d, 0.45);
       this.digPreviewGraphics.fillRect(
         column * TILE_SIZE + 3,
         row * TILE_SIZE + 3,
         TILE_SIZE - 6,
         TILE_SIZE - 6,
       );
-      if (index === this.previewCells.length - 1 && blockedByHardness) {
+      if (index === cells.length - 1 && blockedByHardness) {
         this.digPreviewGraphics.lineStyle(2, 0xf3ddd0, 1);
         this.digPreviewGraphics.strokeRect(
           column * TILE_SIZE + 2,
@@ -653,6 +672,35 @@ export class WorldScene extends Phaser.Scene {
 
     this.excavation.addOrder(this.previewCells);
     this.digStatus?.setText('Grabauftrag erteilt: Die Ameisen graben den Weg nach und nach.');
+  }
+
+  private updateConstruction(): void {
+    const orders = this.excavation.getConstructionOrders();
+    this.constructionPanel.update(orders);
+    const signature = orders.map(order => `${order.id}:${order.status}:${order.blockReason}:${order.excavated}`).join('|');
+    if (signature === this.constructionSignature) return;
+    this.constructionSignature = signature; this.constructionGraphics.clear();
+    const visible = new Set<number>();
+    for (const order of orders) {
+      if (order.status === 'cancelled' || order.status === 'completed') continue;
+      visible.add(order.id);
+      const color = order.status === 'blocked' ? 0xd86654 : order.paused ? 0xb99d65
+        : order.status === 'awaitingFurnishing' ? 0x80ccd4 : 0xf0c66d;
+      this.constructionGraphics.fillStyle(color, .12).lineStyle(1, color, .8);
+      for (const cell of order.cells) {
+        this.constructionGraphics.fillRect(cell.column * TILE_SIZE + 1, cell.row * TILE_SIZE + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+        this.constructionGraphics.strokeRect(cell.column * TILE_SIZE + 1, cell.row * TILE_SIZE + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+      }
+      let label = this.constructionLabels.get(order.id);
+      if (!label) {
+        const cell = order.cells[0];
+        label = this.add.text((cell.column + .5) * TILE_SIZE, cell.row * TILE_SIZE - 12, '', {
+          color: COLORS.text, backgroundColor: '#25231e', fontFamily: 'system-ui, sans-serif', fontSize: '8px', padding: { x: 3, y: 2 },
+        }).setOrigin(.5, 1).setDepth(7); this.constructionLabels.set(order.id, label);
+      }
+      label.setText(`#${order.id} ${constructionStatusLabel(order)}`);
+    }
+    for (const [id, label] of this.constructionLabels) if (!visible.has(id)) { label.destroy(); this.constructionLabels.delete(id); }
   }
 
   private syncBuilderVisuals(): void {

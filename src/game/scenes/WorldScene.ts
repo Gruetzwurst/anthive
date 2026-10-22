@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import {
   buildingMaterialStoreCenter,
+  waterStoreCenter,
   broodChamberCenters,
   BROOD_CHAMBER_SIZE,
   foodStoreCenter,
@@ -27,6 +28,9 @@ import {
   updateWorldTileArt,
 } from '../world/worldTileArtRenderer';
 import type { TerrainKind } from '../world/worldTypes';
+import { startingWorld } from '../world/worldGenerator';
+import { findGridPath } from '../world/gridPathfinding';
+import { createGatheringSimulation } from '../simulation/gatheringSimulation';
 
 const COLORS = {
   ...TERRAIN_PALETTE,
@@ -78,9 +82,11 @@ export class WorldScene extends Phaser.Scene {
   private dragMode: 'none' | 'camera' | 'dig' = 'none';
   private lastPointerX = 0;
   private lastPointerY = 0;
-  private antPath?: Phaser.Curves.Path;
-  private ants: Array<{ body: Phaser.GameObjects.Container; food: Phaser.GameObjects.Ellipse; offset: number }> = [];
-  private elapsed = 0;
+  private gathering!: ReturnType<typeof createGatheringSimulation>;
+  private ants: Array<{ id: string; body: Phaser.GameObjects.Container; load: Phaser.GameObjects.Ellipse }> = [];
+  private foodMarkers?: Phaser.GameObjects.Graphics;
+  private foodStockLabel?: Phaser.GameObjects.Text;
+  private waterStockLabel?: Phaser.GameObjects.Text;
   private excavationGraphics!: Phaser.GameObjects.Graphics;
   private digPreviewGraphics!: Phaser.GameObjects.Graphics;
   private buildingMaterialPileGraphics!: Phaser.GameObjects.Graphics;
@@ -108,6 +114,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   create(): void {
+    this.gathering = createGatheringSimulation(startingWorld);
     this.drawWorld();
     this.initializeReachability();
     this.excavationGraphics = this.add.graphics().setDepth(2);
@@ -124,22 +131,19 @@ export class WorldScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
-    if (this.antPath) {
-      this.elapsed += delta;
-      const tripDuration = 18_000;
-      this.ants.forEach((ant) => {
-        const tripPhase = ((this.elapsed / tripDuration + ant.offset) % 1 + 1) % 1;
-        const carryingFood = tripPhase < 0.5;
-        const pathProgress = carryingFood ? tripPhase * 2 : 2 - tripPhase * 2;
-        const position = this.antPath?.getPoint(pathProgress);
-        if (!position) return;
-
-        ant.body.setPosition(position.x, position.y);
-        ant.body.setScale(carryingFood ? 1 : -1, 1);
-        ant.food.setVisible(carryingFood);
-      });
-    }
-
+    this.gathering.advance(delta / 1000);
+    const collectors = new Map(this.gathering.gathering.getCollectors().map(ant => [ant.id, ant]));
+    this.ants.forEach(ant => {
+      const state = collectors.get(ant.id);
+      if (!state) return;
+      if (state.position.x !== ant.body.x) ant.body.setScale(state.position.x < ant.body.x ? -1 : 1, 1);
+      ant.body.setPosition(state.position.x, state.position.y);
+      ant.load.setVisible((state.load?.amount ?? 0) > 0);
+      ant.load.setFillStyle(state.load?.resource === 'water' ? 0x71d0d5 : 0xe3aa4e);
+    });
+    this.foodStockLabel?.setText(`NAHRUNG: ${this.gathering.resources.getStore('food-store').amount.toFixed(1)}`);
+    this.waterStockLabel?.setText(`WASSER: ${this.gathering.resources.getStore('water-store').amount.toFixed(1)}`);
+    this.drawFoodMarkers();
     this.updateBuilderWorkers(delta);
   }
 
@@ -227,6 +231,7 @@ export class WorldScene extends Phaser.Scene {
     const materialStoreFloor = buildingMaterialStoreCenter.y + 2.5 * TILE_SIZE;
     landmarkGraphics.fillStyle(0x6a503b, 1);
     landmarkGraphics.fillRect(materialStoreLeft, materialStoreFloor, 8 * TILE_SIZE, 4);
+    landmarkGraphics.fillRect(waterStoreCenter.x - 4.5 * TILE_SIZE, waterStoreCenter.y + 2.5 * TILE_SIZE, 9 * TILE_SIZE, 4);
 
     Object.values(broodChamberCenters).forEach((center) => {
       const chamberLeft = center.x - BROOD_CHAMBER_SIZE.width * TILE_SIZE / 2;
@@ -239,30 +244,37 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private drawFoodMarkers(): void {
-    const graphics = this.add.graphics();
-    graphics.fillStyle(0xe3aa4e, 1);
-    graphics.fillEllipse(surfaceFoodSource.x - 8, surfaceFoodSource.y + 1, 7, 5);
-    graphics.fillEllipse(surfaceFoodSource.x + 1, surfaceFoodSource.y - 1, 8, 6);
-    graphics.fillEllipse(surfaceFoodSource.x + 10, surfaceFoodSource.y + 1, 6, 5);
+    const graphics = this.foodMarkers ??= this.add.graphics().setDepth(2);
+    graphics.clear();
+    const source = this.gathering.resources.getSource('surface-food-source');
+    if (source.kind === 'unlimited' || source.amount > 0) {
+      graphics.fillStyle(0xe3aa4e, 1);
+      graphics.fillEllipse(surfaceFoodSource.x - 8, surfaceFoodSource.y + 1, 7, 5);
+      graphics.fillEllipse(surfaceFoodSource.x + 1, surfaceFoodSource.y - 1, 8, 6);
+      graphics.fillEllipse(surfaceFoodSource.x + 10, surfaceFoodSource.y + 1, 6, 5);
+    }
 
-    graphics.fillStyle(0xc88b38, 1);
-    graphics.fillEllipse(foodStoreCenter.x - 27, foodStoreCenter.y + 11, 10, 7);
-    graphics.fillEllipse(foodStoreCenter.x - 17, foodStoreCenter.y + 8, 11, 8);
-    graphics.fillEllipse(foodStoreCenter.x - 7, foodStoreCenter.y + 12, 9, 6);
-    graphics.fillEllipse(foodStoreCenter.x + 4, foodStoreCenter.y + 9, 11, 8);
-
+    if (this.gathering.resources.getStore('food-store').amount > 0) {
+      graphics.fillStyle(0xc88b38, 1);
+      graphics.fillEllipse(foodStoreCenter.x - 27, foodStoreCenter.y + 11, 10, 7);
+      graphics.fillEllipse(foodStoreCenter.x - 17, foodStoreCenter.y + 8, 11, 8);
+      graphics.fillEllipse(foodStoreCenter.x - 7, foodStoreCenter.y + 12, 9, 6);
+      graphics.fillEllipse(foodStoreCenter.x + 4, foodStoreCenter.y + 9, 11, 8);
+    }
+    const water = this.gathering.resources.getStore('water-store');
+    graphics.lineStyle(2, 0x657b7c, 1);
+    graphics.strokeRect(waterStoreCenter.x - 32, waterStoreCenter.y + 6, 64, 14);
+    if (water.amount > 0) {
+      const height = 12 * water.amount / water.capacity;
+      graphics.fillStyle(0x71d0d5, 1);
+      graphics.fillRect(waterStoreCenter.x - 30, waterStoreCenter.y + 18 - height, 60, height);
+    }
   }
 
   private createAnts(): void {
-    const surfaceY = surfaceFoodSource.y;
-    const path = new Phaser.Curves.Path(surfaceFoodSource.x, surfaceY);
-    path.lineTo(nestChamberCenter.x, surfaceY);
-    path.lineTo(nestChamberCenter.x, nestChamberCenter.y + TILE_SIZE);
-    path.lineTo(foodStoreCenter.x, foodStoreCenter.y);
-    this.antPath = path;
-
-    for (let index = 0; index < 7; index += 1) {
-      const body = this.add.container(0, 0).setDepth(4);
+    this.ants = [];
+    for (const collector of this.gathering.gathering.getCollectors()) {
+      const body = this.add.container(collector.position.x, collector.position.y).setDepth(4);
       const shape = this.add.graphics();
       shape.fillStyle(0x261b17, 1);
       shape.fillEllipse(-3, 0, 7, 5);
@@ -277,9 +289,9 @@ export class WorldScene extends Phaser.Scene {
       shape.strokePath();
       body.add(shape);
 
-      const food = this.add.ellipse(9, -4, 6, 5, 0xe3aa4e).setVisible(false);
-      body.add(food);
-      this.ants.push({ body, food, offset: index / 7 });
+      const load = this.add.ellipse(9, -4, 6, 5, 0xe3aa4e).setVisible(false);
+      body.add(load);
+      this.ants.push({ id: collector.id, body, load });
     }
   }
 
@@ -352,8 +364,8 @@ export class WorldScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setAlpha(0.9);
 
-    this.add
-      .text(foodStoreCenter.x, foodStoreCenter.y - 22, 'VORRÄTE', {
+    this.foodStockLabel = this.add
+      .text(foodStoreCenter.x, foodStoreCenter.y - 22, 'NAHRUNG: 0.0', {
         color: COLORS.text,
         fontFamily: 'system-ui, sans-serif',
         fontSize: '9px',
@@ -361,6 +373,10 @@ export class WorldScene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setAlpha(0.9);
+
+    this.waterStockLabel = this.add.text(waterStoreCenter.x, waterStoreCenter.y - 22, 'WASSER: 0.0', {
+      color: COLORS.text, fontFamily: 'system-ui, sans-serif', fontSize: '9px', fontStyle: 'bold',
+    }).setOrigin(0.5).setAlpha(0.9);
 
     this.add
       .text(buildingMaterialStoreCenter.x + 3 * TILE_SIZE, buildingMaterialStoreCenter.y - 22, 'BAUSTOFFLAGER', {
@@ -854,39 +870,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private findPath(start: DigCell, goal: DigCell): DigCell[] | null {
-    const startKey = this.cellKey(start);
-    const goalKey = this.cellKey(goal);
-    if (!this.reachableOpenCells.has(startKey) || !this.reachableOpenCells.has(goalKey)) return null;
-    if (startKey === goalKey) return [{ ...start }];
-
-    const previous = new Map<string, string | null>([[startKey, null]]);
-    const queue = [start];
-    for (let queueIndex = 0; queueIndex < queue.length; queueIndex += 1) {
-      const current = queue[queueIndex];
-      const neighbors = [
-        { column: current.column - 1, row: current.row },
-        { column: current.column + 1, row: current.row },
-        { column: current.column, row: current.row - 1 },
-        { column: current.column, row: current.row + 1 },
-      ];
-      for (const neighbor of neighbors) {
-        const neighborKey = this.cellKey(neighbor);
-        if (!this.reachableOpenCells.has(neighborKey) || previous.has(neighborKey)) continue;
-        previous.set(neighborKey, this.cellKey(current));
-        if (neighborKey === goalKey) {
-          const route: DigCell[] = [goal];
-          let routeKey: string | null = this.cellKey(current);
-          while (routeKey) {
-            const [column, row] = routeKey.split(',').map(Number);
-            route.push({ column, row });
-            routeKey = previous.get(routeKey) ?? null;
-          }
-          return route.reverse();
-        }
-        queue.push(neighbor);
-      }
-    }
-    return null;
+    return findGridPath(start, goal, cell => this.reachableOpenCells.has(this.cellKey(cell)));
   }
 
   private createMaterialLoad(cell: DigCell): MaterialLoad {

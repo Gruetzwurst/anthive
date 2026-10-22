@@ -22,6 +22,7 @@ export const queenChamberCenter = startingWorld.landmarks.queenChamberCenter;
 export const broodChamberCenters = startingWorld.landmarks.broodChamberCenters;
 export const foodStoreCenter = startingWorld.landmarks.foodStoreCenter;
 export const buildingMaterialStoreCenter = startingWorld.landmarks.buildingMaterialStoreCenter;
+export const waterStoreCenter = startingWorld.landmarks.waterStoreCenter;
 export const stoneOutcropCenter = startingWorld.landmarks.stoneOutcropCenter;
 export const surfaceFoodSource = startingWorld.landmarks.surfaceFoodSource;
 export const initialCameraY = (surfaceRow(Math.floor(WORLD_CONFIG.columns / 2)) - 1.5) * TILE_SIZE;

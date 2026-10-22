@@ -60,6 +60,8 @@ const materialStoreRightColumn = CENTER_COLUMN - 6;
 const materialStoreTopRow = nestTopRow;
 const materialStoreBottomRow = materialStoreTopRow + 6;
 const materialStoreTunnelRow = nestTopRow + 3;
+const waterStoreLeftColumn = CENTER_COLUMN - 25;
+const waterStoreRightColumn = CENTER_COLUMN - 16;
 const broodCorridorRow = nestBottomRow + 4;
 const broodChamberTopRow = broodCorridorRow + 2;
 const broodChamberBottomRow = broodChamberTopRow + BROOD_CHAMBER_SIZE.height;
@@ -91,8 +93,9 @@ function createStartingLandmarks(): WorldLandmarks {
     queenChamberCenter: nestChamberCenter,
     foodStoreCenter: pointAtTile(storageStartColumn + 4.5, storageTopRow + 3),
     buildingMaterialStoreCenter: pointAtTile(CENTER_COLUMN - 10, materialStoreTopRow + 3),
+    waterStoreCenter: pointAtTile((waterStoreLeftColumn + waterStoreRightColumn) / 2, materialStoreTopRow + 3),
     stoneOutcropCenter: pointAtTile(CENTER_COLUMN + 25.5, nestTopRow + 3.5),
-    surfaceFoodSource: pointAtTile(CENTER_COLUMN - 5, nestSurfaceRow - 0.35),
+    surfaceFoodSource: pointAtTile(CENTER_COLUMN - 4.5, surfaceRow(CENTER_COLUMN - 5) - 0.125),
     broodChamberCenters,
   };
 }
@@ -113,6 +116,10 @@ function createStartingTiles(): WorldTile[][] {
       const materialStoreTunnel = column === CENTER_COLUMN - 6 && row === materialStoreTunnelRow;
       const materialStoreChamber = column >= materialStoreLeftColumn && column < materialStoreRightColumn
         && row >= materialStoreTopRow && row < materialStoreBottomRow;
+      const waterStoreChamber = column >= waterStoreLeftColumn && column < waterStoreRightColumn
+        && row >= materialStoreTopRow && row < materialStoreBottomRow;
+      const waterStoreTunnel = column >= waterStoreRightColumn && column < materialStoreLeftColumn
+        && row === materialStoreTunnelRow;
       const broodMainTunnel = column === CENTER_COLUMN && row >= nestBottomRow && row <= broodCorridorRow;
       const broodCrossTunnel = row === broodCorridorRow && column >= broodCorridorLeft && column <= broodCorridorRight;
       const broodRoomTunnel = broodDoorColumns.includes(column) && row > broodCorridorRow && row < broodChamberTopRow;
@@ -123,7 +130,7 @@ function createStartingTiles(): WorldTile[][] {
 
       if (
         nestEntrance || passage || nestChamber || storageTunnel || storageChamber
-        || materialStoreTunnel || materialStoreChamber || broodMainTunnel
+        || materialStoreTunnel || materialStoreChamber || waterStoreChamber || waterStoreTunnel || broodMainTunnel
         || broodCrossTunnel || broodRoomTunnel || broodRoom
       ) {
         return tile(terrainAtDepth(column, row), 'open');
@@ -151,6 +158,10 @@ function createStartingStorageChambers(landmarks: WorldLandmarks): StartingWorld
       id: 'building-material-store', resource: 'buildingMaterial',
       position: { ...landmarks.buildingMaterialStoreCenter },
       areaTiles: (materialStoreRightColumn - materialStoreLeftColumn) * (materialStoreBottomRow - materialStoreTopRow),
+    },
+    {
+      id: 'water-store', resource: 'water', position: { ...landmarks.waterStoreCenter },
+      areaTiles: (waterStoreRightColumn - waterStoreLeftColumn) * (materialStoreBottomRow - materialStoreTopRow),
     },
   ];
 }

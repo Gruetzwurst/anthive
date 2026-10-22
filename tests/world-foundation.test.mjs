@@ -71,7 +71,7 @@ test('five soil layers follow the reference proportions without changing existin
   }
 });
 
-test('start nest contains all seven named chambers in one connected open area', () => {
+test('start nest contains its seven original chambers and the added water chamber in one connected open area', () => {
   const { landmarks } = startingWorld;
   assert.ok(landmarks.queenChamberCenter);
   assert.ok(landmarks.broodChamberCenters);
@@ -79,9 +79,10 @@ test('start nest contains all seven named chambers in one connected open area', 
     landmarks.queenChamberCenter,
     landmarks.foodStoreCenter,
     landmarks.buildingMaterialStoreCenter,
+    landmarks.waterStoreCenter,
     ...Object.values(landmarks.broodChamberCenters),
   ];
-  assert.equal(chambers.length, 7);
+  assert.equal(chambers.length, 8);
 
   const toCell = ({ x, y }) => ({ column: Math.floor(x / TILE_SIZE), row: Math.floor(y / TILE_SIZE) });
   const start = toCell(landmarks.queenChamberCenter);

@@ -65,6 +65,9 @@ export class ResourceSystem {
     return { ...source, position: { ...source.position } };
   }
 
+  listSources(): ResourceSource[] { return [...this.sources.keys()].map(id => this.getSource(id)); }
+  listStores(): ResourceStore[] { return [...this.stores.keys()].map(id => this.getStore(id)); }
+
   getStore(id: string): ResourceStore {
     const store = this.requireStore(id);
     return { ...store, position: { ...store.position } };

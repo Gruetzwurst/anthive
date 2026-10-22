@@ -13,7 +13,7 @@ test('simulation reuses existing food source, side-view pond and actual individu
   assert.deepEqual(simulation.resources.getSource(foodSource.id).position, foodSource.position);
   assert.deepEqual(simulation.resources.getSource(pond.id).position, pond.position);
   assert.equal(simulation.resources.getSource(pond.id).kind, 'unlimited');
-  assert.equal(world.storageChambers.length, 2);
+  assert.equal(world.storageChambers.length, 3);
   const food = world.storageChambers.find(chamber => chamber.resource === 'food');
   const material = world.storageChambers.find(chamber => chamber.resource === 'buildingMaterial');
   assert.equal(food.areaTiles, 54);
@@ -22,7 +22,7 @@ test('simulation reuses existing food source, side-view pond and actual individu
   assert.deepEqual(material.position, world.landmarks.buildingMaterialStoreCenter);
   assert.equal(simulation.resources.getStore(food.id).capacity, 540);
   assert.equal(simulation.resources.getStore(material.id).capacity, 384);
-  assert.deepEqual(simulation.resources.getStoreTotals('water'), { amount: 0, capacity: 0 });
+  assert.deepEqual(simulation.resources.getStoreTotals('water'), { amount: 0, capacity: 540 });
   assert.equal(JSON.stringify(world), before);
 });
 

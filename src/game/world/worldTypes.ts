@@ -56,6 +56,7 @@ export type WorldLandmarks = {
   queenChamberCenter: WorldPoint;
   foodStoreCenter: WorldPoint;
   buildingMaterialStoreCenter: WorldPoint;
+  waterStoreCenter: WorldPoint;
   stoneOutcropCenter: WorldPoint;
   surfaceFoodSource: WorldPoint;
   broodChamberCenters: Record<BroodChamberKind, WorldPoint>;

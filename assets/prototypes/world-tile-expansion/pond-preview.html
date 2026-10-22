@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ANTHIVE – Teichrandprobe</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #171614; color: #eee5d6; }
+    body { max-width: 1100px; margin: auto; padding: 24px; }
+    h1 { font-size: 1.5rem; } h2 { font-size: 1.1rem; margin-top: 28px; }
+    p, li { color: #c9bda9; line-height: 1.6; }
+    figure { margin: 16px 0; padding: 16px; background: #26221d; border: 1px solid #645746; }
+    figcaption { margin-top: 12px; line-height: 1.5; }
+    canvas { display: block; image-rendering: pixelated; max-width: 100%; height: auto; }
+    .detail { width: 1080px; } .reference { width: 360px; }
+    label { display: inline-block; margin: 8px 20px 8px 0; cursor: pointer; }
+    .key { display: inline-block; width: 14px; height: 14px; vertical-align: middle; margin-right: 6px; }
+    .water { background: #236a87; } .corner { background: #d29b42; }
+    #status { color: #f2cb8d; }
+    a { color: #e5c68d; }
+  </style>
+</head>
+<body>
+  <h1>ANTHIVE – Teichrandprobe</h1>
+  <p>Wie weit reicht die vorhandene 24 × 24-Uferkachel? Diese isolierte Probe verwendet nur die vorhandenen Bilder und dreht oder spiegelt die Uferkachel. Farbige Schraffuren markieren fehlende Motive.</p>
+  <p id="status" role="status">Grafiken werden geladen …</p>
+
+  <h2>1 · Vier Uferseiten und Wiederholung</h2>
+  <figure>
+    <canvas id="directions" width="432" height="144" aria-label="Vier Reihen mit jeweils sechs Uferkacheln: rechts, links, oben und unten.">Vier ausgerichtete Reihen der Uferkachel.</canvas>
+    <figcaption>Von oben: rechtes Ufer (Original), linkes Ufer (gespiegelt), oberes Ufer, unteres Ufer. Jede Reihe wiederholt dieselbe Kachel sechsmal; rechts steht die Wasserseite.</figcaption>
+  </figure>
+
+  <h2>2 · Bisherige Form als Referenz</h2>
+  <figure>
+    <canvas id="reference" class="reference" width="360" height="120" aria-label="Bisheriger Teich mit breiter Erdfassung, blauer Wasserellipse und hellem Glanzlicht.">Referenz der bisherigen elliptischen Teichdekoration.</canvas>
+    <figcaption>Proportionen aus dem bestehenden Renderer: Außenrand 13 × 3,1 Kacheln, Wasser 11,6 × 2,4 Kacheln. Keine neue Teichform.</figcaption>
+  </figure>
+
+  <h2>3 · Dieselbe Außenform im 24-Pixel-Raster</h2>
+  <label><input id="grid" type="checkbox" checked> Raster anzeigen</label>
+  <label><input id="outline" type="checkbox" checked> Ellipsenkontur anzeigen</label>
+  <figure>
+    <canvas id="pond" class="detail" width="360" height="120" aria-label="Vergrößerter Teich im Kachelraster mit gedrehten Uferkacheln und markierten Lücken für Wasser und Ecken.">Teichprobe mit markierten fehlenden Motiven.</canvas>
+    <figcaption><span class="key water"></span>Blau schraffiert: Wasserfüllung fehlt. <span class="key corner"></span>Ocker mit Kreuz: Eck-/Rundungsmotiv fehlt. Die helle Ellipse zeigt die bisherige Außenkontur.</figcaption>
+  </figure>
+  <p id="counts"></p>
+  <h2>Ergebnis und nächster Grafikbedarf</h2>
+  <ul>
+    <li>Die vorhandene Uferkachel lässt sich für vier gerade Uferseiten wiederverwenden. Die Wiederholungsreihen machen das wiederkehrende Gras- und Wassermuster sichtbar.</li>
+    <li>Eine nahtlos wiederholbare reine Wasserkachel fehlt. Die blaue Schraffur ist nur ein Platzhalter, kein fertiges Wasserbild.</li>
+    <li>Für die gerundeten Enden werden konvexe Eck-/Rundungsmotive gebraucht. Gerade Kacheln allein schließen diese Stellen nicht sauber.</li>
+    <li>Die geringe Höhe des bisherigen Teichs macht das 24-Pixel-Raster besonders deutlich. Vor einer Integration sollten Wasserfüllung und runde Endstücke in dieser Vorschau geprüft werden. Konkave Innenecken sind erst für spätere Buchten nötig.</li>
+  </ul>
+  <p>Diese Probe verändert keine Spielszene, Weltdaten oder Spielregeln. <a href="ground-completion-preview.html">Zur Bodenmuster-Vorschau</a></p>
+  <script>
+    const tile = 24;
+    const shore = new Image();
+    const soil = new Image();
+    const status = document.querySelector('#status');
+    const load = (image, path) => new Promise((resolve, reject) => {
+      image.onload = resolve;
+      image.onerror = () => reject(new Error(`Grafik konnte nicht geladen werden: ${path}`));
+      image.src = path;
+    });
+    const context = (id) => {
+      const ctx = document.getElementById(id).getContext('2d');
+      ctx.imageSmoothingEnabled = false;
+      return ctx;
+    };
+    // Original: water left, land right. Rotate around the tile center.
+    const drawShore = (ctx, x, y, side) => {
+      ctx.save();
+      ctx.translate(x + 12, y + 12);
+      if (side === 'left') ctx.scale(-1, 1);
+      if (side === 'top') ctx.rotate(-Math.PI / 2);
+      if (side === 'bottom') ctx.rotate(Math.PI / 2);
+      ctx.drawImage(shore, -12, -12, tile, tile);
+      ctx.restore();
+    };
+    const placeholder = (ctx, x, y, corner) => {
+      ctx.fillStyle = corner ? '#805d2a' : '#236a87';
+      ctx.fillRect(x, y, tile, tile);
+      ctx.save(); ctx.beginPath(); ctx.rect(x, y, tile, tile); ctx.clip();
+      ctx.strokeStyle = corner ? '#e6b45c' : '#70aec1';
+      ctx.lineWidth = 1;
+      for (let offset = -24; offset < 48; offset += 8) {
+        ctx.beginPath(); ctx.moveTo(x + offset, y); ctx.lineTo(x + offset + 24, y + 24); ctx.stroke();
+      }
+      if (corner) {
+        ctx.strokeStyle = '#ffe0a0'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(x + 6, y + 6); ctx.lineTo(x + 18, y + 18);
+        ctx.moveTo(x + 18, y + 6); ctx.lineTo(x + 6, y + 18); ctx.stroke();
+      }
+      ctx.restore();
+    };
+    const centerX = 180, centerY = 60;
+    const rx = 13 * tile / 2, ry = 3.1 * tile / 2;
+    const inside = (column, row) => ((column * tile + 12 - centerX) / rx) ** 2
+      + ((row * tile + 12 - centerY) / ry) ** 2 <= 1;
+    const renderPond = () => {
+      const ctx = context('pond');
+      let edges = 0, corners = 0, water = 0;
+      for (let row = 0; row < 5; row++) for (let column = 0; column < 15; column++) {
+        const x = column * tile, y = row * tile;
+        ctx.drawImage(soil, x, y, tile, tile);
+        if (!inside(column, row)) continue;
+        const sides = [
+          ['left', -1, 0], ['right', 1, 0], ['top', 0, -1], ['bottom', 0, 1],
+        ].filter(([, dx, dy]) => !inside(column + dx, row + dy));
+        if (sides.length === 1) { drawShore(ctx, x, y, sides[0][0]); edges++; }
+        else if (sides.length > 1) { placeholder(ctx, x, y, true); corners++; }
+        else { placeholder(ctx, x, y, false); water++; }
+      }
+      if (document.querySelector('#grid').checked) {
+        ctx.strokeStyle = '#ffffff40'; ctx.lineWidth = 1; ctx.beginPath();
+        for (let x = 0; x <= 360; x += tile) { ctx.moveTo(x, 0); ctx.lineTo(x, 120); }
+        for (let y = 0; y <= 120; y += tile) { ctx.moveTo(0, y); ctx.lineTo(360, y); }
+        ctx.stroke();
+      }
+      if (document.querySelector('#outline').checked) {
+        ctx.strokeStyle = '#fff4c6'; ctx.lineWidth = 1; ctx.setLineDash([3, 2]);
+        ctx.beginPath(); ctx.ellipse(centerX, centerY, rx, ry, 0, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+      }
+      document.querySelector('#counts').textContent = `${edges} gerade Uferfelder · ${corners} fehlende Eck-/Rundungsfelder · ${water} fehlende Wasserfelder. Zuordnung anhand der Zellmitten innerhalb der bisherigen Außenellipse.`;
+    };
+    Promise.all([
+      load(shore, '../world-tile-sample/tiles/pond-shore-transition.png'),
+      load(soil, '../world-tile-sample/tiles/topsoil.png'),
+    ]).then(() => {
+      const ctx = context('directions');
+      ['right', 'left', 'top', 'bottom'].forEach((side, row) => {
+        for (let column = 0; column < 6; column++) drawShore(ctx, column * tile, row * 36, side);
+        ctx.fillStyle = '#eee5d6'; ctx.font = '12px system-ui';
+        ctx.fillText({ right: 'Wasser links', left: 'Wasser rechts', top: 'Wasser unten', bottom: 'Wasser oben' }[side], 164, row * 36 + 17);
+      });
+      const ref = context('reference');
+      for (let y = 0; y < 120; y += tile) for (let x = 0; x < 360; x += tile) ref.drawImage(soil, x, y, tile, tile);
+      ref.fillStyle = '#796140'; ref.beginPath(); ref.ellipse(180, 60, rx, ry, 0, 0, Math.PI * 2); ref.fill();
+      ref.fillStyle = '#2d94b2'; ref.beginPath(); ref.ellipse(180, 60 - tile * .2, tile * 5.8, tile * 1.2, 0, 0, Math.PI * 2); ref.fill();
+      ref.fillStyle = '#71d0d5cc'; ref.beginPath(); ref.ellipse(180 - tile * 1.7, 60 - tile * .63, tile * 1.3, tile * .1, 0, 0, Math.PI * 2); ref.fill();
+      renderPond();
+      document.querySelectorAll('input').forEach(input => input.addEventListener('change', renderPond));
+      status.textContent = 'Vorhandene Grafiken geladen · Vorschau bereit';
+      document.documentElement.dataset.previewReady = 'true';
+    }).catch(error => { status.textContent = error.message; });
+  </script>
+</body>
+</html>

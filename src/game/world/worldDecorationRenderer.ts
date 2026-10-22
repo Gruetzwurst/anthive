@@ -1,5 +1,8 @@
 import Phaser from 'phaser';
 import type { WorldDecoration, WorldDecorationKind } from './worldTypes.ts';
+import { createPondProfile } from './pondProfile.ts';
+import { surfaceRow } from './worldGenerator.ts';
+import { TERRAIN_PALETTE } from './terrainPalette.ts';
 
 const COLORS = {
   trunk: 0x70432b,
@@ -57,12 +60,7 @@ function drawDecoration(
       }
       return;
     case 'pond':
-      graphics.fillStyle(0x796140, 1);
-      graphics.fillEllipse(x, y - tile * 0.12, tile * 13 * scale, tile * 3.1 * scale);
-      graphics.fillStyle(COLORS.pond, 1);
-      graphics.fillEllipse(x, y - tile * 0.32, tile * 11.6 * scale, tile * 2.4 * scale);
-      graphics.fillStyle(COLORS.pondLight, 0.8);
-      graphics.fillEllipse(x - tile * 1.7 * scale, y - tile * 0.75, tile * 2.6 * scale, tile * 0.2 * scale);
+      drawSideViewPond(graphics, x, tile, scale);
       return;
     case 'mountain':
       drawMountain(graphics, x - tile * 7 * scale, y, tile, 7 * scale, 0.9);
@@ -144,6 +142,34 @@ function drawDecoration(
       graphics.fillCircle(x + tile * 3 * scale, y, tile * 0.32 * scale);
       return;
   }
+}
+
+function drawSideViewPond(graphics: Phaser.GameObjects.Graphics, x: number, tile: number, scale: number): void {
+  const { columns, waterY } = createPondProfile(x, tile, scale, surfaceRow);
+  const pixel = Math.max(1, Math.round(2 * scale));
+  columns.forEach((column, index) => {
+    // Cover the old grassy surface inside the depression; keep the surrounding
+    // textured ground as the banks and bed rather than painting an oval on top.
+    graphics.fillStyle(TERRAIN_PALETTE.sky, 1);
+    graphics.fillRect(column.x, column.clearFromY, column.width, waterY - column.clearFromY);
+    const height = column.bottomY - waterY;
+    graphics.fillStyle(COLORS.pond, 1);
+    graphics.fillRect(column.x, waterY, column.width, height);
+    graphics.fillStyle(0x246783, 1);
+    graphics.fillRect(column.x, waterY + height * 0.55, column.width, height * 0.45);
+    graphics.fillStyle(0x193f51, 1);
+    graphics.fillRect(column.x, column.bottomY - pixel * 2, column.width, pixel * 2);
+    graphics.fillStyle(0x796140, 1);
+    graphics.fillRect(column.x, column.bottomY, column.width, pixel);
+    // Sparse small ripples preserve the horizontal reading of the water.
+    if (index % 3 === 1) {
+      graphics.fillStyle(COLORS.pondLight, 0.45);
+      graphics.fillRect(column.x + pixel * 2, waterY + pixel * 4, column.width * 0.45, pixel);
+    }
+  });
+  const first = columns[0];
+  graphics.fillStyle(COLORS.pondLight, 1);
+  graphics.fillRect(first.x, waterY, columns.length * first.width, pixel);
 }
 
 function drawTree(graphics: Phaser.GameObjects.Graphics, x: number, groundY: number, tile: number, height: number, width: number): void {

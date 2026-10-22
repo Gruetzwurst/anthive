@@ -499,6 +499,13 @@ export class WorldScene extends Phaser.Scene {
   private frameWorld(): void {
     const camera = this.cameras.main;
     camera.setBounds(0, 0, worldSize.width, worldSize.height);
+    if (new URLSearchParams(window.location.search).get('view') === 'pond') {
+      const pond = worldDecorations.find(decoration => decoration.kind === 'pond');
+      if (pond) {
+        camera.centerOn(pond.position.x, pond.position.y + TILE_SIZE * 1.5);
+        return;
+      }
+    }
     const routeCenterX = (buildingMaterialStoreCenter.x + foodStoreCenter.x) / 2;
     camera.setScroll(routeCenterX - camera.width / 2, initialCameraY);
   }

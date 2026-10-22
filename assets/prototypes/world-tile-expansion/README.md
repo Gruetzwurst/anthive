@@ -69,6 +69,24 @@ Die beiden freigegebenen Oberflächenkacheln aus `../world-tile-sample/tiles/` (
 
 ### Teichrand: nächster Grafikschritt
 
+**Überholt durch die Seitenansicht unten:** Die folgende Ellipsenprobe entstand aus einer falschen Vogelperspektive. Sie bleibt als Studie erhalten und ist nicht mehr das Ziel für den Spielteich.
+
 `../world-tile-sample/tiles/pond-shore-transition.png` ist eine einzelne 24 × 24-Kachel mit Wasser auf der linken und Erde/Gras auf der rechten Seite. Spiegeln und Drehen kann diese eine Kachel für die vier Hauptrichtungen ausrichten. Sie enthält aber weder eine reine Wasserfläche noch eigene Innen-/Außenecken; zudem wird der bestehende Teich aktuell als breite Ellipse gezeichnet. Ein einfaches Kachelraster würde daher rechteckige Kanten oder auffällige Wiederholungen erzeugen.
 
 Für eine saubere Teichdarstellung sollte der bestehende Teich als rein visuelle, aus Kacheln zusammengesetzte Dekoration gerendert werden. Als erster Schritt sollte eine separate kleine Vorschau prüfen, wie weit sich die vorhandene Übergangskachel durch Drehen und Spiegeln entlang der Teichform wiederverwenden lässt. Die Vorschau muss außerdem zeigen, ob eine passende Wasserfüllung und zusätzliche Eckmotive nötig sind, bevor die Kachel an die Stelle der bisherigen Ellipse tritt. Das ändert weiterhin weder Weltdaten noch Ressourcen-, Lauf- oder Grabregeln.
+
+### Separate Teichrandprobe (2026-10-21)
+
+[`pond-preview.html`](pond-preview.html) direkt im Browser öffnen oder über den Vite-Entwicklungsserver unter `/assets/prototypes/world-tile-expansion/pond-preview.html` aufrufen. Die Seite benötigt keine zusätzlichen Pakete und lädt ausschließlich die vorhandenen Ufer- und Oberbodenkacheln.
+
+Die Probe zeigt sechs Wiederholungen pro Uferseite sowie die bisherige Teichellipse und eine vergrößerte Rasterfassung derselben Außenform (13 × 3,1 Kacheln). Raster und Ellipsenkontur lassen sich ein- und ausblenden. Wasserflächen sind blau schraffiert; Felder mit mehreren offenen Randrichtungen sind als fehlende Eck-/Rundungsmotive ockerfarben markiert. Diese Platzhalter sind keine neuen freigegebenen Grafiken. Die Zellen werden anhand ihrer Mittelpunkte der Ellipse zugeordnet; die Vorschau ist eine Grafikbedarfsprobe, kein fertiger Autotiler.
+
+Ergebnis: Die vorhandene Kachel deckt die vier geraden Uferausrichtungen ab. Für eine geschlossene Darstellung fehlen eine wiederholbare reine Wasserfläche und konvexe Eck-/Rundungsmotive für die flachen Teichenden. Konkave Innenecken sind bei dieser elliptischen Form noch nicht nötig. Die direkte Wiederholung macht zudem wiederkehrende Gras- und Wassermuster sichtbar. Nächster Schritt ist, passende Wasser- und Rundungsmotive in dieser isolierten Probe zu ergänzen und ihre Anschlüsse visuell zu prüfen, bevor der bestehende Teichrenderer ersetzt wird. Spielszene und Weltdaten wurden für diese Probe nicht geändert.
+
+### Korrektur: Teich in Seitenansicht (2026-10-21)
+
+Der Spielteich wird jetzt wie die übrige Welt im seitlichen Schnitt dargestellt: eine waagerechte Wasseroberfläche in einer Bodenmulde mit stufigem, zur Mitte tieferem Grund. Die bisherige Ellipse und ihr ovaler Glanz entfallen. `pondProfile.ts` berechnet aus den örtlichen Oberflächenhöhen einen durchgehend gleichen Wasserspiegel unterhalb der Ufer; `worldDecorationRenderer.ts` überzeichnet den bisherigen Grasstreifen innerhalb der Mulde mit Himmel und zeichnet darunter die Wasserfläche. Das umgebende Bodentileset bleibt als Erdwand und Teichboden sichtbar.
+
+Die Darstellung verwendet zunächst farbige Pixel-Flächen, einen dunkleren Tiefenbereich und kleine horizontale Lichtstreifen. Die frühere Uferkachel aus Vogelperspektive wird hierfür nicht verwendet. Es ist eine visuelle Dekoration, noch keine Simulation: Weltdaten, Wegfindung und Grabregeln bleiben unverändert; insbesondere haben Wasser und Mulde noch keine eigene Kollision.
+
+Die normale Map lässt sich mit `http://127.0.0.1:5173/?view=pond` direkt am Teich öffnen, wenn der Entwicklungsserver auf Port 5173 läuft. Ohne diesen Parameter bleibt die bisherige Startkamera erhalten. `node --experimental-strip-types --test tests/*.test.mjs` prüft auch den gleichmäßigen Wasserspiegel und das Tiefenprofil auf unebenem Gelände.

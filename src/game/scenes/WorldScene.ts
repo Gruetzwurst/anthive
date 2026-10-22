@@ -67,6 +67,8 @@ export class WorldScene extends Phaser.Scene {
   private planType: PlanType = 'tunnel';
   private draftCells: DigCell[] = [];
   private dragMoved = false;
+  private dragOrigin = { x: 0, y: 0 };
+  private lastBrushCell: DigCell | null = null;
   private constructionGraphics!: Phaser.GameObjects.Graphics;
   private constructionLabels = new Map<number, Phaser.GameObjects.Text>();
   private constructionSignature = '';
@@ -572,15 +574,16 @@ export class WorldScene extends Phaser.Scene {
   }
   private discardDraft(): void {
     this.planning = false; this.draftCells = []; this.previewCells = []; this.dragMode = 'none';
-    this.digStart = null; this.digPreviewGraphics.clear(); this.constructionPanel.hideDraft(); this.input.setDefaultCursor('grab');
+    this.digStart = null; this.lastBrushCell = null; this.digPreviewGraphics.clear(); this.constructionPanel.hideDraft(); this.input.setDefaultCursor('grab');
   }
   private startDrag(pointer: Phaser.Input.Pointer): void {
     if (!pointer.isDown || pointer.event?.target !== this.game.canvas || this.workforcePanel.isOpen || this.constructionPanel.isOpen
       || isEconomyHudPoint(pointer.x, pointer.y) || pointer.y >= 310) return;
     const cell = this.pointerCell(pointer);
     this.dragMoved = false;
+    this.dragOrigin = { x: pointer.x, y: pointer.y };
     if (this.planning && this.drawingTool !== 'pan' && cell) {
-      this.dragMode = 'dig'; this.digStart = cell; this.previewCells = [cell];
+      this.dragMode = 'dig'; this.digStart = cell; this.lastBrushCell = cell; this.previewCells = [cell];
       this.renderDigPreview(); this.input.setDefaultCursor('crosshair'); return;
     }
     this.dragMode = 'camera'; this.lastPointerX = pointer.x; this.lastPointerY = pointer.y;
@@ -592,14 +595,15 @@ export class WorldScene extends Phaser.Scene {
       const endpoint = this.pointerCell(pointer);
       if (endpoint) {
         this.previewCells = this.drawingTool === 'rectangle' ? rectangleSelection(this.digStart, endpoint)
-          : mergeSelection(this.previewCells, lineSelection(this.previewCells[this.previewCells.length - 1], endpoint));
+          : mergeSelection(this.previewCells, lineSelection(this.lastBrushCell!, endpoint));
+        this.lastBrushCell = endpoint;
         this.renderDigPreview();
       }
       return;
     }
     if (this.dragMode !== 'camera' || !pointer.isDown) return;
     const dx = this.lastPointerX - pointer.x, dy = this.lastPointerY - pointer.y;
-    if (Math.abs(dx) + Math.abs(dy) > 2) this.dragMoved = true;
+    if (Math.hypot(pointer.x - this.dragOrigin.x, pointer.y - this.dragOrigin.y) > 3) this.dragMoved = true;
     const camera = this.cameras.main;
     camera.scrollX = Phaser.Math.Clamp(camera.scrollX + dx, 0, Math.max(0, worldSize.width - camera.width));
     camera.scrollY = Phaser.Math.Clamp(camera.scrollY + dy, 0, Math.max(0, worldSize.height - camera.height));
@@ -616,7 +620,7 @@ export class WorldScene extends Phaser.Scene {
         && order.status !== 'completed' && order.cells.some(candidate => cellKey(candidate) === cellKey(cell)));
       if (order) { this.updateConstruction(); this.constructionPanel.selectOrder(order.id); }
     }
-    this.dragMode = 'none'; this.digStart = null; this.previewCells = [];
+    this.dragMode = 'none'; this.digStart = null; this.lastBrushCell = null; this.previewCells = [];
     this.renderDigPreview(); this.input.setDefaultCursor(this.planning && this.drawingTool !== 'pan' ? 'crosshair' : 'grab');
   }
 

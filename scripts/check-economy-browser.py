@@ -197,6 +197,15 @@ try:
             coordinates=page("const cells="+json.dumps([start,end])+"; return cells.map(([column,row])=>[(column+.5)*24-scene.cameras.main.scrollX,(row+.5)*24-scene.cameras.main.scrollY]);")
             click(*coordinates[0], move=coordinates[1], touch=touch)
 
+        def pointer_path(points, touch=False):
+            bounds=command('WebDriver:ExecuteScript', {'script': "const r=document.querySelector('#game canvas').getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height};", 'args': []})['value']
+            def point(value):
+                x,y=value
+                return {'type':'pointerMove','duration':25,'origin':'viewport','x':round(bounds['x']+x*bounds['w']/640),'y':round(bounds['y']+y*bounds['h']/360)}
+            actions=[point(points[0]),{'type':'pointerDown','button':0},*[point(value) for value in points[1:]],{'type':'pointerUp','button':0}]
+            command('WebDriver:PerformActions', {'actions':[{'type':'pointer','id':'test-pointer','parameters':{'pointerType':'touch' if touch else 'mouse'},'actions':actions}]})
+            command('WebDriver:ReleaseActions', {})
+
         def check_construction_touch():
             command('WebDriver:SetWindowRect', {'width': 844, 'height': 480})
             page('scene.cameras.main.centerOn(155*24,38*24); window.__b3TouchCount=scene.excavation.getConstructionOrders().length; return true;')
@@ -215,6 +224,11 @@ try:
 
         page("window.__b3Camera=[scene.cameras.main.scrollX,scene.cameras.main.scrollY]; scene.cameras.main.centerOn(150*24,38*24); return true;")
         time.sleep(.1)
+        start_plan('tunnel')
+        backtrack_points=page('return [[150,38],[153,38],[150,38],[150,41]].map(([column,row])=>[(column+.5)*24-scene.cameras.main.scrollX,(row+.5)*24-scene.cameras.main.scrollY]);')
+        pointer_path(backtrack_points)
+        brush_correct=page("const expected=['150,38','151,38','152,38','153,38','150,39','150,40','150,41'].sort();const actual=scene.draftCells.map(c=>`${c.column},${c.row}`).sort();return JSON.stringify(actual)===JSON.stringify(expected);")
+        native_click('[data-action="discard-plan"]')
         start_plan('food')
         draw_cells([148,37],[150,39],'rectangle')
         draw_cells([150,39],[153,39],'brush')
@@ -233,6 +247,15 @@ try:
         click(*coordinates)
         assert page('return document.querySelector("#construction-panel").open;')
         native_click('[data-action="close-construction"]')
+        pan_origin=page('return {x:scene.cameras.main.scrollX,y:scene.cameras.main.scrollY};')
+        pointer_path([[coordinates[0]+step,coordinates[1]] for step in range(25)])
+        pan_correct=not page('return document.querySelector("#construction-panel").open;')
+        assert page('return scene.cameras.main.scrollX;') != pan_origin['x'], 'Slow pan fixture must actually move camera'
+        if not pan_correct:
+            native_click('[data-action="close-construction"]')
+        page('scene.cameras.main.setScroll('+str(pan_origin['x'])+','+str(pan_origin['y'])+'); return true;')
+        if not brush_correct or not pan_correct:
+            raise AssertionError(json.dumps({'backtrackingBrushCorrect':brush_correct,'slowPanWithoutDialog':pan_correct}))
         start_plan('tunnel')
         draw_cells([148,35],[148,36],'brush')
         native_click('[data-action="confirm-plan"]')

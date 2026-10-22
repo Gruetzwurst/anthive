@@ -31,6 +31,8 @@ import type { TerrainKind } from '../world/worldTypes';
 import { startingWorld } from '../world/worldGenerator';
 import { findGridPath } from '../world/gridPathfinding';
 import { createColonySimulation } from '../simulation/colonySimulation';
+import { EconomyHud, isEconomyHudPoint } from '../ui/EconomyHud';
+import { buildEconomyOverview } from '../ui/economyOverview';
 
 const COLORS = {
   ...TERRAIN_PALETTE,
@@ -85,7 +87,9 @@ export class WorldScene extends Phaser.Scene {
   private lastPointerY = 0;
   private gathering!: ReturnType<typeof createColonySimulation>;
   private ants: Array<{ id: string; body: Phaser.GameObjects.Container; load: Phaser.GameObjects.Ellipse }> = [];
-  private supplyWarning?: Phaser.GameObjects.Text;
+  private economyHud!: EconomyHud;
+  private overviewRefreshSeconds = 0;
+  private sourceReachability = new Map<string, boolean>();
   private renderedDroppedLoads = new Set<string>();
   private foodMarkers?: Phaser.GameObjects.Graphics;
   private foodStockLabel?: Phaser.GameObjects.Text;
@@ -106,7 +110,6 @@ export class WorldScene extends Phaser.Scene {
   private diggingGrade = 0;
   private upgradeButton?: Phaser.GameObjects.Text;
   private digStatus?: Phaser.GameObjects.Text;
-  private buildingMaterialCount?: Phaser.GameObjects.Text;
 
   constructor() {
     super('WorldScene');
@@ -133,6 +136,12 @@ export class WorldScene extends Phaser.Scene {
     this.createDigControls();
     this.createBuilderWorkers();
     this.createAnts();
+    this.economyHud = new EconomyHud(this, priority => {
+      this.gathering.gathering.setPriority(priority);
+      this.updateEconomyHud();
+    });
+    this.refreshSourceReachability();
+    this.updateEconomyHud();
     this.frameWorld();
     this.enableCameraDrag();
   }
@@ -152,7 +161,11 @@ export class WorldScene extends Phaser.Scene {
     this.foodStockLabel?.setText(`NAHRUNG: ${this.gathering.resources.getStore('food-store').amount.toFixed(1)}`);
     this.waterStockLabel?.setText(`WASSER: ${this.gathering.resources.getStore('water-store').amount.toFixed(1)}`);
     this.drawFoodMarkers();
-    this.updateSupplyWarning();
+    this.overviewRefreshSeconds -= delta / 1000;
+    if (this.overviewRefreshSeconds <= 0) {
+      this.overviewRefreshSeconds = 0.25;
+      this.updateEconomyHud();
+    }
     for (const drop of this.gathering.getDroppedLoads()) {
       if (this.renderedDroppedLoads.has(drop.id)) continue;
       this.renderedDroppedLoads.add(drop.id);
@@ -161,13 +174,21 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
-  private updateSupplyWarning(): void {
-    const state = this.gathering.supply.snapshot;
-    const missing = (['food', 'water'] as const).filter(kind => state[kind].shortageDays > 0);
-    if (missing.length === 0) { this.supplyWarning?.setText(''); return; }
-    const names = missing.map(kind => `${kind === 'food' ? 'Nahrung' : 'Wasser'} ${state[kind].recovering ? '(Erholung)' : 'knapp'}`);
-    const losses = state.workerLosses > 0 ? ` · Verluste: ${state.workerLosses}` : '';
-    this.supplyWarning?.setText(`${names.join(' · ')} · Arbeit ${Math.round(state.workFactor * 100)} %${losses}`);
+  private refreshSourceReachability(): void {
+    this.sourceReachability.clear();
+    for (const source of this.gathering.resources.listSources()) {
+      const reachable = this.gathering.navigation.sourceAccessPoints(source).some(access =>
+        this.gathering.navigation.findPath(nestChamberCenter, access) !== null);
+      this.sourceReachability.set(source.id, reachable);
+    }
+  }
+
+  private updateEconomyHud(): void {
+    this.economyHud.update(buildEconomyOverview(this.gathering, {
+      buildingMaterial: this.storedBuildingMaterial,
+      otherWorkerCount: this.builderWorkers.length,
+      sourceReachability: this.sourceReachability,
+    }));
   }
 
   private retireBuilderWorker(id: string): void {
@@ -337,34 +358,6 @@ export class WorldScene extends Phaser.Scene {
 
   private drawLabels(): void {
     this.add
-      .text(18, 14, 'ANTHIVE', {
-        color: COLORS.text,
-        fontFamily: 'system-ui, sans-serif',
-        fontSize: '18px',
-        fontStyle: 'bold',
-      })
-      .setScrollFactor(0);
-
-    this.add
-      .text(18, 38, 'WELT & GRABEN · VORSCHAU', {
-        color: COLORS.text,
-        fontFamily: 'system-ui, sans-serif',
-        fontSize: '11px',
-      })
-      .setAlpha(0.8)
-      .setScrollFactor(0);
-
-    this.add
-      .text(622, 342, 'Tunnel ziehen: Grabauftrag · freie Fläche: Kamera', {
-        color: COLORS.text,
-        fontFamily: 'system-ui, sans-serif',
-        fontSize: '10px',
-      })
-      .setOrigin(1, 1)
-      .setAlpha(0.9)
-      .setScrollFactor(0);
-
-    this.add
       .text(queenChamberCenter.x, queenChamberCenter.y, 'KÖNIGINNENKAMMER', {
         color: '#c8d1cd',
         fontFamily: 'system-ui, sans-serif',
@@ -465,12 +458,9 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private createDigControls(): void {
-    this.supplyWarning = this.add.text(18, 78, '', {
-      color: '#f4cc79', fontFamily: 'system-ui, sans-serif', fontSize: '10px',
-    }).setScrollFactor(0).setDepth(10);
-
+    this.add.rectangle(8, 310, 624, 44, 0x211e19, 0.94).setOrigin(0).setScrollFactor(0).setDepth(9);
     this.digStatus = this.add
-      .text(18, 62, 'Zieh vom Tunnel in die Erde, um einen Grabweg zu beauftragen.', {
+      .text(18, 315, 'Zieh vom Tunnel in die Erde, um einen Grabweg zu beauftragen.', {
         color: COLORS.text,
         fontFamily: 'system-ui, sans-serif',
         fontSize: '10px',
@@ -478,20 +468,12 @@ export class WorldScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(10);
 
-    this.buildingMaterialCount = this.add
-      .text(400, 14, 'BAUSTOFF: 0', {
-        color: COLORS.text,
-        fontFamily: 'system-ui, sans-serif',
-        fontSize: '11px',
-        fontStyle: 'bold',
-        backgroundColor: '#4b3b30',
-        padding: { x: 7, y: 5 },
-      })
-      .setScrollFactor(0)
-      .setDepth(10);
+    this.add.text(18, 337, 'Tunnel ziehen: Graben · freie Fläche: Kamera', {
+      color: COLORS.text, fontFamily: 'system-ui, sans-serif', fontSize: '9px',
+    }).setScrollFactor(0).setDepth(10);
 
     this.upgradeButton = this.add
-      .text(622, 64, 'GRABKRAFT · TEST 0', {
+      .text(622, 329, 'GRABKRAFT · TEST 0', {
         color: COLORS.text,
         fontFamily: 'system-ui, sans-serif',
         fontSize: '10px',
@@ -585,7 +567,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private startDrag(pointer: Phaser.Input.Pointer): void {
-    if (!pointer.isDown) return;
+    if (!pointer.isDown || isEconomyHudPoint(pointer.x, pointer.y) || pointer.y >= 310) return;
     const cell = this.pointerCell(pointer);
     if (cell && isOpenTile(worldMap[cell.row][cell.column])) {
       this.dragMode = 'dig';
@@ -863,6 +845,7 @@ export class WorldScene extends Phaser.Scene {
         job.load.visual.setPosition(8, -6).setDepth(1);
         worldMap[job.target.row][job.target.column].state = 'open';
         this.expandReachability(job.target);
+        this.refreshSourceReachability();
         this.renderExcavatedTiles(job.target);
         worker.job = { kind: 'haul', phase: 'store', path: route, pathIndex: 0, load: job.load };
         this.digStatus?.setText('Der Haufen ist weg; die Ameise bringt genau diese Ladung ins Baustofflager.');
@@ -889,7 +872,7 @@ export class WorldScene extends Phaser.Scene {
     job.load.state = 'stored';
     job.load.visual.destroy();
     this.storedBuildingMaterial += 1;
-    this.buildingMaterialCount?.setText(`BAUSTOFF: ${this.storedBuildingMaterial}`);
+    this.updateEconomyHud();
     worker.job = null;
     this.digStatus?.setText('Eine Baustoffladung ist im separaten Lager angekommen.');
   }

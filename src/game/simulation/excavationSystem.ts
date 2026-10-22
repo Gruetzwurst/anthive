@@ -7,14 +7,26 @@ import { BuildingMaterialSystem } from './buildingMaterialSystem.ts';
 import { EXCAVATION_CONFIG } from './simulationConfig.ts';
 import type { ExcavationConfig } from './simulationConfig.ts';
 import { nonNegativeFinite, positiveFinite } from './validation.ts';
+import { PLAN_TYPES, PLAN_LABELS, mergeSelection, isConnectedSelection, constructionMaterialEstimate } from './constructionPlanning.ts';
+import type { PlanType } from './constructionPlanning.ts';
 
 type Cell = WorldCellCoordinate;
-type Order = { id: number; cells: Cell[]; index: number };
+export type ConstructionStatus = 'planned' | 'digging' | 'blocked' | 'paused' | 'awaitingFurnishing' | 'completed' | 'cancelled';
+export type ConstructionBlockReason = 'unreachable' | 'hardness';
+export type ConstructionOrderSnapshot = {
+  id: number; type: PlanType; cells: Cell[]; index: number; paused: boolean; status: ConstructionStatus;
+  blockReason: ConstructionBlockReason | null; excavated: number; total: number; partialDigSeconds: number; materialRequired: number;
+};
+type Order = { id: number; type: PlanType; cells: Cell[]; paused: boolean; cancelled: boolean;
+  progress: Map<string, number>; status: ConstructionStatus; blockReason: ConstructionBlockReason | null;
+  notifiedProblem: ConstructionBlockReason | null;
+};
+export type ConstructionNotice = { orderId: number; reason: ConstructionBlockReason; message: string };
 type Job = {
   kind: 'dig' | 'pickup' | 'deliver';
   phase: 'walking' | 'digging' | 'loading' | 'unloading';
   path: WorldPoint[]; pathIndex: number; progress: number; duration: number;
-  target?: Cell; order?: Order; orderIndex?: number; pileId?: string; storeId?: string; amount?: number;
+  target?: Cell; order?: Order; pileId?: string; storeId?: string; amount?: number;
 };
 type Builder = { id: string; position: WorldPoint; job: Job | null; status: string };
 const EPS = 1e-9;
@@ -35,6 +47,7 @@ export class ExcavationSystem {
   private changed: Cell[] = [];
   private grade = 0;
   private nextOrderId = 1;
+  private notices: ConstructionNotice[] = [];
 
   constructor(world: StartingWorld, resources: ResourceSystem, config: ExcavationConfig = EXCAVATION_CONFIG) {
     for (const key of ['speed', 'carryCapacity', 'interactionSeconds', 'maxStepSeconds'] as const) positiveFinite(config[key], key);
@@ -53,6 +66,7 @@ export class ExcavationSystem {
         worker.status = 'Grabkraft fehlt · Auftrag wartet';
       }
     }
+    this.refreshOrders();
   }
   addBuilder(id: string, position: WorldPoint): void {
     if (!id.trim() || this.builders.has(id)) throw new Error('Builder needs a unique non-empty ID');
@@ -75,13 +89,90 @@ export class ExcavationSystem {
         target: worker.job.target ? { ...worker.job.target } : undefined, storeId: worker.job.storeId, pileId: worker.job.pileId } : null,
     }));
   }
-  getOrders() { return this.orders.map(order => ({ ...order, cells: order.cells.map(cell => ({ ...cell })) })); }
+  getOrders() {
+    return this.getConstructionOrders().filter(order => order.status !== 'cancelled' && order.excavated < order.total);
+  }
+  getConstructionOrders(): ConstructionOrderSnapshot[] {
+    this.refreshOrders();
+    return this.orders.map(order => {
+      const excavated = order.cells.filter(cell => this.open(cell)).length;
+      return { id: order.id, type: order.type, cells: order.cells.map(cell => ({ ...cell })), index: excavated,
+        paused: order.paused, status: order.status, blockReason: order.blockReason, excavated, total: order.cells.length,
+        partialDigSeconds: [...order.progress.values()].reduce((sum, value) => sum + value, 0),
+        materialRequired: constructionMaterialEstimate(order.type, order.cells.length) };
+    });
+  }
+  drainConstructionNotices(): ConstructionNotice[] { const notices = this.notices; this.notices = []; return notices; }
+  private orderById(id: number): Order {
+    const order = this.orders.find(order => order.id === id);
+    if (!order) throw new RangeError('Unbekannter Bauauftrag');
+    return order;
+  }
+  pauseOrder(id: number): void {
+    const order = this.orderById(id);
+    if (order.cancelled || order.status === 'completed') throw new Error('Auftrag ist bereits beendet');
+    order.paused = true;
+    // A running tile action finishes atomically; a walk has not started digging.
+    for (const worker of this.builders.values()) if (worker.job?.order === order && worker.job.kind === 'dig' && worker.job.phase === 'walking') this.clearJob(worker);
+    this.refreshOrders();
+  }
+  resumeOrder(id: number): void {
+    const order = this.orderById(id);
+    if (order.cancelled || order.status === 'completed') throw new Error('Auftrag ist bereits beendet');
+    order.paused = false; this.refreshOrders();
+  }
+  cancelOrder(id: number): void {
+    const order = this.orderById(id);
+    if (order.status === 'completed') throw new Error('Auftrag ist bereits beendet');
+    order.cancelled = true; order.paused = false;
+    for (const worker of this.builders.values()) if (worker.job?.kind === 'dig' && worker.job.order === order) this.clearJob(worker);
+    this.refreshOrders();
+  }
   drainChangedCells(): Cell[] { const changed = this.changed; this.changed = []; return changed; }
-  addOrder(cells: Cell[]): number {
-    if (!cells.length || cells.some(cell => !Number.isInteger(cell.column) || !Number.isInteger(cell.row) || !this.tile(cell))) throw new RangeError('Dig order contains invalid cells');
+  addOrder(cells: Cell[], type: PlanType = 'tunnel'): number {
+    if (!PLAN_TYPES.includes(type) || !cells.length || cells.some(cell => !Number.isInteger(cell.column) || !Number.isInteger(cell.row)
+      || !this.tile(cell) || !terrainDefinitions[this.tile(cell)!.terrain].diggable || this.tile(cell)!.state === 'rubble')) throw new RangeError('Nur gültige unterirdische Kacheln markieren');
+    const selected = mergeSelection(cells);
+    if (!isConnectedSelection(selected)) throw new RangeError('Ein Bauplan muss über gemeinsame Kanten zusammenhängen');
+    if (type !== 'tunnel') {
+      const keys = new Set(selected.map(cellKey));
+      if (this.orders.some(order => !order.cancelled && order.type !== 'tunnel' && order.cells.some(cell => keys.has(cellKey(cell))))) throw new RangeError('Hier ist bereits eine Kammer geplant');
+    }
     const id = this.nextOrderId++;
-    this.orders.push({ id, cells: cells.map(cell => ({ ...cell })), index: 0 });
+    this.orders.push({ id, type, cells: selected, paused: false, cancelled: false, progress: new Map(),
+      status: 'planned', blockReason: null, notifiedProblem: null });
+    this.refreshOrders();
     return id;
+  }
+  private approach(worker: Builder, target: Cell): WorldPoint[] | null {
+    const paths = cardinalNeighbors(target).filter(cell => this.open(cell))
+      .map(cell => this.path(worker.position, this.center(cell))).filter((path): path is WorldPoint[] => path !== null)
+      .sort((a, b) => a.length - b.length);
+    return paths[0] ?? null;
+  }
+  private availableTargets(order: Order): Cell[] {
+    return order.cells.filter(cell => this.diggable(cell) && requiredDiggingGrade(cell, this.tile(cell)!) <= this.grade);
+  }
+  private refreshOrders(): void {
+    for (const order of this.orders) {
+      let reason: ConstructionBlockReason | null = null;
+      if (order.cancelled) order.status = 'cancelled';
+      else if (order.paused) order.status = 'paused';
+      else if (order.cells.every(cell => this.open(cell))) order.status = order.type === 'tunnel' ? 'completed' : 'awaitingFurnishing';
+      else if ([...this.builders.values()].some(worker => worker.job?.kind === 'dig' && worker.job.order === order)) order.status = 'digging';
+      else if (!this.builders.size) order.status = 'planned';
+      else {
+        const targets = this.availableTargets(order);
+        const reachable = targets.some(target => [...this.builders.values()].some(worker => this.approach(worker, target)));
+        order.status = reachable ? 'planned' : 'blocked';
+        if (!reachable) reason = targets.length ? 'unreachable' : 'hardness';
+      }
+      order.blockReason = reason;
+      if (reason && order.notifiedProblem !== reason) {
+        this.notices.push({ orderId: order.id, reason, message: `${PLAN_LABELS[order.type]} #${order.id}: ${reason === 'hardness' ? 'Grabkraft fehlt' : 'Baufläche nicht erreichbar'}` });
+        order.notifiedProblem = reason;
+      } else if (!reason && !order.paused) order.notifiedProblem = null;
+    }
   }
   private cell(position: WorldPoint): Cell {
     return { column: Math.floor(position.x / this.world.dimensions.tileSize), row: Math.floor(position.y / this.world.dimensions.tileSize) };
@@ -113,17 +204,19 @@ export class ExcavationSystem {
     worker.job = null;
   }
   private findDig(worker: Builder): Job | null {
+    // B3 keeps one atomic digging action; parallel front allocation belongs B4.
+    if ([...this.builders.values()].some(other => other.job?.kind === 'dig')) return null;
     for (const order of this.orders) {
-      while (order.index < order.cells.length && !this.diggable(order.cells[order.index])) order.index++;
-      if (order.index >= order.cells.length) continue;
-      const target = order.cells[order.index], tile = this.tile(target)!;
-      if (this.reservations.has(cellKey(target)) || requiredDiggingGrade(target, tile) > this.grade) continue;
-      const paths = cardinalNeighbors(target).filter(cell => this.open(cell))
-        .map(cell => this.path(worker.position, this.center(cell))).filter((path): path is WorldPoint[] => path !== null)
-        .sort((a, b) => a.length - b.length);
-      if (!paths[0]) continue;
-      return { kind: 'dig', phase: 'walking', path: paths[0], pathIndex: 0, target: { ...target },
-        order, orderIndex: order.index, progress: 0, duration: this.rule(tile)!.seconds };
+      if (order.cancelled || order.paused || order.cells.every(cell => this.open(cell))) continue;
+      for (const target of this.availableTargets(order)) {
+        if (this.reservations.has(cellKey(target))) continue;
+        const path = this.approach(worker, target);
+        if (path) return { kind: 'dig', phase: 'walking', path, pathIndex: 0, target: { ...target },
+          order, progress: order.progress.get(cellKey(target)) ?? 0, duration: this.rule(this.tile(target)!)!.seconds };
+      }
+      // An earlier globally reachable order cannot be bypassed just because
+      // this worker is on the other side of a blocked route.
+      if (this.availableTargets(order).some(target => [...this.builders.values()].some(other => this.approach(other, target)))) return null;
     }
     return null;
   }
@@ -181,11 +274,12 @@ export class ExcavationSystem {
       const amount = this.rule(tile)!.yield;
       tile.state = 'open'; this.changed.push({ ...target });
       const pileId = this.materials.produce(this.center(target), amount);
-      job.order!.index = Math.max(job.order!.index, job.orderIndex! + 1);
+      job.order!.progress.delete(cellKey(target));
       this.clearJob(worker);
       // Material produced by the current dig belongs to that atomic action;
       // collecting old, unrelated piles remains lower priority.
       worker.job = this.pickup(worker, pileId);
+      if (worker.job) worker.job.order = job.order;
       worker.status = 'Kachel ausgegraben';
     } else if (job.kind === 'pickup') {
       this.materials.pickUp(job.pileId!, worker.id, job.amount!);
@@ -223,11 +317,12 @@ export class ExcavationSystem {
           } else {
             const spent = Math.min(remaining, job.duration - job.progress);
             remaining -= spent; job.progress += spent;
+            if (job.kind === 'dig') job.order!.progress.set(cellKey(job.target!), job.progress);
             if (job.progress >= job.duration - EPS) this.finish(worker, job);
           }
         }
       }
     }
-    this.orders = this.orders.filter(order => order.index < order.cells.length);
+    this.refreshOrders();
   }
 }

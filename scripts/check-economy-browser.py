@@ -1,4 +1,4 @@
-"""A4 browser regression. Requires Firefox, Python 3 and installed npm packages.
+"""A4/B1 browser regression. Requires Firefox, Python 3 and installed npm packages.
 Run: python3 scripts/check-economy-browser.py
 Starts its own local Vite server; screenshots go to node_modules/.cache/.
 """
@@ -107,16 +107,20 @@ try:
             else:
                 diagnostic = command('WebDriver:ExecuteScript', {'script': 'return {url:location.href,canvas:document.querySelectorAll("canvas").length,phaser:performance.getEntriesByType("resource").filter(e=>e.name.includes("phaser")).map(e=>e.name),body:document.body.innerText.slice(0,2000)};', 'args': []})
                 raise RuntimeError('Game did not load: ' + json.dumps(diagnostic))
-            return page('''
+            for _ in range(120):
+                if page('''
               const url = performance.getEntriesByType('resource').filter(e => e.name.includes('/deps/phaser.js')).at(-1).name;
               const phaser = (await import(url)).default;
               const parents = phaser.Display.Canvas.CanvasPool.pool.map(entry => entry.parent);
               const found = parents.find(parent => parent?.scene?.gathering)?.scene
                 || parents.find(parent => parent?.scene?.getScene)?.scene.getScene('WorldScene');
-              if (!found?.economyHud) throw Error('A4 HUD missing');
+              if (!found?.economyHud) return false;
               window.__anthiveTestScene = found;
               return true;
-            ''')
+            '''):
+                    return True
+                time.sleep(0.1)
+            raise RuntimeError('HUD did not finish scene creation')
 
         def click(x, y, move=None, touch=False):
             bounds = command('WebDriver:ExecuteScript', {'script': "const r = document.querySelector('#game canvas').getBoundingClientRect(); return {x:r.x,y:r.y,w:r.width,h:r.height};", 'args': []})['value']
@@ -131,6 +135,24 @@ try:
             command('WebDriver:PerformActions', {'actions': [{'type': 'pointer', 'id': 'test-pointer',
                     'parameters': {'pointerType': 'touch' if touch else 'mouse'}, 'actions': actions}]})
             command('WebDriver:ReleaseActions', {})
+
+        def native_click(selector):
+            result = command('WebDriver:FindElement', {'using': 'css selector', 'value': selector})['value']
+            element_id = result.get('element-6066-11e4-a52e-4f735466cecf') or result['ELEMENT']
+            command('WebDriver:ElementClick', {'id': element_id})
+
+        def assign_group(specialization, source, target, count):
+            click(586, 20)
+            assert page('return document.querySelector("#workforce-panel").open;')
+            page("""
+              const form = document.querySelector('#workforce-panel form');
+              for (const [name,value] of Object.entries(""" + json.dumps({'specialization': specialization, 'from': source, 'to': target, 'count': str(count)}) + """)) {
+                form.elements.namedItem(name).value = value;
+                form.elements.namedItem(name).dispatchEvent(new Event('change', {bubbles:true}));
+              }
+              return true;
+            """)
+            native_click('#workforce-panel button[type="submit"]')
 
         def screenshot(name):
             result = command('WebDriver:TakeScreenshot', {'full': False})
@@ -181,6 +203,51 @@ try:
         print(json.dumps(values))
         check_layout()
         screenshot('anthive-a4-desktop.png')
+        # B1: actual UI submission, cargo-safe reassignment, identity and speed.
+        page("""
+          for (let frame = 0; frame < 2400 && !scene.gathering.gathering.getCollectors().find(worker => worker.id === 'collector-0' && worker.load); frame++) scene.update(0,50);
+          if (!scene.gathering.gathering.getCollectors().find(worker => worker.id === 'collector-0' && worker.load)) throw Error('Carrier setup failed');
+          return true;
+        """)
+        assign_group('gathering', 'gathering', 'building', 1)
+        assert page("return scene.gathering.getWorkers().find(worker => worker.id === 'collector-0').pending;")
+        screenshot('anthive-b1-group-transfer.png')
+        native_click('[data-action="close-workforce"]')
+        page("""
+          for (let frame = 0; frame < 2400; frame++) scene.update(0,50);
+          const moved = scene.gathering.getWorkers().find(worker => worker.id === 'collector-0');
+          if (moved.specialization !== 'gathering' || moved.actualWork !== 'building' || moved.pending) throw Error('Group transfer failed');
+          const ids = [...scene.ants.map(worker=>worker.id), ...scene.builderWorkers.map(worker=>worker.id)];
+          if (ids.length !== 9 || new Set(ids).size !== 9) throw Error('Missing/duplicated visible workers');
+          return true;
+        """)
+        assign_group('building', 'building', 'rest', 2)
+        native_click('[data-action="close-workforce"]')
+        for _ in range(3):
+            click(560, 339)
+        progress = page("""
+          scene.previewCells = [{column:150,row:27},{column:150,row:28}]; scene.commitDigOrder();
+          for (let frame = 0; frame < 2000 && scene.builderWorkers.find(worker=>worker.id==='collector-0')?.job?.phase !== 'digging'; frame++) scene.update(0,50);
+          const worker = scene.builderWorkers.find(worker=>worker.id==='collector-0');
+          if (!worker?.job || worker.job.phase !== 'digging' || scene.builderWorkers.length !== 1) throw Error('Foreign dig setup failed');
+          const before = worker.job.progress; scene.update(0,100);
+          const progress = worker.job.progress - before;
+          if (Math.abs(progress - 50) > .001) throw Error('Foreign builder must work at 50%, got ' + progress);
+          for (let frame = 0; frame < 2000 && worker.job; frame++) scene.update(0,50);
+          if (worker.job || scene.storedBuildingMaterial < 2) throw Error('Foreign builder did not deliver existing material');
+          return {foreignDigProgress:progress,material:scene.storedBuildingMaterial};
+        """)
+        print(json.dumps(progress))
+        assign_group('gathering', 'building', 'care', 1)
+        assert page("return scene.gathering.getWorkers().find(worker=>worker.id==='collector-0').resting;")
+        screenshot('anthive-b1-groups-rest.png')
+        native_click('[data-action="close-workforce"]')
+        assign_group('gathering', 'care', 'gathering', 1)
+        native_click('[data-action="close-workforce"]')
+        assign_group('building', 'rest', 'building', 2)
+        native_click('[data-action="close-workforce"]')
+        assert page('return scene.gathering.workforce.getWorkers().length;') == 9
+
         page('''
           for (const store of scene.gathering.resources.listStores()) scene.gathering.resources.takeFromStore(store.id, store.amount);
           scene.gathering.supply.advance(6.1, {activeWorkers:9,restingWorkers:0,queens:1});
@@ -194,6 +261,10 @@ try:
         click(536, 80, touch=True)
         assert check_layout()['priority'] == 'water'
         screenshot('anthive-a4-mobile-landscape.png')
+        click(586, 20, touch=True)
+        assert page('return document.querySelector("#workforce-panel").open;')
+        screenshot('anthive-b1-mobile-groups.png')
+        native_click('[data-action="close-workforce"]')
         command('WebDriver:Navigate', {'url': f'http://127.0.0.1:{vite_port}/?view=pond'})
         hook()
         check_layout()
@@ -201,7 +272,7 @@ try:
         command('Marionette:Quit', {'flags': ['eForceQuit']})
         browser.wait(timeout=10)
         browser = None
-        print('PASS: priorities (mouse/touch), selection, input isolation, layout, delivery, digging, warnings, pond')
+        print('PASS: priorities, groups (mouse/touch), safe transfer, nine visible IDs, 50% foreign digging, rest, layout, delivery, warnings, pond')
 finally:
     if browser is not None:
         browser.terminate()

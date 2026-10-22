@@ -21,7 +21,7 @@ export class EconomyHud {
   private warning: Phaser.GameObjects.Text;
   private buttons: Array<{ priority: GatheringPriority; body: Phaser.GameObjects.Rectangle; label: Phaser.GameObjects.Text }> = [];
 
-  constructor(scene: Phaser.Scene, onPriority: (priority: GatheringPriority) => void) {
+  constructor(scene: Phaser.Scene, onPriority: (priority: GatheringPriority) => void, onWorkforce?: () => void) {
     const bounds = ECONOMY_HUD_BOUNDS;
     scene.add.rectangle(bounds.x, bounds.y, bounds.width, bounds.height, 0x211e19, 0.96)
       .setOrigin(0).setStrokeStyle(1, 0x71604a).setScrollFactor(0).setDepth(20);
@@ -30,6 +30,15 @@ export class EconomyHud {
     }).setScrollFactor(0).setDepth(21);
     text(18, 12, 'ANTHIVE', 11).setFontStyle('bold');
     this.header = text(110, 13, '', 9);
+    if (onWorkforce) {
+      const groups = scene.add.rectangle(551, 9, 71, 21, 0x39352e).setOrigin(0).setScrollFactor(0)
+        .setDepth(21).setStrokeStyle(1, 0x71604a).setInteractive({ useHandCursor: true });
+      text(586.5, 19.5, 'Gruppen', 10).setOrigin(0.5);
+      groups.on(Phaser.Input.Events.POINTER_DOWN,
+        (_pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
+          event.stopPropagation(); onWorkforce();
+        });
+    }
     this.food = text(18, 31, '', 11).setColor('#e5bd77');
     this.water = text(225, 31, '', 11).setColor('#80ccd4');
     this.material = text(438, 31, '', 11);
@@ -53,7 +62,7 @@ export class EconomyHud {
   }
 
   update(overview: EconomyOverview): void {
-    this.header.setText(`Tag ${overview.day} · ${Math.floor(overview.dayProgress * 100)} %  |  Arbeiterinnen ${overview.workerCount} (${overview.collectorCount} sammeln)  |  Arbeit ${Math.round(overview.workFactor * 100)} %  |  Verluste ${overview.workerLosses}`);
+    this.header.setText(`Tag ${overview.day} · ${Math.floor(overview.dayProgress * 100)} %  |  Arbeiterinnen ${overview.workerCount} |  Arbeit ${Math.round(overview.workFactor * 100)} %  |  Verluste ${overview.workerLosses}`);
     this.food.setText(`Nahrung ${formatAmount(overview.stocks.food.amount)} / ${overview.stocks.food.capacity}`);
     this.water.setText(`Wasser ${formatAmount(overview.stocks.water.amount)} / ${overview.stocks.water.capacity}`);
     this.material.setText(`Baustoff ${overview.buildingMaterial}`);

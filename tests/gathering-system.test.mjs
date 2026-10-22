@@ -173,3 +173,46 @@ test('retiring a carrier releases reservations and returns the actual undelivere
   assert.equal(resources.getStore('store').amount, 5);
   assert.equal(gathering.retireCollector('missing'), undefined);
 });
+
+test('explicit reassignment cancels an empty job, releases reservations and walks home without pickup', () => {
+  const { gathering, resources } = fixture();
+  gathering.advance(0.5);
+  gathering.setCollectingEnabled('a', false, point(0));
+  assert.equal(resources.getSource('food').amount, 200);
+  assert.equal(gathering.getCollectors()[0].position.x, 5);
+  gathering.advance(0.25);
+  assert.equal(gathering.getCollectors()[0].position.x, 2.5);
+  gathering.advance(1);
+  assert.equal(gathering.getCollectors()[0].position.x, 0);
+  assert.equal(gathering.getCollectors()[0].phase, 'idle');
+  assert.equal(resources.getSource('food').amount, 200);
+});
+
+test('reassigned collector delivers carried load first, then returns without acquiring another', () => {
+  const { gathering, resources } = fixture();
+  gathering.advance(1.25);
+  gathering.setCollectingEnabled('a', false, point(0));
+  assert.equal(gathering.getCollectors()[0].load.amount, 5);
+  gathering.advance(10);
+  assert.equal(resources.getSource('food').amount, 195);
+  assert.equal(resources.getStore('store').amount, 5);
+  assert.equal(gathering.getCollectors()[0].phase, 'idle');
+  assert.equal(gathering.getCollectors()[0].load, null);
+});
+
+test('blocked return preserves real position; individual foreign efficiency halves work', () => {
+  const { gathering, blocked } = fixture();
+  gathering.setWorkEfficiency('a', 0.5);
+  gathering.advance(1);
+  assert.equal(gathering.getCollectors()[0].position.x, 5);
+  blocked.add(0);
+  gathering.setCollectingEnabled('a', false, point(0));
+  gathering.advance(10);
+  assert.equal(gathering.getCollectors()[0].position.x, 5);
+  blocked.delete(0);
+  gathering.advance(4);
+  assert.equal(gathering.getCollectors()[0].position.x, 0);
+  gathering.setCollectingEnabled('a', true);
+  gathering.advance(1);
+  assert.equal(gathering.getCollectors()[0].position.x, 5);
+});

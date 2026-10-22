@@ -30,7 +30,8 @@ import {
 import type { TerrainKind } from '../world/worldTypes';
 import { startingWorld } from '../world/worldGenerator';
 import { findGridPath } from '../world/gridPathfinding';
-import { createColonySimulation } from '../simulation/colonySimulation';
+import { createWorkforceSimulation } from '../simulation/workforceSimulation';
+import { WorkforcePanel } from '../ui/WorkforcePanel';
 import { EconomyHud, isEconomyHudPoint } from '../ui/EconomyHud';
 import { buildEconomyOverview } from '../ui/economyOverview';
 
@@ -53,7 +54,6 @@ type MaterialLoad = {
   state: 'waiting' | 'carried' | 'stored';
   visual: Phaser.GameObjects.Container;
 };
-type BuilderWorkerRole = 'builderGroup' | 'borrowedTransport';
 type DigJob = {
   kind: 'dig';
   phase: 'walking' | 'digging' | 'loading';
@@ -75,7 +75,6 @@ type HaulJob = {
 };
 type BuilderWorker = {
   id: string;
-  role: BuilderWorkerRole;
   body: Phaser.GameObjects.Container;
   cell: DigCell;
   job: DigJob | HaulJob | null;
@@ -85,9 +84,10 @@ export class WorldScene extends Phaser.Scene {
   private dragMode: 'none' | 'camera' | 'dig' = 'none';
   private lastPointerX = 0;
   private lastPointerY = 0;
-  private gathering!: ReturnType<typeof createColonySimulation>;
+  private gathering!: ReturnType<typeof createWorkforceSimulation>;
   private ants: Array<{ id: string; body: Phaser.GameObjects.Container; load: Phaser.GameObjects.Ellipse }> = [];
   private economyHud!: EconomyHud;
+  private workforcePanel!: WorkforcePanel;
   private overviewRefreshSeconds = 0;
   private sourceReachability = new Map<string, boolean>();
   private renderedDroppedLoads = new Set<string>();
@@ -120,10 +120,14 @@ export class WorldScene extends Phaser.Scene {
   }
 
   create(): void {
-    this.gathering = createColonySimulation(startingWorld, {
-      otherWorkers: () => this.builderWorkers.map(worker => ({ id: worker.id, resting: !worker.job })),
-      retireOtherWorker: id => this.retireBuilderWorker(id),
-      advanceOtherWorkers: (seconds, factor) => this.updateBuilderWorkers(seconds * 1000 * factor),
+    this.createBuilderWorkers();
+    this.gathering = createWorkforceSimulation(startingWorld, {
+      workers: () => this.builderWorkers.map(worker => ({ id: worker.id, resting: !worker.job,
+        position: { x: worker.body.x, y: worker.body.y } })),
+      addWorker: (id, position) => this.createBuilderWorker(id, position),
+      removeWorker: id => this.retireBuilderWorker(id),
+      retireWorker: id => this.retireBuilderWorker(id),
+      advanceWorkers: (seconds, factor) => this.updateBuilderWorkers(seconds * 1000 * factor),
     });
     this.drawWorld();
     this.initializeReachability();
@@ -134,12 +138,19 @@ export class WorldScene extends Phaser.Scene {
     this.drawBuildingMaterialPile();
     this.drawLabels();
     this.createDigControls();
-    this.createBuilderWorkers();
     this.createAnts();
+    this.workforcePanel = new WorkforcePanel(
+      document.querySelector('#game')!,
+      (specialization, from, to, count) => {
+        this.gathering.moveWorkers(specialization, from, to, count);
+        this.updateEconomyHud();
+      },
+    );
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.workforcePanel.destroy());
     this.economyHud = new EconomyHud(this, priority => {
       this.gathering.gathering.setPriority(priority);
       this.updateEconomyHud();
-    });
+    }, () => this.workforcePanel.open());
     this.refreshSourceReachability();
     this.updateEconomyHud();
     this.frameWorld();
@@ -149,15 +160,18 @@ export class WorldScene extends Phaser.Scene {
   update(_time: number, delta: number): void {
     this.gathering.advance(delta / 1000);
     const collectors = new Map(this.gathering.gathering.getCollectors().map(ant => [ant.id, ant]));
+    const visibleWorkers = new Map(this.gathering.getWorkers().filter(worker => worker.actualWork !== 'building').map(worker => [worker.id, worker]));
+    this.createAnts();
     this.ants.forEach(ant => {
-      const state = collectors.get(ant.id);
+      const state = visibleWorkers.get(ant.id);
       if (!state) { ant.body.destroy(); return; }
       if (state.position.x !== ant.body.x) ant.body.setScale(state.position.x < ant.body.x ? -1 : 1, 1);
       ant.body.setPosition(state.position.x, state.position.y);
-      ant.load.setVisible((state.load?.amount ?? 0) > 0);
-      ant.load.setFillStyle(state.load?.resource === 'water' ? 0x71d0d5 : 0xe3aa4e);
+      const carried = collectors.get(ant.id)?.load;
+      ant.load.setVisible((carried?.amount ?? 0) > 0);
+      ant.load.setFillStyle(carried?.resource === 'water' ? 0x71d0d5 : 0xe3aa4e);
     });
-    this.ants = this.ants.filter(ant => collectors.has(ant.id));
+    this.ants = this.ants.filter(ant => visibleWorkers.has(ant.id));
     this.foodStockLabel?.setText(`NAHRUNG: ${this.gathering.resources.getStore('food-store').amount.toFixed(1)}`);
     this.waterStockLabel?.setText(`WASSER: ${this.gathering.resources.getStore('water-store').amount.toFixed(1)}`);
     this.drawFoodMarkers();
@@ -184,9 +198,10 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private updateEconomyHud(): void {
+    this.workforcePanel.update(this.gathering.getWorkers());
     this.economyHud.update(buildEconomyOverview(this.gathering, {
       buildingMaterial: this.storedBuildingMaterial,
-      otherWorkerCount: this.builderWorkers.length,
+      otherWorkerCount: this.gathering.getWorkers().filter(worker => worker.actualWork !== 'gathering').length,
       sourceReachability: this.sourceReachability,
     }));
   }
@@ -333,8 +348,8 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private createAnts(): void {
-    this.ants = [];
-    for (const collector of this.gathering.gathering.getCollectors()) {
+    for (const collector of this.gathering.getWorkers().filter(worker => worker.actualWork !== 'building')) {
+      if (this.ants.some(ant => ant.id === collector.id)) continue;
       const body = this.add.container(collector.position.x, collector.position.y).setDepth(4);
       const shape = this.add.graphics();
       shape.fillStyle(0x261b17, 1);
@@ -511,27 +526,29 @@ export class WorldScene extends Phaser.Scene {
   private createBuilderWorkers(): void {
     const home = this.cellAt(nestChamberCenter.x, nestChamberCenter.y);
     if (!home) return;
+    for (let index = 0; index < 2; index++) this.createBuilderWorker(`builder-${index}`, {
+      x: (home.column + 0.35 + index * 0.3) * TILE_SIZE, y: (home.row + 0.5) * TILE_SIZE,
+    });
+  }
 
-    for (let index = 0; index < 2; index += 1) {
-      const body = this.add.container(
-        (home.column + 0.35 + index * 0.3) * TILE_SIZE,
-        (home.row + 0.5) * TILE_SIZE,
-      ).setDepth(5);
-      const shape = this.add.graphics();
-      shape.fillStyle(0x261b17, 1);
-      shape.fillEllipse(-3, 0, 8, 6);
-      shape.fillCircle(2, 0, 2.4);
-      shape.fillCircle(6, -0.5, 2.3);
-      shape.lineStyle(1, 0x261b17, 1);
-      shape.beginPath();
-      shape.moveTo(-3, 1); shape.lineTo(-5, 4);
-      shape.moveTo(0, 1); shape.lineTo(-1, 4);
-      shape.moveTo(3, 1); shape.lineTo(4, 1);
-      shape.moveTo(6, -2); shape.lineTo(8, -4);
-      shape.strokePath();
-      body.add(shape);
-      this.builderWorkers.push({ id: `builder-${index}`, role: 'builderGroup', body, cell: { ...home }, job: null });
-    }
+  private createBuilderWorker(id: string, position: { x: number; y: number }): void {
+    const cell = this.cellAt(position.x, position.y);
+    if (!cell) throw new Error('Builder position is outside the world');
+    const body = this.add.container(position.x, position.y).setDepth(5);
+    const shape = this.add.graphics();
+    shape.fillStyle(0x261b17, 1);
+    shape.fillEllipse(-3, 0, 8, 6);
+    shape.fillCircle(2, 0, 2.4);
+    shape.fillCircle(6, -0.5, 2.3);
+    shape.lineStyle(1, 0x261b17, 1);
+    shape.beginPath();
+    shape.moveTo(-3, 1); shape.lineTo(-5, 4);
+    shape.moveTo(0, 1); shape.lineTo(-1, 4);
+    shape.moveTo(3, 1); shape.lineTo(4, 1);
+    shape.moveTo(6, -2); shape.lineTo(8, -4);
+    shape.strokePath();
+    body.add(shape);
+    this.builderWorkers.push({ id, body, cell, job: null });
   }
 
   private updateUpgradeLabel(): void {
@@ -567,7 +584,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private startDrag(pointer: Phaser.Input.Pointer): void {
-    if (!pointer.isDown || isEconomyHudPoint(pointer.x, pointer.y) || pointer.y >= 310) return;
+    if (!pointer.isDown || this.workforcePanel.isOpen || isEconomyHudPoint(pointer.x, pointer.y) || pointer.y >= 310) return;
     const cell = this.pointerCell(pointer);
     if (cell && isOpenTile(worldMap[cell.row][cell.column])) {
       this.dragMode = 'dig';
@@ -744,15 +761,13 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private updateBuilderWorkers(delta: number): void {
-    this.builderWorkers.forEach((worker) => this.advanceBuilderJob(worker, delta));
+    this.builderWorkers.forEach((worker) => this.advanceBuilderJob(worker, delta * this.gathering.workforce.efficiency(worker.id, 'building')));
     this.builderWorkers.forEach((worker) => {
-      if (!worker.job) this.assignBuilderWork(worker);
+      if (!worker.job && this.gathering.workforce.getWorker(worker.id).assignment === 'building') this.assignBuilderWork(worker);
     });
   }
 
   private assignBuilderWork(worker: BuilderWorker): void {
-    if (worker.role === 'borrowedTransport') return;
-
     for (const order of this.digOrders) {
       while (order.index < order.cells.length) {
         const target = order.cells[order.index];

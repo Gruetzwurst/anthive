@@ -58,7 +58,7 @@ Each store has its own ID, position, resource, capacity and stock. `takeFromSour
 
 The A1 foundation is now connected to the running A2 food/water transport economy described below. The same single clock drives regeneration and transport; the former food demo loop is removed. Integrating the existing digging-material counter remains B2. A3 now adds adult consumption and shortage/recovery (see below); A4 adds its minimal resource HUD and priority controls below; brood and egg allocation remain later steps. The side-view pond and existing gameplay graphics remain intact; `?view=pond` still opens the map at the pond.
 
-Run **`npm test`** (Node 22.12+; verified here with Node 24.22.1) for all tests, including clock, sources, individual stores, world adapter and existing graphics/world checks. The command explicitly uses `--test-isolation=none`: in this environment the default isolated runner reported file-level results without individual test results, so the full suite runs in one process for verifiable per-test output. `npm run test:world` remains available for the original world-only check. See `docs/A1-RESSOURCEN-ERGEBNIS.md` for the handoff and `planung/00-START-HIER-CODEX-ARBEITSPLAN-UND-KONSISTENZPRUEFUNG.md` for the authoritative order. A2, A3 and A4 were approved subsequently; B1 still requires user approval.
+Run **`npm test`** (Node 22.12+; verified here with Node 24.22.1) for all tests, including clock, sources, individual stores, world adapter and existing graphics/world checks. The command explicitly uses `--test-isolation=none`: in this environment the default isolated runner reported file-level results without individual test results, so the full suite runs in one process for verifiable per-test output. `npm run test:world` remains available for the original world-only check. See `docs/A1-RESSOURCEN-ERGEBNIS.md` for the handoff and `planung/00-START-HIER-CODEX-ARBEITSPLAN-UND-KONSISTENZPRUEFUNG.md` for the authoritative order. A2 through A4 and B1 were approved subsequently; B2 still requires user approval.
 
 Before this draft, the placeholder files were copied to `versions/2026-10-20-before-world-camera/`. If you want to return to that version, ask Codex to restore it.
 
@@ -102,4 +102,19 @@ Click or tap **Nahrung**, **Ausgeglichen** or **Wasser** to change the existing 
 
 `npm test` includes eight real-length game days for each priority plus explicit source exhaustion/recovery. For actual mouse/touch, text bounds, input isolation, delivery/digging and warning checks, run **`python3 scripts/check-economy-browser.py`** with Firefox and installed npm packages. The script starts/stops its own local Vite and temporary Firefox instance and saves screenshots in ignored `node_modules/.cache/`. The small landscape window is a desktop-browser check, not an iPhone certification.
 
-A4 stops before B1 (worker groups), B2 (complete material economy), nest-building tools and brood. See `docs/A4-RESSOURCEN-HUD-ERGEBNIS.md` for changes, validation and remaining limitations.
+A4 was followed by the separately approved B1 worker groups below. Complete material economy (B2), nest-building tools and brood remain later steps. See `docs/A4-RESSOURCEN-HUD-ERGEBNIS.md` for changes, validation and remaining limitations.
+
+
+### B1 workforce groups and assignments (2026-10-22)
+
+Open **Gruppen** in the HUD. The table separates permanent specialization from assigned work. Choose a specialization, source assignment, target assignment and quantity, then **Zuweisen**. You manage group counts rather than individual ants. Existing seven gathering specialists and two building specialists retain their IDs and specialization. Care/combat specialists start at zero; no new population or brood is created.
+
+The user selected **50% performance for explicitly assigned foreign work**, editable centrally in `WORKFORCE_CONFIG`. Gathering and building use this factor together with the existing adult-shortage work factor. A worker's specialization never changes when reassigned. Assignments persist through idling, source changes, shortages and recovery during the current game; full save/load remains unimplemented.
+
+Reassigned collectors stop acquiring new loads, deliver real carried cargo, then walk along existing paths back into the nest before changing engine. Builders finish their current excavation and material delivery, then take no new building task. Pending transitions remain visible. A blocked load/return route keeps its cargo and position until continuation is possible; no teleport or automatic foreign fallback. All actors remain displayed after changing role.
+
+Without suitable gathering tasks, workers rest at the existing reduced consumption and resume suitable work when it becomes available. Explicit care/combat assignments also rest while no such tasks exist; these later systems are not simulated. Resting does not require a room. Rest chambers remain a later construction feature.
+
+`workforceSystem.ts` manages identity and group assignments; `createWorkforceSimulation` integrates existing gathering, builder adapters, supply and clock. Its `moveWorkers(specialization, from, to, count)` is the live group-edit API. The native modal handles quantity inputs and blocks map gestures; it can scroll on small landscape displays. The game continues running while it is open. Closing it restores the full map interaction.
+
+`npm test` covers group invariants, actual cargo-safe transitions, physical returns, half-rate work, rest consumption, mortality, shared time accounting and unchanged native-group economics over three days. `python3 scripts/check-economy-browser.py` additionally covers actual form submission, nine unique visible worker IDs and 50% foreign digging followed by material delivery. See `docs/B1-ARBEITSGRUPPEN-ERGEBNIS.md`. Stop before B2.

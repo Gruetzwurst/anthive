@@ -56,3 +56,44 @@ body {
     font-size: 1.25rem;
   }
 }
+
+#workforce-panel {
+  width: min(94vw, 760px);
+  max-height: 90vh;
+  margin: auto;
+  padding: 18px;
+  overflow: auto;
+  border: 1px solid #99805a;
+  background: #25231e;
+  color: #f4efd9;
+  font-size: 14px;
+}
+
+#workforce-panel::backdrop { background: rgb(0 0 0 / 65%); }
+.workforce-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.workforce-header h2 { margin: 0; font-size: 20px; }
+#workforce-panel p { line-height: 1.45; }
+.workforce-table { overflow-x: auto; }
+#workforce-panel table { width: 100%; border-collapse: collapse; }
+#workforce-panel caption { text-align: left; margin-bottom: 8px; color: #d3c5a9; }
+#workforce-panel th, #workforce-panel td { padding: 8px 6px; border-bottom: 1px solid #514838; text-align: center; }
+#workforce-panel th:first-child { text-align: left; }
+.workforce-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin-top: 18px; }
+.workforce-form label { display: flex; flex-direction: column; gap: 5px; }
+#workforce-panel select, #workforce-panel input, #workforce-panel button {
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid #887453;
+  border-radius: 3px;
+  background: #373229;
+  color: #f4efd9;
+  font: inherit;
+}
+#workforce-panel input { width: 78px; }
+#workforce-panel button { cursor: pointer; }
+#workforce-panel button[type='submit'] { background: #b99d65; color: #211e19; }
+#workforce-panel button:disabled { opacity: 0.5; cursor: default; }
+#workforce-panel :focus-visible { outline: 2px solid #80ccd4; outline-offset: 2px; }
+.workforce-note { color: #d3c5a9; font-size: 12px; }
+
+@media (orientation: portrait) { #workforce-panel { display: none; } }

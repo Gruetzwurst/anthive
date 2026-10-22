@@ -47,3 +47,6 @@ export const ADULT_SUPPLY_CONFIG = {
   workerLossFractionPerDay: 0.05,
 };
 export type AdultSupplyConfig = typeof ADULT_SUPPLY_CONFIG;
+
+// B1 user-selected provisional efficiency for explicitly assigned foreign work.
+export const WORKFORCE_CONFIG = { foreignWorkEfficiency: 0.5 };

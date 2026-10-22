@@ -11,7 +11,7 @@ type GatheredResource = 'food' | 'water';
 export type CollectorSnapshot = {
   id: string;
   position: WorldPoint;
-  phase: 'idle' | 'toSource' | 'pickup' | 'toStore' | 'deposit' | 'waiting';
+  phase: 'idle' | 'toSource' | 'pickup' | 'toStore' | 'deposit' | 'waiting' | 'returning';
   load: ResourceAmount | null;
   sourceId?: string;
   storeId?: string;
@@ -22,6 +22,9 @@ type Worker = CollectorSnapshot & {
   remainingAction: number;
   retryIn: number;
   expected: number;
+  collectingEnabled: boolean;
+  efficiency: number;
+  returnTarget?: WorldPoint;
 };
 type StoreChoice = { store: ResourceStore; path: WorldPoint[]; amount: number; score: number };
 const distance = (a: WorldPoint, b: WorldPoint) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -51,7 +54,7 @@ export class GatheringSystem {
     if (this.workers.has(id)) throw new Error(`Duplicate collector ID: ${id}`);
     nonNegativeFinite(position.x, 'position.x'); nonNegativeFinite(position.y, 'position.y');
     this.workers.set(id, { id, position: { ...position }, phase: 'idle', load: null,
-      path: [], pathIndex: 0, remainingAction: 0, retryIn: 0, expected: 0 });
+      path: [], pathIndex: 0, remainingAction: 0, retryIn: 0, expected: 0, collectingEnabled: true, efficiency: 1 });
   }
 
   getCollectors(): CollectorSnapshot[] {
@@ -65,6 +68,32 @@ export class GatheringSystem {
     const snapshot = this.getCollectors().find(worker => worker.id === id);
     this.workers.delete(id); // Reservations live on the removed job, not in stocks.
     return snapshot;
+  }
+
+  setWorkEfficiency(id: string, efficiency: number): void {
+    positiveFinite(efficiency, 'efficiency');
+    if (efficiency > 1) throw new RangeError('efficiency must not exceed 1');
+    this.requireWorker(id).efficiency = efficiency;
+  }
+
+  setCollectingEnabled(id: string, enabled: boolean, returnTarget?: WorldPoint): void {
+    if (typeof enabled !== 'boolean') throw new TypeError('enabled must be boolean');
+    if (returnTarget) {
+      nonNegativeFinite(returnTarget.x, 'returnTarget.x'); nonNegativeFinite(returnTarget.y, 'returnTarget.y');
+    }
+    const worker = this.requireWorker(id);
+    if (worker.collectingEnabled === enabled && (enabled || (!returnTarget && !worker.returnTarget)
+      || (returnTarget && worker.returnTarget && distance(returnTarget, worker.returnTarget) < 1e-9))) return;
+    worker.collectingEnabled = enabled;
+    worker.returnTarget = enabled ? undefined : returnTarget ? { ...returnTarget } : undefined;
+    if (!worker.load) this.clearJob(worker);
+    worker.retryIn = 0;
+  }
+
+  private requireWorker(id: string): Worker {
+    const worker = this.workers.get(id);
+    if (!worker) throw new Error(`Unknown collector: ${id}`);
+    return worker;
   }
 
   private reservedStore(id: string, except: Worker): number {
@@ -126,7 +155,7 @@ export class GatheringSystem {
     return true;
   }
 
-  private startPath(worker: Worker, path: WorldPoint[], phase: 'toSource' | 'toStore'): void {
+  private startPath(worker: Worker, path: WorldPoint[], phase: 'toSource' | 'toStore' | 'returning'): void {
     worker.path = path; worker.pathIndex = 0; worker.phase = phase;
   }
 
@@ -169,7 +198,7 @@ export class GatheringSystem {
     if (workFactor > 1) throw new RangeError('workFactor must not exceed 1');
     if (workFactor === 0) return;
     for (const worker of this.workers.values()) {
-      let remaining = realSeconds * workFactor;
+      let remaining = realSeconds * workFactor * worker.efficiency;
       while (remaining > 1e-9) {
         if (worker.retryIn > 0) {
           const wait = Math.min(remaining, worker.retryIn);
@@ -177,7 +206,12 @@ export class GatheringSystem {
           if (remaining <= 1e-9) break;
         }
         if (worker.phase === 'idle' || worker.phase === 'waiting') {
-          if (!(worker.load ? this.deliver(worker) : this.assign(worker))) {
+          if (!worker.load && !worker.collectingEnabled) {
+            if (!worker.returnTarget || distance(worker.position, worker.returnTarget) < 1e-9) break;
+            const path = this.navigation.findPath(worker.position, worker.returnTarget);
+            if (!path) { worker.retryIn = this.config.retrySeconds; continue; }
+            this.startPath(worker, path, 'returning');
+          } else if (!(worker.load ? this.deliver(worker) : this.assign(worker))) {
             worker.retryIn = this.config.retrySeconds;
             continue;
           }
@@ -190,6 +224,7 @@ export class GatheringSystem {
         }
         const target = worker.path[worker.pathIndex];
         if (!target) {
+          if (worker.phase === 'returning') { this.clearJob(worker); continue; }
           worker.phase = worker.phase === 'toSource' ? 'pickup' : 'deposit';
           worker.remainingAction = this.config.interactionSeconds;
           continue;

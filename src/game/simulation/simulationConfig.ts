@@ -69,3 +69,12 @@ export const EXCAVATION_CONFIG = {
   },
 };
 export type ExcavationConfig = typeof EXCAVATION_CONFIG;
+
+// B3 read-only furnishing estimates from approved test values; no consumption yet.
+export const CONSTRUCTION_CONFIG = {
+  materialPerTile: {
+    tunnel: 0, food: 2, water: 2, buildingMaterial: 2,
+    'brood-gathering': 3, 'brood-building': 3, 'brood-care': 3, 'brood-combat': 3, rest: 2,
+  },
+  noticeSeconds: 4,
+};

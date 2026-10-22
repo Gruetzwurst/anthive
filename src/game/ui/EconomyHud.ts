@@ -65,7 +65,7 @@ export class EconomyHud {
     this.header.setText(`Tag ${overview.day} · ${Math.floor(overview.dayProgress * 100)} %  |  Arbeiterinnen ${overview.workerCount} |  Arbeit ${Math.round(overview.workFactor * 100)} %  |  Verluste ${overview.workerLosses}`);
     this.food.setText(`Nahrung ${formatAmount(overview.stocks.food.amount)} / ${overview.stocks.food.capacity}`);
     this.water.setText(`Wasser ${formatAmount(overview.stocks.water.amount)} / ${overview.stocks.water.capacity}`);
-    this.material.setText(`Baustoff ${overview.buildingMaterial}`);
+    this.material.setText(`Baustoff ${formatAmount(overview.stocks.buildingMaterial.amount)} / ${overview.stocks.buildingMaterial.capacity}`);
     this.foodSource.setText(`Nahrungsquelle: ${describeSources(overview.sources.food)}`);
     this.waterSource.setText(`Wasserquelle: ${describeSources(overview.sources.water)}`);
     const states = overview.supply;

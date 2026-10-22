@@ -1,4 +1,4 @@
-"""A4/B1 browser regression. Requires Firefox, Python 3 and installed npm packages.
+"""A4/B1/B2 browser regression. Requires Firefox, Python 3 and installed npm packages.
 Run: python3 scripts/check-economy-browser.py
 Starts its own local Vite server; screenshots go to node_modules/.cache/.
 """
@@ -169,7 +169,7 @@ try:
                 if (rect.x < 8 || rect.right > 632 || rect.y < 6 || rect.bottom > 110) throw Error('HUD overflow: ' + object.text);
               }
               return {priority:scene.gathering.gathering.priority, drag:scene.dragMode,
-                camera:[scene.cameras.main.scrollX,scene.cameras.main.scrollY], orders:scene.digOrders.length};
+                camera:[scene.cameras.main.scrollX,scene.cameras.main.scrollY], orders:scene.excavation.getOrders().length};
             ''')
 
         command('WebDriver:NewSession', {})
@@ -195,10 +195,10 @@ try:
           scene.previewCells = [{column:150,row:26},{column:150,row:27}];
           scene.commitDigOrder();
           for (let frame = 0; frame < 500; frame++) scene.update(0,50);
-          if (scene.storedBuildingMaterial < 1) throw Error('Existing digging/delivery failed');
+          if (scene.gathering.resources.getStoreTotals('buildingMaterial').amount < 1) throw Error('Existing digging/delivery failed');
           scene.updateEconomyHud();
-          if (!scene.economyHud.material.text.includes(String(scene.storedBuildingMaterial))) throw Error('Stale material HUD');
-          return {food,water,material:scene.storedBuildingMaterial};
+          if (!scene.economyHud.material.text.includes(String(scene.gathering.resources.getStoreTotals('buildingMaterial').amount))) throw Error('Stale material HUD');
+          return {food,water,material:scene.gathering.resources.getStoreTotals('buildingMaterial').amount};
         ''')
         print(json.dumps(values))
         check_layout()
@@ -227,15 +227,15 @@ try:
             click(560, 339)
         progress = page("""
           scene.previewCells = [{column:150,row:27},{column:150,row:28}]; scene.commitDigOrder();
-          for (let frame = 0; frame < 2000 && scene.builderWorkers.find(worker=>worker.id==='collector-0')?.job?.phase !== 'digging'; frame++) scene.update(0,50);
-          const worker = scene.builderWorkers.find(worker=>worker.id==='collector-0');
+          for (let frame = 0; frame < 2000 && scene.excavation.getBuilders().find(worker=>worker.id==='collector-0')?.job?.phase !== 'digging'; frame++) scene.update(0,50);
+          const worker = scene.excavation.getBuilders().find(worker=>worker.id==='collector-0');
           if (!worker?.job || worker.job.phase !== 'digging' || scene.builderWorkers.length !== 1) throw Error('Foreign dig setup failed');
           const before = worker.job.progress; scene.update(0,100);
-          const progress = worker.job.progress - before;
+          const progress = (scene.excavation.getBuilders().find(worker=>worker.id==='collector-0').job.progress - before) * 1000;
           if (Math.abs(progress - 50) > .001) throw Error('Foreign builder must work at 50%, got ' + progress);
-          for (let frame = 0; frame < 2000 && worker.job; frame++) scene.update(0,50);
-          if (worker.job || scene.storedBuildingMaterial < 2) throw Error('Foreign builder did not deliver existing material');
-          return {foreignDigProgress:progress,material:scene.storedBuildingMaterial};
+          for (let frame = 0; frame < 2000 && scene.excavation.getBuilders().find(worker=>worker.id==='collector-0')?.job; frame++) scene.update(0,50);
+          if (scene.excavation.getBuilders().find(worker=>worker.id==='collector-0')?.job || scene.gathering.resources.getStoreTotals('buildingMaterial').amount < 2) throw Error('Foreign builder did not deliver existing material');
+          return {foreignDigProgress:progress,material:scene.gathering.resources.getStoreTotals('buildingMaterial').amount};
         """)
         print(json.dumps(progress))
         assign_group('gathering', 'building', 'care', 1)
@@ -247,9 +247,39 @@ try:
         assign_group('building', 'rest', 'building', 2)
         native_click('[data-action="close-workforce"]')
         assert page('return scene.gathering.workforce.getWorkers().length;') == 9
+        material_balance = page("""
+          const resources = scene.gathering.resources;
+          const store = resources.stores.get('building-material-store');
+          const capacity = store.capacity;
+          store.capacity = store.amount;
+          if (!(store.capacity > 0)) throw Error('Full-store test setup has no real stock');
+          const before = scene.excavation.materials.balance;
+          scene.previewCells = [{column:150,row:28},{column:149,row:28},{column:148,row:28},{column:147,row:28}];
+          scene.commitDigOrder();
+          if (!scene.excavation.getOrders().length) throw Error('Full-store fixture must target solid earth');
+          for (let frame=0; frame<2400 && scene.excavation.materials.balance.produced < before.produced+3; frame++) scene.update(0,50);
+          let balance = scene.excavation.materials.balance;
+          if (balance.produced < before.produced+3 || balance.ground < 3 || store.amount !== store.capacity) throw Error('Full store incorrectly stopped digging or lost ground material: ' + JSON.stringify({before,balance,store,builders:scene.excavation.getBuilders(),orders:scene.excavation.getOrders(),workers:scene.gathering.getWorkers()}));
+          window.__anthiveFullStoreCapacity = capacity;
+          return balance;
+        """)
+        print(json.dumps({'fullStoreBalance': material_balance}))
+        screenshot('anthive-b2-full-store-ground.png')
+        material_balance = page("""
+          const store = scene.gathering.resources.stores.get('building-material-store');
+          scene.excavation.materials.consumeFromStore(store.id, store.amount);
+          store.capacity = window.__anthiveFullStoreCapacity;
+          for(let frame=0;frame<2400 && (scene.excavation.materials.balance.ground>0 || scene.excavation.materials.balance.carried>0);frame++) scene.update(0,50);
+          const b=scene.excavation.materials.balance;
+          if(b.ground>0 || b.carried>0 || Math.abs(b.initial+b.produced-b.stored-b.consumed)>1e-8) throw Error('Material cleanup/conservation failed');
+          scene.updateEconomyHud();
+          return b;
+        """)
+        print(json.dumps({'afterCleanupBalance': material_balance}))
+
 
         page('''
-          for (const store of scene.gathering.resources.listStores()) scene.gathering.resources.takeFromStore(store.id, store.amount);
+          for (const store of scene.gathering.resources.listStores()) if (store.resource !== 'buildingMaterial') scene.gathering.resources.takeFromStore(store.id, store.amount);
           scene.gathering.supply.advance(6.1, {activeWorkers:9,restingWorkers:0,queens:1});
           scene.updateEconomyHud();
           if (!scene.economyHud.warning.text.includes('Verlustrisiko')) throw Error('Missing late shortage warning');
@@ -272,7 +302,7 @@ try:
         command('Marionette:Quit', {'flags': ['eForceQuit']})
         browser.wait(timeout=10)
         browser = None
-        print('PASS: priorities, groups (mouse/touch), safe transfer, nine visible IDs, 50% foreign digging, rest, layout, delivery, warnings, pond')
+        print('PASS: A4/B1/B2 priorities, groups, physical transfer, 50% digging, full-store continuation, ground cleanup, conserved material, rest, warnings, pond')
 finally:
     if browser is not None:
         browser.terminate()

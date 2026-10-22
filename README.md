@@ -56,9 +56,9 @@ Each store has its own ID, position, resource, capacity and stock. `takeFromSour
 
 `simulationConfig.ts` holds provisional source/time/capacity values (10 food/water or 8 building-material units per tile). The existing 54-tile food store and 48-tile material store therefore have test capacities of 540 and 384. Stores start empty unless explicit valid stocks are provided; A1 does not choose a new starting colony or grant demo resources. A1 left water storage absent; A2 now adds a separate connected 54-tile water chamber (test capacity 540) without replacing any existing room.
 
-The A1 foundation is now connected to the running A2 food/water transport economy described below. The same single clock drives regeneration and transport; the former food demo loop is removed. Integrating the existing digging-material counter remains B2. A3 now adds adult consumption and shortage/recovery (see below); A4 adds its minimal resource HUD and priority controls below; brood and egg allocation remain later steps. The side-view pond and existing gameplay graphics remain intact; `?view=pond` still opens the map at the pond.
+The A1 foundation is now connected to the running A2 food/water transport economy described below. The same single clock drives regeneration and transport; the former food demo loop is removed. B2 now integrates excavation material with actual A1 stores and a conserved physical material balance (see below). A3 now adds adult consumption and shortage/recovery (see below); A4 adds its minimal resource HUD and priority controls below; brood and egg allocation remain later steps. The side-view pond and existing gameplay graphics remain intact; `?view=pond` still opens the map at the pond.
 
-Run **`npm test`** (Node 22.12+; verified here with Node 24.22.1) for all tests, including clock, sources, individual stores, world adapter and existing graphics/world checks. The command explicitly uses `--test-isolation=none`: in this environment the default isolated runner reported file-level results without individual test results, so the full suite runs in one process for verifiable per-test output. `npm run test:world` remains available for the original world-only check. See `docs/A1-RESSOURCEN-ERGEBNIS.md` for the handoff and `planung/00-START-HIER-CODEX-ARBEITSPLAN-UND-KONSISTENZPRUEFUNG.md` for the authoritative order. A2 through A4 and B1 were approved subsequently; B2 still requires user approval.
+Run **`npm test`** (Node 22.12+; verified here with Node 24.22.1) for all tests, including clock, sources, individual stores, world adapter and existing graphics/world checks. The command explicitly uses `--test-isolation=none`: in this environment the default isolated runner reported file-level results without individual test results, so the full suite runs in one process for verifiable per-test output. `npm run test:world` remains available for the original world-only check. See `docs/A1-RESSOURCEN-ERGEBNIS.md` for the handoff and `planung/00-START-HIER-CODEX-ARBEITSPLAN-UND-KONSISTENZPRUEFUNG.md` for the authoritative order. A2 through A4, B1 and B2 were approved subsequently; stop before B3.
 
 Before this draft, the placeholder files were copied to `versions/2026-10-20-before-world-camera/`. If you want to return to that version, ask Codex to restore it.
 
@@ -76,7 +76,7 @@ The model exposes `setPriority('food' | 'water' | 'balanced')`, default `balance
 
 If all suitable stores are full or no useful source is reachable, collectors idle and retry. A full store or blocked route during delivery retains the carried remainder and permits another suitable store/retry; no automatic store-to-store redistribution. Source stock and expected deliveries are reserved for planning but are never credited as stored resources. Finite sources keep the A1 recovery/regeneration behavior.
 
-A3 subsequently adds adult consumption and shortages. Brood, group-management interface and transport traffic simulation remain later steps. The old building-material demo is still separate until B2. Read `docs/A2-TRANSPORTE-ERGEBNIS.md` for verification and the next stop point.
+A3 subsequently adds adult consumption and shortages. Brood, group-management interface and transport traffic simulation remain later steps. B2 subsequently replaces the separate building-material demo with real excavation, transport and A1 storage. Read `docs/A2-TRANSPORTE-ERGEBNIS.md` for verification and the next stop point.
 
 ### Preview on an iPhone
 
@@ -89,7 +89,7 @@ The running scene uses `createColonySimulation`, which extends the existing tran
 
 `ADULT_SUPPLY_CONFIG` keeps all adult balance values editable: 1 food/water per active worker/day, separate queen rates of 1, warning through two missing days, then 85% work / 75% egg factor, after four missing days 65% work / 0% egg factor. Food and water are tracked independently; the worse factor applies. Recovery takes a provisional full day of supply; short deliveries give partial recovery without immediately resetting the shortage history. The egg factor is data only, without queen or brood behavior.
 
-The user selected a provisional 5% worker loss rate per further shortage day after six complete days. Fractional losses accumulate against surviving workers, avoiding forced daily deaths in a small colony; food and water do not double this rate. The queen is excluded. Real workers are removed, reservations released and carried loads left on the ground without store credit. Automatic pickup of old dropped cargo/rubble remains B2, so these retained loads cannot yet be recollected. A4 subsequently adds the minimal resource HUD and priority controls described below. See `docs/A3-VERBRAUCH-UND-MANGEL-ERGEBNIS.md` for validation and remaining test decisions.
+The user selected a provisional 5% worker loss rate per further shortage day after six complete days. Fractional losses accumulate against surviving workers, avoiding forced daily deaths in a small colony; food and water do not double this rate. The queen is excluded. Real workers are removed, reservations released and carried loads left on the ground without store credit. B2 adds pickup of old building-material piles; dropped food/water cargo remains retained separately and cannot yet be recollected. A4 subsequently adds the minimal resource HUD and priority controls described below. See `docs/A3-VERBRAUCH-UND-MANGEL-ERGEBNIS.md` for validation and remaining test decisions.
 
 
 ### A4 resource HUD and collection priority (2026-10-22)
@@ -102,7 +102,7 @@ Click or tap **Nahrung**, **Ausgeglichen** or **Wasser** to change the existing 
 
 `npm test` includes eight real-length game days for each priority plus explicit source exhaustion/recovery. For actual mouse/touch, text bounds, input isolation, delivery/digging and warning checks, run **`python3 scripts/check-economy-browser.py`** with Firefox and installed npm packages. The script starts/stops its own local Vite and temporary Firefox instance and saves screenshots in ignored `node_modules/.cache/`. The small landscape window is a desktop-browser check, not an iPhone certification.
 
-A4 was followed by the separately approved B1 worker groups below. Complete material economy (B2), nest-building tools and brood remain later steps. See `docs/A4-RESSOURCEN-HUD-ERGEBNIS.md` for changes, validation and remaining limitations.
+A4 was followed by the separately approved B1 worker groups below. B2 material economy follows below; nest-building tools and brood remain later steps. See `docs/A4-RESSOURCEN-HUD-ERGEBNIS.md` for changes, validation and remaining limitations.
 
 
 ### B1 workforce groups and assignments (2026-10-22)
@@ -117,4 +117,17 @@ Without suitable gathering tasks, workers rest at the existing reduced consumpti
 
 `workforceSystem.ts` manages identity and group assignments; `createWorkforceSimulation` integrates existing gathering, builder adapters, supply and clock. Its `moveWorkers(specialization, from, to, count)` is the live group-edit API. The native modal handles quantity inputs and blocks map gestures; it can scroll on small landscape displays. The game continues running while it is open. Closing it restores the full map interaction.
 
-`npm test` covers group invariants, actual cargo-safe transitions, physical returns, half-rate work, rest consumption, mortality, shared time accounting and unchanged native-group economics over three days. `python3 scripts/check-economy-browser.py` additionally covers actual form submission, nine unique visible worker IDs and 50% foreign digging followed by material delivery. See `docs/B1-ARBEITSGRUPPEN-ERGEBNIS.md`. Stop before B2.
+`npm test` covers group invariants, actual cargo-safe transitions, physical returns, half-rate work, rest consumption, mortality, shared time accounting and unchanged native-group economics over three days. `python3 scripts/check-economy-browser.py` additionally covers actual form submission, nine unique visible worker IDs and 50% foreign digging followed by material delivery. See `docs/B1-ARBEITSGRUPPEN-ERGEBNIS.md`. B2 follows below.
+
+
+### B2 excavation and material balance (2026-10-22)
+
+Actual tile removal produces material once: loose earth 6 seconds / 1 unit, compact earth 12 / 2, clay 18 / 3, stone 30 / 4, deep rock **36 / 5** (user-selected highest + lowest existing values). All are provisional central `EXCAVATION_CONFIG` values. Existing digging-grade restrictions remain independent. B1 foreign-work efficiency and A3 shortage speed affect the same existing simulation clock.
+
+Builders carry at most five units. Four units continue into executable digging; full loads are delivered, and partial loads are delivered at the end of executable work or before reassignment. Only actual arrival and accepted deposit increase the existing individual A1 material chamber stock. The HUD reads that same amount and capacity (384 initially), replacing the old separate counter. Empty stores show no stock mound.
+
+Full/unreachable stores do not stop digging: surplus stays in non-blocking, visible piles at actual excavation sites. Old piles are collected only after executable digging. Locked/unreachable orders allow cleanup. Partial acceptance preserves the carried remainder; death leaves it at the real position. A pending group change cannot remove a worker carrying blocked material.
+
+`BuildingMaterialSystem` tracks ground, carried, stored and consumed quantities: initial stock + actual yield = ground + carried + stored + consumed. `ExcavationSystem` owns the existing cardinal digging and transport jobs independently of Phaser; `WorldScene` renders its state. Material consumption is an accounting API only; furnishing, construction costs and new tools are not activated. Stores still start empty; later construction needs a separately decided playable bootstrap.
+
+`npm test` covers actual yields/times, conservation, full stores, multiple builders, blocked paths, partial acceptance, redirection, work-rate/time integration and actual builder handoffs during digging/loading/delivery. `python3 scripts/check-economy-browser.py` covers the running map, controls, worker groups, half-rate digging, full-store continuation, ground cleanup, stock HUD and pond. See `docs/B2-MATERIALBILANZ-ERGEBNIS.md`. **Stop before B3.**

@@ -50,3 +50,22 @@ export type AdultSupplyConfig = typeof ADULT_SUPPLY_CONFIG;
 
 // B1 user-selected provisional efficiency for explicitly assigned foreign work.
 export const WORKFORCE_CONFIG = { foreignWorkEfficiency: 0.5 };
+
+// B2 editable test values. Deep rock: user selected highest + lowest existing
+// values in each column (30+6 seconds, 4+1 material) on 2026-10-22.
+export const EXCAVATION_CONFIG = {
+  speed: 78,
+  carryCapacity: 5,
+  interactionSeconds: 0.3,
+  maxStepSeconds: 0.1,
+  terrain: {
+    soil: { seconds: 6, yield: 1 },
+    topsoil: { seconds: 6, yield: 1 },
+    compactEarth: { seconds: 12, yield: 2 },
+    clay: { seconds: 18, yield: 3 },
+    stone: { seconds: 30, yield: 4 },
+    stoneLayer: { seconds: 30, yield: 4 },
+    deepRock: { seconds: 36, yield: 5 },
+  },
+};
+export type ExcavationConfig = typeof EXCAVATION_CONFIG;

@@ -3,8 +3,9 @@ import { createColonySimulation } from './colonySimulation.ts';
 import { WorkforceSystem } from './workforceSystem.ts';
 import type { Specialization, WorkAssignment, WorkforceWorker } from './workforceSystem.ts';
 import type { SimulationConfig, AdultSupplyConfig } from './simulationConfig.ts';
+import type { ResourceSystem } from './resourceSystem.ts';
 
-export type BuilderSnapshot = { id: string; position: WorldPoint; resting: boolean };
+export type BuilderSnapshot = { id: string; position: WorldPoint; resting: boolean; readyToLeave?: boolean };
 export type WorkforceBuilderAdapter = {
   workers: () => BuilderSnapshot[];
   addWorker: (id: string, position: WorldPoint) => void;
@@ -24,10 +25,11 @@ const distance = (a: WorldPoint, b: WorldPoint) => Math.hypot(a.x - b.x, a.y - b
 /** B1 coordinates existing engines; all stocks, time and mortality remain A1–A3. */
 export function createWorkforceSimulation(
   world: StartingWorld,
-  builders: WorkforceBuilderAdapter,
+  builderSource: WorkforceBuilderAdapter | ((resources: ResourceSystem) => WorkforceBuilderAdapter),
   config?: SimulationConfig,
   supplyConfig?: AdultSupplyConfig,
 ) {
+  let builders: WorkforceBuilderAdapter;
   const workforce = new WorkforceSystem();
   const states = new Map<string, EngineState>();
   const home = world.landmarks.nestChamberCenter;
@@ -47,6 +49,7 @@ export function createWorkforceSimulation(
       reconcile();
     },
   }, config, supplyConfig);
+  builders = typeof builderSource === 'function' ? builderSource(simulation.resources) : builderSource;
   for (const collector of simulation.gathering.getCollectors()) {
     workforce.addWorker(collector.id, 'gathering');
     states.set(collector.id, { engine: 'gathering', position: { ...collector.position } });
@@ -75,7 +78,7 @@ export function createWorkforceSimulation(
         const builder = activeBuilders.get(worker.id);
         if (!builder) { workforce.removeWorker(worker.id); states.delete(worker.id); continue; }
         state.position = { ...builder.position };
-        if (worker.assignment !== 'building' && builder.resting) {
+        if (worker.assignment !== 'building' && (builder.readyToLeave ?? builder.resting)) {
           builders.removeWorker(worker.id);
           state.engine = 'parked';
         }

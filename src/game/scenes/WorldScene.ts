@@ -29,7 +29,7 @@ import {
 } from '../world/worldTileArtRenderer';
 import type { TerrainKind } from '../world/worldTypes';
 import { startingWorld } from '../world/worldGenerator';
-import { findGridPath } from '../world/gridPathfinding';
+import { ExcavationSystem, requiredDiggingGrade } from '../simulation/excavationSystem';
 import { createWorkforceSimulation } from '../simulation/workforceSimulation';
 import { WorkforcePanel } from '../ui/WorkforcePanel';
 import { EconomyHud, isEconomyHudPoint } from '../ui/EconomyHud';
@@ -47,39 +47,6 @@ const LAYER_COLORS: Partial<Record<TerrainKind, number>> = {
 };
 
 type DigCell = { column: number; row: number };
-type DigOrder = { cells: DigCell[]; index: number };
-type MaterialLoad = {
-  id: number;
-  cell: DigCell;
-  state: 'waiting' | 'carried' | 'stored';
-  visual: Phaser.GameObjects.Container;
-};
-type DigJob = {
-  kind: 'dig';
-  phase: 'walking' | 'digging' | 'loading';
-  path: DigCell[];
-  pathIndex: number;
-  target: DigCell;
-  order: DigOrder;
-  orderIndex: number;
-  duration: number;
-  progress: number;
-  load?: MaterialLoad;
-};
-type HaulJob = {
-  kind: 'haul';
-  phase: 'store';
-  path: DigCell[];
-  pathIndex: number;
-  load: MaterialLoad;
-};
-type BuilderWorker = {
-  id: string;
-  body: Phaser.GameObjects.Container;
-  cell: DigCell;
-  job: DigJob | HaulJob | null;
-};
-
 export class WorldScene extends Phaser.Scene {
   private dragMode: 'none' | 'camera' | 'dig' = 'none';
   private lastPointerX = 0;
@@ -100,13 +67,9 @@ export class WorldScene extends Phaser.Scene {
   private digStart: DigCell | null = null;
   private previewCells: DigCell[] = [];
   private dugCells: DigCell[] = [];
-  private digOrders: DigOrder[] = [];
-  private digReservations = new Set<string>();
-  private reachableOpenCells = new Set<string>();
-  private materialLoads: MaterialLoad[] = [];
-  private builderWorkers: BuilderWorker[] = [];
-  private nextMaterialLoadId = 1;
-  private storedBuildingMaterial = 0;
+  private excavation!: ExcavationSystem;
+  private builderWorkers: Array<{ id: string; body: Phaser.GameObjects.Container; load: Phaser.GameObjects.Container }> = [];
+  private materialPiles = new Map<string, { body: Phaser.GameObjects.Container; label: Phaser.GameObjects.Text }>();
   private diggingGrade = 0;
   private upgradeButton?: Phaser.GameObjects.Text;
   private digStatus?: Phaser.GameObjects.Text;
@@ -120,17 +83,23 @@ export class WorldScene extends Phaser.Scene {
   }
 
   create(): void {
-    this.createBuilderWorkers();
-    this.gathering = createWorkforceSimulation(startingWorld, {
-      workers: () => this.builderWorkers.map(worker => ({ id: worker.id, resting: !worker.job,
-        position: { x: worker.body.x, y: worker.body.y } })),
-      addWorker: (id, position) => this.createBuilderWorker(id, position),
-      removeWorker: id => this.retireBuilderWorker(id),
-      retireWorker: id => this.retireBuilderWorker(id),
-      advanceWorkers: (seconds, factor) => this.updateBuilderWorkers(seconds * 1000 * factor),
+    this.gathering = createWorkforceSimulation(startingWorld, resources => {
+      this.excavation = new ExcavationSystem(startingWorld, resources);
+      const home = this.cellAt(nestChamberCenter.x, nestChamberCenter.y)!;
+      for (let index = 0; index < 2; index++) this.excavation.addBuilder(`builder-${index}`, {
+        x: (home.column + 0.35 + index * 0.3) * TILE_SIZE, y: (home.row + 0.5) * TILE_SIZE,
+      });
+      return {
+        workers: () => this.excavation.getBuilders(),
+        addWorker: (id, position) => this.excavation.addBuilder(id, position),
+        removeWorker: id => this.excavation.removeBuilder(id),
+        retireWorker: id => this.excavation.removeBuilder(id),
+        advanceWorkers: (seconds, factor) => this.excavation.advance(seconds, factor,
+          id => this.gathering.workforce.getWorker(id).assignment === 'building',
+          id => this.gathering.workforce.efficiency(id, 'building')),
+      };
     });
     this.drawWorld();
-    this.initializeReachability();
     this.excavationGraphics = this.add.graphics().setDepth(2);
     this.digPreviewGraphics = this.add.graphics().setDepth(3);
     this.drawFoodMarkers();
@@ -139,6 +108,7 @@ export class WorldScene extends Phaser.Scene {
     this.drawLabels();
     this.createDigControls();
     this.createAnts();
+    this.syncBuilderVisuals();
     this.workforcePanel = new WorkforcePanel(
       document.querySelector('#game')!,
       (specialization, from, to, count) => {
@@ -159,6 +129,11 @@ export class WorldScene extends Phaser.Scene {
 
   update(_time: number, delta: number): void {
     this.gathering.advance(delta / 1000);
+    const changedCells = this.excavation.drainChangedCells();
+    for (const cell of changedCells) { this.dugCells.push(cell); this.renderExcavatedTiles(cell); }
+    if (changedCells.length) this.refreshSourceReachability();
+    this.syncBuilderVisuals();
+    this.syncMaterialPiles();
     const collectors = new Map(this.gathering.gathering.getCollectors().map(ant => [ant.id, ant]));
     const visibleWorkers = new Map(this.gathering.getWorkers().filter(worker => worker.actualWork !== 'building').map(worker => [worker.id, worker]));
     this.createAnts();
@@ -175,6 +150,7 @@ export class WorldScene extends Phaser.Scene {
     this.foodStockLabel?.setText(`NAHRUNG: ${this.gathering.resources.getStore('food-store').amount.toFixed(1)}`);
     this.waterStockLabel?.setText(`WASSER: ${this.gathering.resources.getStore('water-store').amount.toFixed(1)}`);
     this.drawFoodMarkers();
+    this.drawBuildingMaterialPile();
     this.overviewRefreshSeconds -= delta / 1000;
     if (this.overviewRefreshSeconds <= 0) {
       this.overviewRefreshSeconds = 0.25;
@@ -200,27 +176,9 @@ export class WorldScene extends Phaser.Scene {
   private updateEconomyHud(): void {
     this.workforcePanel.update(this.gathering.getWorkers());
     this.economyHud.update(buildEconomyOverview(this.gathering, {
-      buildingMaterial: this.storedBuildingMaterial,
       otherWorkerCount: this.gathering.getWorkers().filter(worker => worker.actualWork !== 'gathering').length,
       sourceReachability: this.sourceReachability,
     }));
-  }
-
-  private retireBuilderWorker(id: string): void {
-    const worker = this.builderWorkers.find(candidate => candidate.id === id);
-    if (!worker) return;
-    const job = worker.job;
-    if (job?.kind === 'dig') this.digReservations.delete(this.cellKey(job.target));
-    const load = job?.load;
-    if (load?.state === 'carried') {
-      worker.body.remove(load.visual);
-      this.add.existing(load.visual);
-      load.visual.setPosition(worker.body.x, worker.body.y).setDepth(6);
-      load.cell = { ...worker.cell };
-      load.state = 'waiting';
-    }
-    worker.body.destroy();
-    this.builderWorkers = this.builderWorkers.filter(candidate => candidate !== worker);
   }
 
   private drawWorld(): void {
@@ -506,29 +464,11 @@ export class WorldScene extends Phaser.Scene {
         event.stopPropagation();
         this.diggingGrade = (this.diggingGrade + 1) % 4;
         this.updateUpgradeLabel();
-        this.builderWorkers.forEach((worker) => {
-          const job = worker.job;
-          if (
-            !job ||
-            job.kind !== 'dig' ||
-            job.phase === 'loading' ||
-            this.requiredGrade(job.target) <= this.diggingGrade
-          ) return;
-          this.digReservations.delete(this.cellKey(job.target));
-          worker.job = null;
-        });
+        this.excavation.setDiggingGrade(this.diggingGrade);
         this.digStatus?.setText(`Test-Grabkraft ${this.diggingGrade}: Grabaufträge prüfen jetzt härtere Schichten.`);
         this.renderDigPreview();
       },
     );
-  }
-
-  private createBuilderWorkers(): void {
-    const home = this.cellAt(nestChamberCenter.x, nestChamberCenter.y);
-    if (!home) return;
-    for (let index = 0; index < 2; index++) this.createBuilderWorker(`builder-${index}`, {
-      x: (home.column + 0.35 + index * 0.3) * TILE_SIZE, y: (home.row + 0.5) * TILE_SIZE,
-    });
   }
 
   private createBuilderWorker(id: string, position: { x: number; y: number }): void {
@@ -548,7 +488,9 @@ export class WorldScene extends Phaser.Scene {
     shape.moveTo(6, -2); shape.lineTo(8, -4);
     shape.strokePath();
     body.add(shape);
-    this.builderWorkers.push({ id, body, cell, job: null });
+    const load = this.createMaterialVisual(position.x, position.y);
+    load.removeFromDisplayList(); body.add(load); load.setPosition(8, -6).setVisible(false);
+    this.builderWorkers.push({ id, body, load });
   }
 
   private updateUpgradeLabel(): void {
@@ -642,54 +584,8 @@ export class WorldScene extends Phaser.Scene {
     return { column, row };
   }
 
-  private cellKey(cell: DigCell): string {
-    return `${cell.column},${cell.row}`;
-  }
-
-  private initializeReachability(): void {
-    const home = this.cellAt(nestChamberCenter.x, nestChamberCenter.y);
-    if (home) this.expandReachability(home, true);
-  }
-
-  private expandReachability(start: DigCell, seed = false): boolean {
-    if (!isOpenTile(worldMap[start.row]?.[start.column])) return false;
-    const key = this.cellKey(start);
-    if (this.reachableOpenCells.has(key)) return true;
-
-    const neighbors = [
-      { column: start.column - 1, row: start.row },
-      { column: start.column + 1, row: start.row },
-      { column: start.column, row: start.row - 1 },
-      { column: start.column, row: start.row + 1 },
-    ];
-    if (!seed && !neighbors.some((cell) => this.reachableOpenCells.has(this.cellKey(cell)))) return false;
-
-    const queue = [start];
-    let queueIndex = 0;
-    this.reachableOpenCells.add(key);
-    while (queueIndex < queue.length) {
-      const current = queue[queueIndex];
-      queueIndex += 1;
-      const nextCells = [
-        { column: current.column - 1, row: current.row },
-        { column: current.column + 1, row: current.row },
-        { column: current.column, row: current.row - 1 },
-        { column: current.column, row: current.row + 1 },
-      ];
-      nextCells.forEach((next) => {
-        if (!isOpenTile(worldMap[next.row]?.[next.column])) return;
-        const nextKey = this.cellKey(next);
-        if (this.reachableOpenCells.has(nextKey)) return;
-        this.reachableOpenCells.add(nextKey);
-        queue.push(next);
-      });
-    }
-    return true;
-  }
-
   private requiredGrade(cell: DigCell): number {
-    if (worldMap[cell.row]?.[cell.column].terrain === 'stone') return 3;
-    return diggingGradeAt(cell.column, cell.row);
+    return requiredDiggingGrade(cell, worldMap[cell.row][cell.column]);
   }
 
   private lineCells(start: DigCell, end: DigCell): DigCell[] {
@@ -705,7 +601,6 @@ export class WorldScene extends Phaser.Scene {
     while (true) {
       const cell = worldMap[y]?.[x];
       if (!cell || cell.terrain === 'air' || cell.terrain === 'surface') break;
-      if (cell.state === 'rubble') break;
       cells.push({ column: x, row: y });
       if (isDiggableTile(cell) && this.requiredGrade({ column: x, row: y }) > this.diggingGrade) break;
       if (x === end.column && y === end.row) break;
@@ -756,183 +651,57 @@ export class WorldScene extends Phaser.Scene {
     });
     if (!hasDiggableTile) return;
 
-    this.digOrders.push({ cells: [...this.previewCells], index: 1 });
+    this.excavation.addOrder(this.previewCells);
     this.digStatus?.setText('Grabauftrag erteilt: Die Ameisen graben den Weg nach und nach.');
   }
 
-  private updateBuilderWorkers(delta: number): void {
-    this.builderWorkers.forEach((worker) => this.advanceBuilderJob(worker, delta * this.gathering.workforce.efficiency(worker.id, 'building')));
-    this.builderWorkers.forEach((worker) => {
-      if (!worker.job && this.gathering.workforce.getWorker(worker.id).assignment === 'building') this.assignBuilderWork(worker);
-    });
-  }
-
-  private assignBuilderWork(worker: BuilderWorker): void {
-    for (const order of this.digOrders) {
-      while (order.index < order.cells.length) {
-        const target = order.cells[order.index];
-        const material = worldMap[target.row]?.[target.column];
-        if (!material) {
-          order.index += 1;
-          continue;
-        }
-        if (material.state === 'open') {
-          order.index += 1;
-          continue;
-        }
-        if (material.state === 'rubble') break;
-        if (!isDiggableTile(material)) {
-          order.index += 1;
-          continue;
-        }
-
-        const reservationKey = this.cellKey(target);
-        if (this.digReservations.has(reservationKey)) break;
-        const grade = this.requiredGrade(target);
-        if (grade > this.diggingGrade) {
-          this.digStatus?.setText(material.terrain === 'stone'
-            ? `Stein braucht Test-Grabkraft ${grade}; die Ameise bleibt im freien Gang.`
-            : `Diese Erdschicht braucht Test-Grabkraft ${grade}; die Ameise bleibt im freien Gang.`);
-          break;
-        }
-
-        const approaches = [
-          { column: target.column - 1, row: target.row },
-          { column: target.column + 1, row: target.row },
-          { column: target.column, row: target.row - 1 },
-          { column: target.column, row: target.row + 1 },
-        ].filter((cell) => this.reachableOpenCells.has(this.cellKey(cell)));
-        const routeOptions = approaches
-          .map((cell) => ({ cell, path: this.findPath(worker.cell, cell) }))
-          .filter((option): option is { cell: DigCell; path: DigCell[] } => option.path !== null)
-          .sort((left, right) => left.path.length - right.path.length);
-        const approach = routeOptions[0];
-        if (!approach) {
-          this.digStatus?.setText('Der Grabweg berührt den freien Tunnel nur diagonal. Zieh einen zweiten Gang daneben.');
-          break;
-        }
-
-        this.digReservations.add(reservationKey);
-        worker.job = {
-          kind: 'dig',
-          phase: 'walking',
-          path: approach.path,
-          pathIndex: 0,
-          target,
-          order,
-          orderIndex: order.index,
-          duration: 650 + grade * 450,
-          progress: 0,
-        };
-        return;
-      }
-      if (order.index >= order.cells.length) this.digOrders.splice(this.digOrders.indexOf(order), 1);
+  private syncBuilderVisuals(): void {
+    const workers = new Map(this.excavation.getBuilders().map(worker => [worker.id, worker]));
+    for (const worker of workers.values()) {
+      if (!this.builderWorkers.some(visual => visual.id === worker.id)) this.createBuilderWorker(worker.id, worker.position);
     }
-  }
-
-  private advanceBuilderJob(worker: BuilderWorker, delta: number): void {
-    const job = worker.job;
-    if (!job) return;
-
-    if (job.kind === 'dig') {
-      if (job.phase === 'walking') {
-        job.pathIndex = this.walkAlongPath(worker, job.path, job.pathIndex, delta);
-        if (job.pathIndex >= job.path.length) {
-          job.phase = 'digging';
-          job.progress = 0;
-        }
-        return;
-      }
-
-      if (job.phase === 'loading') {
-        job.progress += Math.min(delta, 100);
-        if (job.progress < 300 || !job.load) return;
-        const storeCell = this.cellAt(buildingMaterialStoreCenter.x, buildingMaterialStoreCenter.y);
-        const route = storeCell ? this.findPath(worker.cell, storeCell) : null;
-        if (!route) {
-          this.digStatus?.setText('Das Baustofflager ist über freie Tunnel nicht erreichbar.');
-          return;
-        }
-
-        job.load.state = 'carried';
-        job.load.visual.removeFromDisplayList();
-        worker.body.add(job.load.visual);
-        job.load.visual.setPosition(8, -6).setDepth(1);
-        worldMap[job.target.row][job.target.column].state = 'open';
-        this.expandReachability(job.target);
-        this.refreshSourceReachability();
-        this.renderExcavatedTiles(job.target);
-        worker.job = { kind: 'haul', phase: 'store', path: route, pathIndex: 0, load: job.load };
-        this.digStatus?.setText('Der Haufen ist weg; die Ameise bringt genau diese Ladung ins Baustofflager.');
-        return;
-      }
-
-      job.progress += Math.min(delta, 100);
-      if (job.progress < job.duration) return;
-      worldMap[job.target.row][job.target.column].state = 'rubble';
-      this.dugCells.push(job.target);
-      job.load = this.createMaterialLoad(job.target);
-      job.phase = 'loading';
-      job.progress = 0;
-      this.digReservations.delete(this.cellKey(job.target));
-      job.order.index = Math.max(job.order.index, job.orderIndex + 1);
-      this.renderExcavatedTiles(job.target);
-      this.digStatus?.setText('Der Erdhaufen blockiert den neuen Tunnel, bis die grabende Ameise ihn aufnimmt.');
-      return;
+    for (const visual of this.builderWorkers) {
+      const worker = workers.get(visual.id);
+      if (!worker) { visual.body.destroy(); continue; }
+      if (worker.position.x !== visual.body.x) visual.body.setScale(worker.position.x < visual.body.x ? -1 : 1, 1);
+      visual.body.setPosition(worker.position.x, worker.position.y);
+      visual.load.setVisible(worker.load > 0);
     }
-
-    job.pathIndex = this.walkAlongPath(worker, job.path, job.pathIndex, delta);
-    if (job.pathIndex < job.path.length) return;
-
-    job.load.state = 'stored';
-    job.load.visual.destroy();
-    this.storedBuildingMaterial += 1;
-    this.updateEconomyHud();
-    worker.job = null;
-    this.digStatus?.setText('Eine Baustoffladung ist im separaten Lager angekommen.');
+    this.builderWorkers = this.builderWorkers.filter(visual => workers.has(visual.id));
+    const active = [...workers.values()].find(worker => worker.job) ?? [...workers.values()][0];
+    if (active) this.digStatus?.setText(active.status);
   }
 
-  private walkAlongPath(worker: BuilderWorker, path: DigCell[], pathIndex: number, delta: number): number {
-    if (pathIndex >= path.length) return pathIndex;
-    const target = path[pathIndex];
-    const targetX = (target.column + 0.5) * TILE_SIZE;
-    const targetY = (target.row + 0.5) * TILE_SIZE;
-    const dx = targetX - worker.body.x;
-    const dy = targetY - worker.body.y;
-    const distance = Math.hypot(dx, dy);
-    const step = 78 * Math.min(delta, 100) / 1000;
-    if (distance <= step || distance === 0) {
-      worker.body.setPosition(targetX, targetY);
-      worker.cell = { ...target };
-      return pathIndex + 1;
-    }
-    worker.body.setPosition(worker.body.x + dx / distance * step, worker.body.y + dy / distance * step);
-    if (dx !== 0) worker.body.setScale(dx < 0 ? -1 : 1, 1);
-    return pathIndex;
-  }
-
-  private findPath(start: DigCell, goal: DigCell): DigCell[] | null {
-    return findGridPath(start, goal, cell => this.reachableOpenCells.has(this.cellKey(cell)));
-  }
-
-  private createMaterialLoad(cell: DigCell): MaterialLoad {
-    const visual = this.add.container(
-      (cell.column + 0.5) * TILE_SIZE,
-      (cell.row + 0.5) * TILE_SIZE,
-    ).setDepth(6);
+  private createMaterialVisual(x: number, y: number): Phaser.GameObjects.Container {
+    const visual = this.add.container(x, y).setDepth(6);
     const clods = this.add.graphics();
     clods.fillStyle(0x77573d, 1);
-    clods.fillEllipse(-4, 2, 9, 6);
-    clods.fillEllipse(2, -2, 9, 7);
-    clods.fillEllipse(6, 3, 7, 5);
+    clods.fillEllipse(-4, 2, 9, 6); clods.fillEllipse(2, -2, 9, 7); clods.fillEllipse(6, 3, 7, 5);
     visual.add(clods);
-    const load: MaterialLoad = { id: this.nextMaterialLoadId++, cell: { ...cell }, state: 'waiting', visual };
-    this.materialLoads.push(load);
-    return load;
+    return visual;
+  }
+
+  private syncMaterialPiles(): void {
+    const piles = new Map(this.excavation.materials.getGround().map(pile => [pile.id, pile]));
+    for (const pile of piles.values()) {
+      let visual = this.materialPiles.get(pile.id);
+      if (!visual) {
+        const body = this.createMaterialVisual(pile.position.x, pile.position.y);
+        const label = this.add.text(0, -12, '', { color: COLORS.text, fontFamily: 'system-ui, sans-serif', fontSize: '7px' }).setOrigin(.5);
+        body.add(label); visual = { body, label }; this.materialPiles.set(pile.id, visual);
+      }
+      visual.label.setText(pile.amount.toLocaleString('de-DE', { maximumFractionDigits: 1 }));
+    }
+    for (const [id, visual] of this.materialPiles) {
+      if (!piles.has(id)) { visual.body.destroy(); this.materialPiles.delete(id); }
+    }
   }
 
   private drawBuildingMaterialPile(): void {
     const graphics = this.buildingMaterialPileGraphics;
+    graphics.clear();
+    const stock = this.gathering.resources.getStoreTotals('buildingMaterial').amount;
+    if (stock <= 0) return;
     const centerX = buildingMaterialStoreCenter.x;
     const baseY = buildingMaterialStoreCenter.y + 51;
     graphics.fillStyle(0x77573d, 1);

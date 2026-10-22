@@ -6,7 +6,8 @@ import { buildEconomyOverview, describeSupply, describeSources } from '../src/ga
 
 function fixture() {
   const simulation = createColonySimulation(createStartingWorld());
-  const options = { buildingMaterial: 3, otherWorkerCount: 2,
+  simulation.resources.depositInStore('building-material-store', {resource:'buildingMaterial',amount:3});
+  const options = { otherWorkerCount: 2,
     sourceReachability: new Map([['surface-food-source', true], ['pond', true]]) };
   return { simulation, options, read: () => buildEconomyOverview(simulation, options) };
 }
@@ -20,7 +21,7 @@ test('HUD reads delivered usable stocks separately from sources, in-flight cargo
   const overview = read();
   assert.deepEqual(overview.stocks.food, { amount: 12.5, capacity: 540 });
   assert.deepEqual(overview.stocks.water, { amount: 7, capacity: 540 });
-  assert.equal(overview.buildingMaterial, 3);
+  assert.equal(overview.stocks.buildingMaterial.amount, 3);
   assert.equal(overview.workerCount, 9);
   assert.equal(overview.collectorCount, 7);
   assert.deepEqual(simulation.resources.listStores(), before);

@@ -18,7 +18,6 @@ export type SupplyOverview = {
   recoveryProgress: number;
 };
 export type EconomyOverviewOptions = {
-  buildingMaterial: number;
   otherWorkerCount: number;
   sourceReachability: ReadonlyMap<string, boolean>;
 };
@@ -57,10 +56,7 @@ export function buildEconomyOverview(
     workFactor: supply.workFactor,
     workerLosses: supply.workerLosses,
     priority: simulation.gathering.priority,
-    stocks: { food: simulation.resources.getStoreTotals('food'), water: simulation.resources.getStoreTotals('water') },
-    // The legacy builder counter is authoritative until B2. Do not combine it
-    // with the still separate A1 material-store data or invent a capacity.
-    buildingMaterial: options.buildingMaterial,
+    stocks: { food: simulation.resources.getStoreTotals('food'), water: simulation.resources.getStoreTotals('water'), buildingMaterial: simulation.resources.getStoreTotals('buildingMaterial') },
     sources: { food: projectSources('food'), water: projectSources('water') },
     supply: { food: supplyOverview(supply.food, config), water: supplyOverview(supply.water, config) },
   };

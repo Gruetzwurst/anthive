@@ -29,7 +29,11 @@ server = subprocess.Popen([str(ROOT / 'node_modules/.bin/vite'), '--host', '127.
 browser = None
 try:
     with tempfile.TemporaryDirectory(prefix='anthive-a4-firefox-', dir=OUTPUT) as profile:
-        Path(profile, 'user.js').write_text(f'user_pref("marionette.port", {browser_port});\n')
+        # Expose touch hardware before Phaser performs its boot-time detection.
+        Path(profile, 'user.js').write_text(
+            f'user_pref("marionette.port", {browser_port});\n'
+            'user_pref("dom.w3c_touch_events.enabled", 1);\n'
+            'user_pref("dom.maxtouchpoints.testing.value", 1);\n')
         for _ in range(120):
             try:
                 urlopen(f'http://127.0.0.1:{vite_port}/', timeout=1).close()
@@ -288,8 +292,10 @@ try:
         check_layout()
         command('WebDriver:SetWindowRect', {'width': 844, 'height': 480})
         time.sleep(0.2)
+        assert page('return scene.game.device.input.touch && scene.input.manager.touch?.enabled;'), 'Firefox must emulate touch hardware before game boot'
         click(536, 80, touch=True)
         assert check_layout()['priority'] == 'water'
+        assert page('return scene.input.manager.activePointer.wasTouch;'), 'Touch must reach Phaser directly'
         screenshot('anthive-a4-mobile-landscape.png')
         click(586, 20, touch=True)
         # Wait for the observable dialog state after synthetic touch dispatch.

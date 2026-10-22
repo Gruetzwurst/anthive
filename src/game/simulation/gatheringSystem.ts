@@ -61,6 +61,12 @@ export class GatheringSystem {
     }));
   }
 
+  retireCollector(id: string): CollectorSnapshot | undefined {
+    const snapshot = this.getCollectors().find(worker => worker.id === id);
+    this.workers.delete(id); // Reservations live on the removed job, not in stocks.
+    return snapshot;
+  }
+
   private reservedStore(id: string, except: Worker): number {
     let amount = 0;
     for (const worker of this.workers.values()) if (worker !== except && worker.storeId === id) amount += worker.load?.amount ?? worker.expected;
@@ -157,10 +163,13 @@ export class GatheringSystem {
     }
   }
 
-  advance(realSeconds: number): void {
+  advance(realSeconds: number, workFactor = 1): void {
     nonNegativeFinite(realSeconds, 'realSeconds');
+    nonNegativeFinite(workFactor, 'workFactor');
+    if (workFactor > 1) throw new RangeError('workFactor must not exceed 1');
+    if (workFactor === 0) return;
     for (const worker of this.workers.values()) {
-      let remaining = realSeconds;
+      let remaining = realSeconds * workFactor;
       while (remaining > 1e-9) {
         if (worker.retryIn > 0) {
           const wait = Math.min(remaining, worker.retryIn);

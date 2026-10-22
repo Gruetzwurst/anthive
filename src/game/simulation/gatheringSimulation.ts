@@ -22,7 +22,10 @@ export function createGatheringSimulation(
   }
   return {
     clock: simulation.clock, resources: simulation.resources, gathering, navigation,
-    advance(realSeconds: number) {
+    advance(realSeconds: number, hooks?: {
+      workFactor: () => number;
+      afterStep: (gameDays: number, realSeconds: number, workFactor: number) => void;
+    }) {
       nonNegativeFinite(realSeconds, 'realSeconds');
       // Interleave real regeneration and movement rather than regenerating the
       // whole interval before harvesting. This is still the single A1 clock.
@@ -32,7 +35,10 @@ export function createGatheringSimulation(
       for (let index = 0; index < slices; index++) {
         const step = simulation.advance(stepSeconds);
         if (step.elapsedGameDays === 0) break;
-        gathering.advance(step.elapsedGameDays * simulation.clock.secondsPerGameDay);
+        const factor = hooks?.workFactor() ?? 1;
+        const elapsedSeconds = step.elapsedGameDays * simulation.clock.secondsPerGameDay;
+        gathering.advance(elapsedSeconds, factor);
+        hooks?.afterStep(step.elapsedGameDays, elapsedSeconds, factor);
       }
       return {
         elapsedGameDays: simulation.clock.totalGameDays - before,

@@ -29,3 +29,21 @@ export const GATHERING_CONFIG = {
 export type GatheringConfig = typeof GATHERING_CONFIG;
 export const GATHERING_PREVIEW_COUNT = 7;
 export const GATHERING_MAX_STEP_SECONDS = 0.1;
+
+// A3 provisional balance. Only the 5% worker loss from day 7 was explicitly
+// selected by the user; the other numbers remain adjustable testing defaults.
+export const ADULT_SUPPLY_CONFIG = {
+  workerPerDay: { food: 1, water: 1 },
+  queenPerDay: { food: 1, water: 1 },
+  restingConsumptionFactor: 0.8,
+  warningDays: 2,
+  severeAfterDays: 4,
+  mortalityAfterDays: 6,
+  reducedWorkFactor: 0.85,
+  reducedEggFactor: 0.75,
+  severeWorkFactor: 0.65,
+  severeEggFactor: 0,
+  recoveryDays: 1,
+  workerLossFractionPerDay: 0.05,
+};
+export type AdultSupplyConfig = typeof ADULT_SUPPLY_CONFIG;

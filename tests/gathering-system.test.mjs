@@ -144,3 +144,32 @@ test('fractional and large transport steps conserve resources and snapshots cann
   assert.throws(() => a.gathering.setPriority('unknown'), /priority/i);
   assert.throws(() => a.gathering.addCollector('a', point(0)), /duplicate/i);
 });
+
+test('adult work factor slows travel and interaction without advancing resource stocks', () => {
+  const { gathering, resources } = fixture();
+  gathering.advance(1, 0.5);
+  assert.equal(gathering.getCollectors()[0].position.x, 5);
+  gathering.advance(1, 0.5);
+  gathering.advance(0.25, 0.5);
+  assert.equal(resources.getSource('food').amount, 200);
+  gathering.advance(0.25, 0.5);
+  assert.equal(gathering.getCollectors()[0].load.amount, 5);
+  const before = gathering.getCollectors();
+  gathering.advance(10, 0);
+  assert.deepEqual(gathering.getCollectors(), before);
+});
+
+test('retiring a carrier releases reservations and returns the actual undelivered load', () => {
+  const { gathering, resources } = fixture();
+  gathering.advance(1.25);
+  const retired = gathering.retireCollector('a');
+  assert.equal(retired.load.amount, 5);
+  assert.equal(retired.position.x, 10);
+  assert.equal(gathering.getCollectors().length, 0);
+  assert.equal(resources.getSource('food').amount, 195);
+  assert.equal(resources.getStore('store').amount, 0);
+  gathering.addCollector('b', point(0));
+  gathering.advance(3);
+  assert.equal(resources.getStore('store').amount, 5);
+  assert.equal(gathering.retireCollector('missing'), undefined);
+});

@@ -30,7 +30,7 @@ import {
 import type { TerrainKind } from '../world/worldTypes';
 import { startingWorld } from '../world/worldGenerator';
 import { findGridPath } from '../world/gridPathfinding';
-import { createGatheringSimulation } from '../simulation/gatheringSimulation';
+import { createColonySimulation } from '../simulation/colonySimulation';
 
 const COLORS = {
   ...TERRAIN_PALETTE,
@@ -72,6 +72,7 @@ type HaulJob = {
   load: MaterialLoad;
 };
 type BuilderWorker = {
+  id: string;
   role: BuilderWorkerRole;
   body: Phaser.GameObjects.Container;
   cell: DigCell;
@@ -82,8 +83,10 @@ export class WorldScene extends Phaser.Scene {
   private dragMode: 'none' | 'camera' | 'dig' = 'none';
   private lastPointerX = 0;
   private lastPointerY = 0;
-  private gathering!: ReturnType<typeof createGatheringSimulation>;
+  private gathering!: ReturnType<typeof createColonySimulation>;
   private ants: Array<{ id: string; body: Phaser.GameObjects.Container; load: Phaser.GameObjects.Ellipse }> = [];
+  private supplyWarning?: Phaser.GameObjects.Text;
+  private renderedDroppedLoads = new Set<string>();
   private foodMarkers?: Phaser.GameObjects.Graphics;
   private foodStockLabel?: Phaser.GameObjects.Text;
   private waterStockLabel?: Phaser.GameObjects.Text;
@@ -114,7 +117,11 @@ export class WorldScene extends Phaser.Scene {
   }
 
   create(): void {
-    this.gathering = createGatheringSimulation(startingWorld);
+    this.gathering = createColonySimulation(startingWorld, {
+      otherWorkers: () => this.builderWorkers.map(worker => ({ id: worker.id, resting: !worker.job })),
+      retireOtherWorker: id => this.retireBuilderWorker(id),
+      advanceOtherWorkers: (seconds, factor) => this.updateBuilderWorkers(seconds * 1000 * factor),
+    });
     this.drawWorld();
     this.initializeReachability();
     this.excavationGraphics = this.add.graphics().setDepth(2);
@@ -135,16 +142,49 @@ export class WorldScene extends Phaser.Scene {
     const collectors = new Map(this.gathering.gathering.getCollectors().map(ant => [ant.id, ant]));
     this.ants.forEach(ant => {
       const state = collectors.get(ant.id);
-      if (!state) return;
+      if (!state) { ant.body.destroy(); return; }
       if (state.position.x !== ant.body.x) ant.body.setScale(state.position.x < ant.body.x ? -1 : 1, 1);
       ant.body.setPosition(state.position.x, state.position.y);
       ant.load.setVisible((state.load?.amount ?? 0) > 0);
       ant.load.setFillStyle(state.load?.resource === 'water' ? 0x71d0d5 : 0xe3aa4e);
     });
+    this.ants = this.ants.filter(ant => collectors.has(ant.id));
     this.foodStockLabel?.setText(`NAHRUNG: ${this.gathering.resources.getStore('food-store').amount.toFixed(1)}`);
     this.waterStockLabel?.setText(`WASSER: ${this.gathering.resources.getStore('water-store').amount.toFixed(1)}`);
     this.drawFoodMarkers();
-    this.updateBuilderWorkers(delta);
+    this.updateSupplyWarning();
+    for (const drop of this.gathering.getDroppedLoads()) {
+      if (this.renderedDroppedLoads.has(drop.id)) continue;
+      this.renderedDroppedLoads.add(drop.id);
+      this.add.ellipse(drop.position.x, drop.position.y, 7, 5,
+        drop.load.resource === 'water' ? 0x71d0d5 : 0xe3aa4e).setDepth(5);
+    }
+  }
+
+  private updateSupplyWarning(): void {
+    const state = this.gathering.supply.snapshot;
+    const missing = (['food', 'water'] as const).filter(kind => state[kind].shortageDays > 0);
+    if (missing.length === 0) { this.supplyWarning?.setText(''); return; }
+    const names = missing.map(kind => `${kind === 'food' ? 'Nahrung' : 'Wasser'} ${state[kind].recovering ? '(Erholung)' : 'knapp'}`);
+    const losses = state.workerLosses > 0 ? ` · Verluste: ${state.workerLosses}` : '';
+    this.supplyWarning?.setText(`${names.join(' · ')} · Arbeit ${Math.round(state.workFactor * 100)} %${losses}`);
+  }
+
+  private retireBuilderWorker(id: string): void {
+    const worker = this.builderWorkers.find(candidate => candidate.id === id);
+    if (!worker) return;
+    const job = worker.job;
+    if (job?.kind === 'dig') this.digReservations.delete(this.cellKey(job.target));
+    const load = job?.load;
+    if (load?.state === 'carried') {
+      worker.body.remove(load.visual);
+      this.add.existing(load.visual);
+      load.visual.setPosition(worker.body.x, worker.body.y).setDepth(6);
+      load.cell = { ...worker.cell };
+      load.state = 'waiting';
+    }
+    worker.body.destroy();
+    this.builderWorkers = this.builderWorkers.filter(candidate => candidate !== worker);
   }
 
   private drawWorld(): void {
@@ -425,6 +465,10 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private createDigControls(): void {
+    this.supplyWarning = this.add.text(18, 78, '', {
+      color: '#f4cc79', fontFamily: 'system-ui, sans-serif', fontSize: '10px',
+    }).setScrollFactor(0).setDepth(10);
+
     this.digStatus = this.add
       .text(18, 62, 'Zieh vom Tunnel in die Erde, um einen Grabweg zu beauftragen.', {
         color: COLORS.text,
@@ -504,7 +548,7 @@ export class WorldScene extends Phaser.Scene {
       shape.moveTo(6, -2); shape.lineTo(8, -4);
       shape.strokePath();
       body.add(shape);
-      this.builderWorkers.push({ role: 'builderGroup', body, cell: { ...home }, job: null });
+      this.builderWorkers.push({ id: `builder-${index}`, role: 'builderGroup', body, cell: { ...home }, job: null });
     }
   }
 

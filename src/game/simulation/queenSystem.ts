@@ -8,7 +8,9 @@ import type {WorldPoint} from '../world/worldTypes.ts';
 export type EggQuotas = Record<Specialization, number>;
 export type BroodRoom = {id: string; specialization: Specialization; capacity: number; operational: boolean; position?: WorldPoint};
 export type BirthEvent = {id: string; eggId: string; specialization: Specialization; chamberId: string; position?: WorldPoint};
-type Stage = 'egg' | 'larva' | 'pupa' | 'adult';
+type ActiveStage = 'egg' | 'larva' | 'pupa';
+type Stage = ActiveStage | 'adult' | 'dead';
+export type LarvalEnvironment = {syncRooms: (rooms: readonly (BroodRoom & {larvae:number})[]) => void; nextEventDays: () => number; progress: (roomId:string, days:number, care:number) => number};
 type Egg = {id: string; targetSpecialization: Specialization; chamberId: string | null; stage: Stage; stageProgressDays: number;
   arrived:boolean;carrierId:string|null;carried:boolean;origin:WorldPoint|null};
 const EPS = 1e-9;
@@ -99,7 +101,7 @@ export class QueenSystem {
 
   private occupied(): Map<string, number> {
     const counts = new Map<string, number>();
-    for (const egg of this.eggs) if (egg.chamberId && egg.stage !== 'adult') counts.set(egg.chamberId, (counts.get(egg.chamberId) ?? 0) + 1);
+    for (const egg of this.eggs) if (egg.chamberId && egg.stage !== 'adult' && egg.stage !== 'dead') counts.set(egg.chamberId, (counts.get(egg.chamberId) ?? 0) + 1);
     return counts;
   }
 
@@ -128,9 +130,9 @@ export class QueenSystem {
   }
 
   private developing(): Egg[] {
-    return this.eggs.filter(egg => egg.arrived && egg.chamberId && egg.stage !== 'adult' && this.rooms.get(egg.chamberId)?.operational);
+    return this.eggs.filter(egg => egg.arrived && egg.chamberId && egg.stage !== 'adult' && egg.stage !== 'dead' && this.rooms.get(egg.chamberId)?.operational);
   }
-  get hasDevelopingBrood(): boolean {return this.eggs.some(egg => egg.arrived && egg.chamberId && egg.stage !== 'adult' && this.rooms.get(egg.chamberId)?.operational);}
+  get hasDevelopingBrood(): boolean {return this.eggs.some(egg => egg.arrived && egg.chamberId && egg.stage !== 'adult' && egg.stage !== 'dead' && this.rooms.get(egg.chamberId)?.operational);}
   getLarvalRooms() {
     const larvae = new Map<string,number>();
     for (const egg of this.eggs) if (egg.chamberId && egg.stage==='larva') larvae.set(egg.chamberId,(larvae.get(egg.chamberId)??0)+1);
@@ -139,9 +141,15 @@ export class QueenSystem {
   private careFactor(count: number): number {
     return count ? Math.max(this.broodConfig.minimumCareFactor, Math.min(1, this.effectiveNurses * this.broodConfig.broodPerNurse / count)) : 1;
   }
+  loseLarvae(roomId: string, count: number): void {
+    if (!Number.isInteger(count) || count < 0) throw new RangeError('Invalid larval loss count');
+    for (const egg of this.eggs) if (count && egg.arrived && egg.chamberId === roomId && egg.stage === 'larva') {
+      egg.stage = 'dead';count--;
+    }
+  }
   drainBirths(): BirthEvent[] {const births = this.births;this.births = [];return births.map(birth => ({...birth, position: birth.position ? {...birth.position} : undefined}));}
 
-  advance(gameDays: number, eggFactor: number, rooms: readonly BroodRoom[], effectiveNurses = 0, onBroodInterval?: (gameDays:number)=>void): void {
+  advance(gameDays: number, eggFactor: number, rooms: readonly BroodRoom[], effectiveNurses = 0, onBroodInterval?: (gameDays:number)=>void, environment?: LarvalEnvironment): void {
     nonNegativeFinite(gameDays, 'gameDays');nonNegativeFinite(eggFactor, 'eggFactor');
     nonNegativeFinite(effectiveNurses, 'effectiveNurses');this.effectiveNurses = effectiveNurses;
     if (eggFactor > 1) throw new RangeError('Egg factor must not exceed one');
@@ -151,15 +159,28 @@ export class QueenSystem {
       const rate = this.config.eggsPerGameDay * eggFactor * this.bufferFactor();
       const developing = this.developing(), factor = this.careFactor(developing.length);
       const untilEgg = rate > 0 ? (1 - this.progress) / rate : Infinity;
-      let untilStage = Infinity;
-      for (const egg of developing) untilStage = Math.min(untilStage, Math.max(0, this.broodConfig.stageDays[egg.stage as Exclude<Stage, 'adult'>] - egg.stageProgressDays) / factor);
-      const step = Math.min(remaining, untilEgg, untilStage);
+      environment?.syncRooms(this.getLarvalRooms());
+      let step = Math.min(remaining, untilEgg, environment?.nextEventDays() ?? Infinity);
+      const increment = (egg: Egg, days: number) => egg.stage === 'larva' && environment
+        ? environment.progress(egg.chamberId!, days, factor) : days * factor;
+      for (const egg of developing) {
+        const needed = Math.max(0, this.broodConfig.stageDays[egg.stage as ActiveStage] - egg.stageProgressDays);
+        if (increment(egg, step) < needed) continue;
+        if (egg.stage !== 'larva' || !environment) step = Math.min(step, needed / factor);
+        else {
+          let low = 0, high = step;
+          for (let i = 0; i < 48; i++) {const middle = (low + high) / 2;if (increment(egg, middle) < needed) low = middle;else high = middle;}
+          step = high;
+        }
+      }
+      const increments = developing.map(egg => increment(egg, step));
       if (step>0) onBroodInterval?.(step);
       this.progress += step * rate;
-      for (const egg of developing) egg.stageProgressDays += step * factor;
+      for (const [index, egg] of developing.entries()) egg.stageProgressDays += increments[index];
       remaining = Math.max(0, remaining - step);
       for (const egg of developing) {
-        if (egg.stageProgressDays + EPS < this.broodConfig.stageDays[egg.stage as Exclude<Stage, 'adult'>]) continue;
+        if (egg.stage === 'dead') continue;
+        if (egg.stageProgressDays + EPS < this.broodConfig.stageDays[egg.stage as ActiveStage]) continue;
         egg.stageProgressDays = 0;
         egg.stage = egg.stage === 'egg' ? 'larva' : egg.stage === 'larva' ? 'pupa' : 'adult';
         if (egg.stage === 'adult') {
@@ -180,17 +201,18 @@ export class QueenSystem {
   get snapshot() {
     const counts = this.occupied(), bufferRateFactor = this.bufferFactor(), developing = this.developing();
     const bornCount = this.eggs.filter(egg => egg.stage === 'adult').length;
+    const lostCount = this.eggs.filter(egg => egg.stage === 'dead').length;
     const stageCounts = {egg: 0, larva: 0, pupa: 0};
-    for (const egg of this.eggs) if (egg.arrived && egg.chamberId && egg.stage !== 'adult') stageCounts[egg.stage]++;
+    for (const egg of this.eggs) if (egg.arrived && egg.chamberId && egg.stage !== 'adult' && egg.stage !== 'dead') stageCounts[egg.stage]++;
     return {
       laidEggs: this.eggs.length, bufferCount: this.buffer.length, bufferCapacity: this.config.bufferCapacity,
-      assignedCount: this.eggs.length - this.buffer.length - bornCount, bornCount, stageCounts, layingProgress: this.progress,
+      assignedCount: this.eggs.length - this.buffer.length - bornCount - lostCount, bornCount, lostCount, stageCounts, layingProgress: this.progress,
       careCapacity: this.effectiveNurses * this.broodConfig.broodPerNurse, careFactor: this.careFactor(developing.length),
       eggFactor: this.eggFactor, bufferRateFactor, effectiveEggsPerDay: this.config.eggsPerGameDay * this.eggFactor * bufferRateFactor,
       daysUntilNextEgg: this.config.eggsPerGameDay*this.eggFactor*bufferRateFactor>0 ? (1-this.progress)/(this.config.eggsPerGameDay*this.eggFactor*bufferRateFactor) : null,
       quotas: {...this.quotas},
       eggs: this.eggs.map(egg => ({...egg, origin:egg.origin?{...egg.origin}:null,specialization: egg.arrived && egg.chamberId ? this.rooms.get(egg.chamberId)!.specialization : null,
-        developmentProgress: egg.stage === 'adult' ? 1 : egg.stageProgressDays / this.broodConfig.stageDays[egg.stage]})),
+        developmentProgress: egg.stage === 'adult' ? 1 : egg.stage === 'dead' ? 0 : egg.stageProgressDays / this.broodConfig.stageDays[egg.stage]})),
       chambers: [...this.rooms.values()].map(room => ({...room, position: room.position ? {...room.position} : undefined, occupied: counts.get(room.id) ?? 0})),
     };
   }

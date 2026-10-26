@@ -80,7 +80,7 @@ export function createColonySimulation(
             queens: 1, // The existing queen is counted separately from workers.
           });
           queen.advance(gameDays, eggFactor, broodRooms(), (workers.effectiveNurses?.() ?? 0) * factor,
-            days=>broodSupply.consume(days,queen.getLarvalRooms()));
+            days=>{for (const loss of broodSupply.consume(days,queen.getLarvalRooms())) queen.loseLarvae(loss.roomId,loss.count);}, broodSupply);
           broodSupply.syncRooms(queen.getLarvalRooms());
           if (workers.birthWorker) for (const birth of queen.drainBirths()) workers.birthWorker(birth);
           // Stable IDs make the provisional loss selection deterministic; never

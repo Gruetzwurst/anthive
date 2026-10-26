@@ -1,3 +1,4 @@
+import {redistributeEggQuotas} from './eggQuotaDistribution.ts';
 import { SPECIALIZATIONS, WORK_ASSIGNMENTS } from '../simulation/workforceSystem.ts';
 import type { Specialization, WorkAssignment } from '../simulation/workforceSystem.ts';
 import type { WorkforceSnapshot } from '../simulation/workforceSimulation.ts';
@@ -89,6 +90,14 @@ export class WorkforcePanel {
         input.name = `eggQuota-${kind}`;input.value = String(current[kind]);
         label.append(`${SPECIALTY_LABELS[kind]} (%)`, input);quotas.append(label);inputs.set(kind, input);
       }
+      for (const [kind, input] of inputs) input.addEventListener('input', () => {
+        if (!input.validity.valid || !Number.isFinite(input.valueAsNumber)) return;
+        const current = Object.fromEntries([...inputs].map(([key, field]) => [key, field.valueAsNumber])) as EggQuotas;
+        // An unfinished value in another field must not poison a valid edit.
+        for (const key of SPECIALIZATIONS) if (!Number.isFinite(current[key])) current[key] = queen.snapshot().quotas[key];
+        const adjusted = redistributeEggQuotas(current, kind, input.valueAsNumber);
+        for (const [key, field] of inputs) if (key !== kind) field.value = String(adjusted[key]);
+      });
       const apply = document.createElement('button');apply.type = 'submit';apply.textContent = 'Zielanteile übernehmen';apply.dataset.action = 'apply-egg-quotas';
       const result = document.createElement('p');result.setAttribute('role', 'status');result.dataset.role = 'egg-quota-feedback';
       quotas.append(apply);quotas.addEventListener('submit', event => {
@@ -97,7 +106,7 @@ export class WorkforcePanel {
         catch (error) {result.textContent = (error as Error).message;}
       });
       const hint = document.createElement('p');hint.className = 'workforce-note';
-      hint.textContent = 'Zusammen 100 %. Die Automatik reserviert passende Brutplätze. Pflegekräfte tragen Eier von der Königin dorthin; erst bei Ankunft beginnt die Entwicklung. Ohne Pflegekraft warten die Eier sichtbar bei der Königin. Ei → Larve → Puppe → Ameise. Pflegekräfte liefern auch Nahrung und Wasser; weitere Mangelfolgen sind noch nicht aktiv.';
+      hint.textContent = 'Andere Anteile passen sich proportional an; zusammen immer 100 %. Nullanteile bleiben aus, außer beim Reduzieren eines alleinigen 100-%-Anteils. Mit Übernehmen gelten die Werte für neue Eier. Die Automatik reserviert passende Brutplätze. Pflegekräfte tragen Eier von der Königin dorthin; erst bei Ankunft beginnt die Entwicklung. Ohne Pflegekraft warten die Eier sichtbar bei der Königin. Ei → Larve → Puppe → Ameise. Pflegekräfte liefern auch Nahrung und Wasser; Larvenmangel warnt zuerst einen Spieltag, bremst danach und erholt sich bei voller Versorgung über einen Spieltag. Anhaltend schwerer Mangel kann ab Tag 7 Larvenverluste verursachen.';
       this.dialog.append(title, this.queenSummary, quotas, result, hint, this.broodRooms);this.updateQueen();
     }
     parent.append(this.dialog);
@@ -128,7 +137,7 @@ export class WorkforcePanel {
   private updateQueen(): void {
     const state = this.queenState?.();if (!state) return;
     this.queenSummary.textContent = `Eierpuffer: ${state.bufferCount} / ${state.bufferCapacity} · zugewiesen: ${state.assignedCount} · Eiablage: ${state.effectiveEggsPerDay.toLocaleString('de-DE', {maximumFractionDigits: 2})} / Spieltag`;
-    this.queenSummary.textContent += ` · Eier ${state.stageCounts.egg} · Larven ${state.stageCounts.larva} · Puppen ${state.stageCounts.pupa} · geschlüpft ${state.bornCount} · Pflegetempo ${Math.round(state.careFactor * 100)} %`;
+    this.queenSummary.textContent += ` · Eier ${state.stageCounts.egg} · Larven ${state.stageCounts.larva} · Puppen ${state.stageCounts.pupa} · geschlüpft ${state.bornCount} · Brutverluste ${state.lostCount} · Pflegetempo ${Math.round(state.careFactor * 100)} %`;
     this.broodRooms.replaceChildren();
     const stocks = new Map(this.larvalSupply?.().map(room=>[room.id,room]) ?? []);
     for (const [index, room] of state.chambers.entries()) {
@@ -142,6 +151,14 @@ export class WorkforcePanel {
         const detail=document.createElement('p');detail.className='workforce-note';detail.dataset.role='larval-stock';detail.dataset.roomId=room.id;
         detail.textContent=`Larvenvorrat: Nahrung ${amount(stock.food.amount)} / Ziel ${amount(stock.food.target)} · Wasser ${amount(stock.water.amount)} / Ziel ${amount(stock.water.target)} · unterwegs ${amount(stock.food.inTransit)} Nahrung, ${amount(stock.water.inTransit)} Wasser`;
         if(stock.operational && stock.larvae>0 && (stock.food.amount<=1e-9 || stock.water.amount<=1e-9))detail.textContent+=' · Vorrat leer';
+        const shortage = stock.shortage;
+        if (shortage && stock.larvae > 0) {
+          const resource = shortage.factor, total = Math.min(state.careFactor, resource);
+          detail.textContent += ` · Ressourcen ${Math.round(resource * 100)} % · Larventempo ${Math.round(total * 100)} %`;
+          if (shortage.coverage < 1) detail.textContent += ` · ${shortage.shortageDays < 1 ? 'Warnphase' : 'Unterversorgung'} ${amount(shortage.shortageDays)} Spieltage`;
+          else if (shortage.recovering) detail.textContent += ' · Ressourcenversorgung erholt sich';
+        }
+        if (shortage?.losses) detail.textContent += ` · Larvenverluste ${shortage.losses}`;
         this.broodRooms.append(detail);
       }
     }

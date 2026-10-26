@@ -1,3 +1,5 @@
+import {LarvalShortageSystem} from './larvalShortageSystem.ts';
+import type {LarvalLoss} from './larvalShortageSystem.ts';
 import type {WorldPoint} from '../world/worldTypes.ts';
 import type {GatheringNavigation} from '../world/collectorNavigation.ts';
 import type {ResourceAmount} from './resourceTypes.ts';
@@ -21,6 +23,7 @@ const empty = (): Stock => ({amount: 0, target: 0, capacity: 0, refilling: false
 
 /** Small private larval reservoirs and physical nurse deliveries, not general stores. */
 export class BroodSupplySystem {
+  readonly shortage = new LarvalShortageSystem();
   private resources: ResourceSystem;
   private navigation: GatheringNavigation;
   private config: LarvalSupplyConfig;
@@ -56,6 +59,20 @@ export class BroodSupplySystem {
       }
     }
   }
+  private refreshShortage(): void {
+    for (const room of this.rooms.values()) this.shortage.observe(room.id, room.operational ? room.larvae : 0,
+      room.food.amount > EPS || this.config.perLarvaPerDay.food === 0 ? 1 : 0,
+      room.water.amount > EPS || this.config.perLarvaPerDay.water === 0 ? 1 : 0);
+  }
+  nextEventDays(): number {
+    this.refreshShortage();let next = this.shortage.nextEventDays();
+    for (const room of this.rooms.values()) if (room.operational && room.larvae) for (const kind of KINDS) {
+      const rate = room.larvae * this.config.perLarvaPerDay[kind];
+      if (rate > 0 && room[kind].amount > EPS) next = Math.min(next, room[kind].amount / rate);
+    }
+    return next;
+  }
+  progress(roomId: string, days: number, care: number): number {return this.shortage.progress(roomId, days, care);}
   private refreshRefill(stock: Stock): void {
     if (stock.target <= EPS || stock.amount >= stock.target-EPS) stock.refilling = false;
     else if (stock.amount <= stock.target * this.config.refillFraction + EPS) stock.refilling = true;
@@ -69,16 +86,24 @@ export class BroodSupplySystem {
     return amount;
   }
   getRooms() {
-    return [...this.rooms.values()].map(room => ({...room, position: room.position ? {...room.position} : undefined,
+    this.refreshShortage();
+    return [...this.rooms.values()].map(room => ({...room, shortage: this.shortage.get(room.id), position: room.position ? {...room.position} : undefined,
       food: {...room.food, inTransit: this.inTransit(room.id,'food')}, water: {...room.water, inTransit: this.inTransit(room.id,'water')}}));
   }
-  consume(gameDays: number, rooms: readonly LarvalRoom[]): void {
+  consume(gameDays: number, rooms: readonly LarvalRoom[]): LarvalLoss[] {
     nonNegativeFinite(gameDays, 'gameDays');this.syncRooms(rooms);
-    for (const room of this.rooms.values()) if (room.operational) for (const kind of KINDS) {
-      const requested = room.larvae * this.config.perLarvaPerDay[kind] * gameDays;
-      const amount = Math.min(room[kind].amount, requested);
-      room[kind].amount -= amount;room[kind].consumed += amount;room[kind].unmet += requested - amount;this.refreshRefill(room[kind]);
+    const losses: LarvalLoss[] = [];let remaining = gameDays;
+    while (remaining > 1e-10) {
+      const step = Math.min(remaining, this.nextEventDays());
+      losses.push(...this.shortage.advance(step));
+      for (const room of this.rooms.values()) if (room.operational) for (const kind of KINDS) {
+        const requested = room.larvae * this.config.perLarvaPerDay[kind] * step;
+        const amount = Math.min(room[kind].amount, requested);
+        room[kind].amount -= amount;room[kind].consumed += amount;room[kind].unmet += requested - amount;this.refreshRefill(room[kind]);
+      }
+      remaining = Math.max(0, remaining-step);
     }
+    this.refreshShortage();return losses;
   }
   addNurse(id: string, position: WorldPoint): void {
     if (!id.trim() || this.nurses.has(id)) throw new Error('Nurse requires a unique ID');

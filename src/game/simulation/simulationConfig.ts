@@ -118,3 +118,10 @@ export const LARVAL_SUPPLY_CONFIG = {
   retrySeconds: GATHERING_CONFIG.retrySeconds, maxStepSeconds: GATHERING_MAX_STEP_SECONDS,
 };
 export type LarvalSupplyConfig = typeof LARVAL_SUPPLY_CONFIG;
+
+/** C4 user-approved, provisional larval shortage balance. */
+export const LARVAL_SHORTAGE_CONFIG = {
+  warningDays: 1, recoveryDays: 1, minimumFactor: 0.25,
+  severeCoverageBelow: 0.25, severeGraceDays: 6, lossFractionPerDay: 0.05,
+};
+export type LarvalShortageConfig = typeof LARVAL_SHORTAGE_CONFIG;

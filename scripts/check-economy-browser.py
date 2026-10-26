@@ -265,6 +265,44 @@ try:
         # check below exercises actual pickup and delivery instead of this setup.
         page("window.__placeFixtureEggs=q=>{for(const r of q.getEggRequests()){q.claimEgg(r.eggId,'fixture');q.pickUpEgg(r.eggId,'fixture');q.deliverEgg(r.eggId,'fixture');}};return true;")
 
+        if '--c4-only' in sys.argv:
+            page("scene.gathering.clock.setPaused(true);return true;")
+            click(586,20)
+            page("const i=document.querySelector('[name=eggQuota-combat]');i.value='0';i.dispatchEvent(new Event('input',{bubbles:true}));const values=[...document.querySelectorAll('[data-role=egg-quotas] input')].map(i=>i.valueAsNumber);if(values[3]!==0 || Math.abs(values.reduce((a,b)=>a+b,0)-100)>1e-9 || values.slice(0,3).some(v=>v<33.33||v>33.34))throw Error('Automatic quota redistribution failed');return true;")
+            native_click('[data-action="apply-egg-quotas"]')
+            assert page('return scene.gathering.queen.snapshot.quotas.combat;') == 0
+            page("const i=document.querySelector('[name=eggQuota-gathering]');i.value='50';i.dispatchEvent(new Event('input',{bubbles:true}));if(document.querySelector('[name=eggQuota-combat]').valueAsNumber!==0)throw Error('Disabled quota re-enabled');return true;")
+            native_click('[data-action="apply-egg-quotas"]')
+            screenshot('anthive-c4-quotas.png')
+            native_click('[data-action="close-workforce"]')
+            print(json.dumps({'c4':page("""
+              const s=scene.gathering,q=s.queen,rooms=q.snapshot.chambers;
+              q.setQuotas({gathering:100,building:0,care:0,combat:0});q.advance(4,1,[]);q.advance(0,0,rooms,100);window.__placeFixtureEggs(q);q.advance(1,0,rooms,100);
+              s.broodSupply.syncRooms(q.getLarvalRooms());
+              const advance=days=>q.advance(days,0,rooms,100,d=>{for(const l of s.broodSupply.consume(d,q.getLarvalRooms()))q.loseLarvae(l.roomId,l.count);},s.broodSupply);
+              advance(1);if(q.snapshot.stageCounts.larva!==20 || q.snapshot.lostCount!==0)throw Error('Warning day failed');
+              advance(5);if(q.snapshot.lostCount!==0)throw Error('Premature loss');advance(1);
+              s.broodSupply.syncRooms(q.getLarvalRooms());scene.renderBrood(100);scene.updateEconomyHud();
+              if(q.snapshot.lostCount!==1 || q.snapshot.stageCounts.larva!==19 || scene.broodRenderer.bodies.has('egg-1'))throw Error('Loss/renderer integration failed');
+              const stock=s.broodSupply.getRooms().find(r=>r.specialization==='gathering');
+              if(stock.shortage.factor!==.25 || stock.shortage.losses!==1)throw Error('Resource shortage state failed');
+              scene.cameras.main.centerOn(rooms[0].position.x,rooms[0].position.y);
+              return {larvae:q.snapshot.stageCounts.larva,lost:q.snapshot.lostCount,factor:stock.shortage.factor};
+            """)}))
+            click(586,20)
+            assert 'Larvenverluste 1' in page('return document.querySelector("[data-role=brood-rooms]").textContent;')
+            assert 'Ressourcen 25 %' in page('return document.querySelector("[data-role=brood-rooms]").textContent;')
+            screenshot('anthive-c4-shortage.png')
+            command('WebDriver:SetWindowRect', {'width':844,'height':480})
+            time.sleep(.3)
+            check_layout();screenshot('anthive-c4-mobile.png')
+            native_click('[data-action="close-workforce"]')
+            command('WebDriver:Navigate', {'url':f'http://127.0.0.1:{vite_port}/?view=pond'})
+            hook();check_layout();screenshot('anthive-c4-pond.png')
+            command('Marionette:Quit', {'flags':['eForceQuit']});browser.wait(timeout=10);browser=None
+            print('PASS: automatic quotas, preserved zero group, C4 warning/slowing/loss, renderer, mobile UI and pond')
+            sys.exit(0)
+
         if '--larvae-only' in sys.argv:
             page("scene.gathering.resources.depositInStore('food-store',{resource:'food',amount:540});scene.gathering.resources.depositInStore('water-store',{resource:'water',amount:540});return true;")
             assign_group('gathering','gathering','care',7)

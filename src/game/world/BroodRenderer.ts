@@ -34,7 +34,7 @@ export class BroodRenderer {
     const visible=new Set<string>(),indices=new Map<string,number>();let queenIndex=0;this.pulse.clear();
     if(this.layingUntil>this.time){this.queen.setRotation(Math.sin((this.layingUntil-this.time)/90)*.04);this.pulse.lineStyle(1,0xf4d38b,.65).strokeEllipse(this.origin.x-45,this.origin.y+1,34,23);}else this.queen.setRotation(0);
     for(const egg of state.eggs){
-      if(egg.stage==='adult' || egg.carried)continue;
+      if(egg.stage==='adult' || egg.stage==='dead' || egg.carried)continue;
       let position:WorldPoint|null=null;
       if(!egg.arrived){
         const at=egg.origin??this.origin;

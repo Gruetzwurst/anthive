@@ -37,11 +37,19 @@ export function createWorkforceSimulation(
   const states = new Map<string, EngineState>();
   const home = world.landmarks.nestChamberCenter;
   const simulation = createColonySimulation(world, {
+    effectiveNurses: () => workforce.getWorkers().filter(worker => worker.assignment === 'care' && states.get(worker.id)?.engine === 'parked')
+      .reduce((sum, worker) => sum + workforce.efficiency(worker.id, 'care'), 0),
+    birthWorker: birth => {
+      workforce.addWorker(birth.id, birth.specialization);
+      states.set(birth.id, {engine: 'parked', position: {...birth.position ?? home}});
+      reconcile();
+    },
     broodChambers: () => builders?.broodChambers?.() ?? [],
     otherWorkers: () => {
       const activeBuilders = new Map(builders.workers().map(worker => [worker.id, worker]));
+      const careActive = simulation.queen.hasDevelopingBrood;
       return workforce.getWorkers().filter(worker => states.get(worker.id)?.engine !== 'gathering').map(worker => ({
-        id: worker.id, resting: activeBuilders.get(worker.id)?.resting ?? true,
+        id: worker.id, resting: worker.assignment === 'care' && states.get(worker.id)?.engine === 'parked' && careActive ? false : activeBuilders.get(worker.id)?.resting ?? true,
         position: activeBuilders.get(worker.id)?.position ?? states.get(worker.id)!.position,
       }));
     },
@@ -104,12 +112,14 @@ export function createWorkforceSimulation(
   function getWorkers(): WorkforceSnapshot[] {
     const collectors = new Map(simulation.gathering.getCollectors().map(worker => [worker.id, worker]));
     const activeBuilders = new Map(builders.workers().map(worker => [worker.id, worker]));
+    const hasBrood = simulation.queen.hasDevelopingBrood;
     return workforce.getWorkers().map(worker => {
       const state = states.get(worker.id)!;
       const collector = collectors.get(worker.id), builder = activeBuilders.get(worker.id);
-      const actualWork = state.engine === 'parked' ? 'rest' : state.engine;
+      const careActive = state.engine === 'parked' && worker.assignment === 'care' && hasBrood;
+      const actualWork = careActive ? 'care' : state.engine === 'parked' ? 'rest' : state.engine;
       return { ...worker, position: { ...(collector?.position ?? builder?.position ?? state.position) }, actualWork,
-        resting: state.engine === 'parked' || (collector ? collector.phase === 'idle' || collector.phase === 'waiting' : builder?.resting ?? true),
+        resting: careActive ? false : state.engine === 'parked' || (collector ? collector.phase === 'idle' || collector.phase === 'waiting' : builder?.resting ?? true),
         pending: state.engine !== 'parked' && actualWork !== worker.assignment,
       };
     });

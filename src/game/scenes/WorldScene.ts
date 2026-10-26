@@ -117,6 +117,7 @@ export class WorldScene extends Phaser.Scene {
         retireWorker: id => this.excavation.removeBuilder(id),
         broodChambers: () => this.excavation.chambers.getChambers().filter(room => room.type.startsWith('brood-')).map(room => ({
           id: `built-${room.id}`, specialization: room.type.slice(6) as 'gathering' | 'building' | 'care' | 'combat', capacity: room.capacity, operational: room.operational,
+          position: {x: (room.cells[0].column + .5) * TILE_SIZE, y: (room.cells[0].row + .5) * TILE_SIZE},
         })),
         advanceWorkers: (seconds, factor) => this.excavation.advance(seconds, factor,
           id => this.gathering.workforce.getWorker(id).assignment === 'building',

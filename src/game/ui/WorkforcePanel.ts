@@ -72,7 +72,7 @@ export class WorkforcePanel {
       }
     });
     const note = document.createElement('p'); note.className = 'workforce-note';
-    note.textContent = 'Ohne passende Arbeit wird geruht. Aktuell sind keine Pflege- oder Kampfaufgaben verfügbar. Bei ausstehendem Wechsel werden Ladungen noch abgeliefert oder der Rückweg ins Nest beendet.';
+    note.textContent = 'Ohne passende Arbeit wird geruht. Pflege unterstützt die vorhandene Brut; Kampfaufgaben sind noch nicht verfügbar. Bei ausstehendem Wechsel werden Ladungen noch abgeliefert oder der Rückweg ins Nest beendet.';
     this.dialog.append(header, explanation, this.summary, tableScroll, form, this.feedback, note);
     if (queen) {
       this.queenState = queen.snapshot;
@@ -94,7 +94,7 @@ export class WorkforcePanel {
         catch (error) {result.textContent = (error as Error).message;}
       });
       const hint = document.createElement('p');hint.className = 'workforce-note';
-      hint.textContent = 'Zusammen 100 %. Die Automatik verteilt Eier auf passende freie Brutplätze. Wartende Eier behalten ihr bisheriges Ziel. Im Puffer entwickeln sie sich nicht; die weitere Brutentwicklung ist in dieser Vorschau noch nicht aktiv.';
+      hint.textContent = 'Zusammen 100 %. Die Automatik verteilt Eier auf passende freie Brutplätze. Wartende Eier behalten ihr bisheriges Ziel und entwickeln sich im Puffer nicht. Ei → Larve → Puppe → Ameise; Pflegemangel verlangsamt, tötet aber keine Brut. Larvenfütterung ist in dieser Vorschau noch nicht aktiv.';
       this.dialog.append(title, this.queenSummary, quotas, result, hint, this.broodRooms);this.updateQueen();
     }
     parent.append(this.dialog);
@@ -125,9 +125,12 @@ export class WorkforcePanel {
   private updateQueen(): void {
     const state = this.queenState?.();if (!state) return;
     this.queenSummary.textContent = `Eierpuffer: ${state.bufferCount} / ${state.bufferCapacity} · zugewiesen: ${state.assignedCount} · Eiablage: ${state.effectiveEggsPerDay.toLocaleString('de-DE', {maximumFractionDigits: 2})} / Spieltag`;
+    this.queenSummary.textContent += ` · Eier ${state.stageCounts.egg} · Larven ${state.stageCounts.larva} · Puppen ${state.stageCounts.pupa} · geschlüpft ${state.bornCount} · Pflegetempo ${Math.round(state.careFactor * 100)} %`;
     this.broodRooms.replaceChildren();
     for (const [index, room] of state.chambers.entries()) {
       const row = document.createElement('p');row.textContent = `${SPECIALTY_LABELS[room.specialization]} · Kammer ${index + 1}: ${room.occupied} / ${room.capacity} Brutplätze · ${room.operational ? 'betriebsbereit' : 'nicht erreichbar oder noch nicht nutzbar'}`;
+      const brood = state.eggs.filter(egg => egg.chamberId === room.id);
+      row.textContent += ` · ${brood.filter(egg => egg.stage === 'egg').length} Eier / ${brood.filter(egg => egg.stage === 'larva').length} Larven / ${brood.filter(egg => egg.stage === 'pupa').length} Puppen`;
       this.broodRooms.append(row);
     }
   }

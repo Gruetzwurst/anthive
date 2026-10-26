@@ -6,7 +6,7 @@ import { ADULT_SUPPLY_CONFIG, SIMULATION_CONFIG } from './simulationConfig.ts';
 import type { AdultSupplyConfig, SimulationConfig } from './simulationConfig.ts';
 import { CHAMBER_CONFIG } from './simulationConfig.ts';
 import { QueenSystem } from './queenSystem.ts';
-import type { BroodRoom } from './queenSystem.ts';
+import type { BroodRoom, BirthEvent } from './queenSystem.ts';
 import { cardinalNeighbors, cellKey } from '../world/gridPathfinding.ts';
 
 export type OtherAdultWorker = { id: string; resting: boolean; position?: WorldPoint };
@@ -15,6 +15,8 @@ export type ColonyWorkerAdapter = {
   retireOtherWorker: (id: string) => void;
   advanceOtherWorkers: (realSeconds: number, workFactor: number) => void;
   broodChambers?: () => BroodRoom[];
+  effectiveNurses?: () => number;
+  birthWorker?: (birth: BirthEvent) => void;
 };
 export type DroppedResourceLoad = { id: string; position: WorldPoint; load: ResourceAmount };
 const noOtherWorkers: ColonyWorkerAdapter = {
@@ -45,6 +47,7 @@ export function createColonySimulation(
       }
       startingRooms = (world.broodChambers ?? []).map(room => ({
         id: room.id, specialization: room.specialization, capacity: room.cells.length * CHAMBER_CONFIG.broodPlacesPerTile,
+        position: {x: (room.cells[0].column + .5) * size, y: (room.cells[0].row + .5) * size},
         operational: room.cells.length >= CHAMBER_CONFIG.minimumArea[`brood-${room.specialization}`] && room.cells.every(cell => reachable.has(cellKey(cell))),
       }));
     }
@@ -72,7 +75,8 @@ export function createColonySimulation(
             restingWorkers: resting,
             queens: 1, // The existing queen is counted separately from workers.
           });
-          queen.advance(gameDays, eggFactor, broodRooms());
+          queen.advance(gameDays, eggFactor, broodRooms(), (workers.effectiveNurses?.() ?? 0) * factor);
+          if (workers.birthWorker) for (const birth of queen.drainBirths()) workers.birthWorker(birth);
           // Stable IDs make the provisional loss selection deterministic; never
           // include the queen or create replacement workers automatically.
           const candidates = [...collectors.map(worker => ({ id: worker.id, collector: true,

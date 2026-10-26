@@ -178,4 +178,12 @@ Open **Gruppen** and scroll to **Königin und Eier**. Set percentages for the fo
 
 The existing clock and adult-supply factor drive 5 eggs per game day at full supply. The 50-egg queen buffer reduces laying to half rate from 75% full, quarter rate from 90%, and pauses at capacity. Existing start brood rooms provide 48 places each; additional finished reachable rooms use B5 capacity. All balance values remain centrally editable.
 
-C1 preserves egg identities and occupancy but does not develop or hatch eggs yet. C2 adds development and care; larval resource logistics follow later. No additional workers are created in C1. See `docs/C1-KOENIGIN-EIERZUWEISUNG-ERGEBNIS.md`; `python3 scripts/check-economy-browser.py --queen-only` runs the targeted browser check. **Stop before C2.**
+C1 introduced egg identities and occupancy. C2 extends this below. See `docs/C1-KOENIGIN-EIERZUWEISUNG-ERGEBNIS.md`; `python3 scripts/check-economy-browser.py --queen-only` runs the targeted queen browser check.
+
+### C2 brood development and care (2026-10-26)
+
+Assigned brood now develops through egg (1 game day), larva (3), and pupa (2), then becomes an actual worker with the room's permanent specialization. Development uses the existing clock. Each effective nurse supports 10 brood; care coverage sets development speed between 25% and 100%. No care-only deaths or overstaffing bonus. Unassigned eggs do not develop, and births free real brood places for waiting eggs.
+
+Explicitly assigned care workers count after completing their previous work/return. Foreign care retains 50% efficiency, adult work impairment reduces effective care capacity, and care counts as active adult work while reachable brood exists. This is a provisional shared care pool; room-specific nurse movement and feeding are not implemented here. Larval food/water logistics follow C3 and shortage handling follows C4.
+
+**Gruppen → Königin und Eier** shows stages, births, care speed and chamber occupancy. Each newborn joins the existing worker engines, appears individually at its brood room and consumes adult resources from the following simulation step. `python3 scripts/check-economy-browser.py --brood-only` verifies actual stages, native care assignments and four births increasing visible workers from 9 to 13. See `docs/C2-BRUTENTWICKLUNG-ERGEBNIS.md`. **Stop before C3.**

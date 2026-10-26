@@ -1,15 +1,18 @@
-import {QUEEN_CONFIG} from './simulationConfig.ts';
-import type {QueenConfig} from './simulationConfig.ts';
+import {QUEEN_CONFIG, BROOD_CONFIG} from './simulationConfig.ts';
+import type {QueenConfig, BroodConfig} from './simulationConfig.ts';
 import {SPECIALIZATIONS} from './workforceSystem.ts';
 import type {Specialization} from './workforceSystem.ts';
 import {nonNegativeFinite, positiveFinite} from './validation.ts';
+import type {WorldPoint} from '../world/worldTypes.ts';
 
 export type EggQuotas = Record<Specialization, number>;
-export type BroodRoom = {id: string; specialization: Specialization; capacity: number; operational: boolean};
-type Egg = {id: string; targetSpecialization: Specialization; chamberId: string | null};
+export type BroodRoom = {id: string; specialization: Specialization; capacity: number; operational: boolean; position?: WorldPoint};
+export type BirthEvent = {id: string; eggId: string; specialization: Specialization; chamberId: string; position?: WorldPoint};
+type Stage = 'egg' | 'larva' | 'pupa' | 'adult';
+type Egg = {id: string; targetSpecialization: Specialization; chamberId: string | null; stage: Stage; stageProgressDays: number};
 const EPS = 1e-9;
 
-/** C1 only: real egg identities and atomic allocation; development starts in C2. */
+/** Queen, individual brood stages and atomic allocation share one event timeline. */
 export class QueenSystem {
   private config: QueenConfig;
   private quotas: EggQuotas;
@@ -19,8 +22,15 @@ export class QueenSystem {
   private buffer: Egg[] = [];
   private progress = 0;
   private eggFactor = 1;
+  private broodConfig: BroodConfig;
+  private births: BirthEvent[] = [];
+  private effectiveNurses = 0;
 
-  constructor(config: QueenConfig = QUEEN_CONFIG) {
+  constructor(config: QueenConfig = QUEEN_CONFIG, broodConfig: BroodConfig = BROOD_CONFIG) {
+    for (const days of Object.values(broodConfig.stageDays)) positiveFinite(days, 'stageDays');
+    positiveFinite(broodConfig.broodPerNurse, 'broodPerNurse');positiveFinite(broodConfig.minimumCareFactor, 'minimumCareFactor');
+    if (broodConfig.minimumCareFactor > 1) throw new RangeError('Minimum care factor must not exceed one');
+    this.broodConfig = {...broodConfig, stageDays: {...broodConfig.stageDays}};
     nonNegativeFinite(config.eggsPerGameDay, 'eggsPerGameDay');positiveFinite(config.bufferCapacity, 'bufferCapacity');
     if (!Number.isInteger(config.bufferCapacity)) throw new RangeError('Buffer capacity must be an integer');
     let fill = 0, factor = 1;
@@ -55,12 +65,12 @@ export class QueenSystem {
       ids.add(room.id);
     }
     for (const room of this.rooms.values()) if (!ids.has(room.id)) room.operational = false;
-    for (const room of rooms) this.rooms.set(room.id, {...room});
+    for (const room of rooms) this.rooms.set(room.id, {...room, position: room.position ? {...room.position} : undefined});
   }
 
   private occupied(): Map<string, number> {
     const counts = new Map<string, number>();
-    for (const egg of this.eggs) if (egg.chamberId) counts.set(egg.chamberId, (counts.get(egg.chamberId) ?? 0) + 1);
+    for (const egg of this.eggs) if (egg.chamberId && egg.stage !== 'adult') counts.set(egg.chamberId, (counts.get(egg.chamberId) ?? 0) + 1);
     return counts;
   }
 
@@ -86,31 +96,63 @@ export class QueenSystem {
     this.credits[best!] -= 100;return best!;
   }
 
-  advance(gameDays: number, eggFactor: number, rooms: readonly BroodRoom[]): void {
+  private developing(): Egg[] {
+    return this.eggs.filter(egg => egg.chamberId && egg.stage !== 'adult' && this.rooms.get(egg.chamberId)?.operational);
+  }
+  get hasDevelopingBrood(): boolean {return this.eggs.some(egg => egg.chamberId && egg.stage !== 'adult' && this.rooms.get(egg.chamberId)?.operational);}
+  private careFactor(count: number): number {
+    return count ? Math.max(this.broodConfig.minimumCareFactor, Math.min(1, this.effectiveNurses * this.broodConfig.broodPerNurse / count)) : 1;
+  }
+  drainBirths(): BirthEvent[] {const births = this.births;this.births = [];return births.map(birth => ({...birth, position: birth.position ? {...birth.position} : undefined}));}
+
+  advance(gameDays: number, eggFactor: number, rooms: readonly BroodRoom[], effectiveNurses = 0): void {
     nonNegativeFinite(gameDays, 'gameDays');nonNegativeFinite(eggFactor, 'eggFactor');
+    nonNegativeFinite(effectiveNurses, 'effectiveNurses');this.effectiveNurses = effectiveNurses;
     if (eggFactor > 1) throw new RangeError('Egg factor must not exceed one');
     this.syncRooms(rooms);this.eggFactor = eggFactor;this.allocate();
     let remaining = gameDays;
     while (remaining > EPS) {
       const rate = this.config.eggsPerGameDay * eggFactor * this.bufferFactor();
-      if (rate <= 0) break;
-      const untilEgg = (1 - this.progress) / rate;
-      if (remaining + EPS < untilEgg) {this.progress += remaining * rate;break;}
-      remaining = Math.max(0, remaining - untilEgg);this.progress = 0;
-      const egg: Egg = {id: `egg-${this.eggs.length + 1}`, targetSpecialization: this.nextTarget(), chamberId: null};
-      this.eggs.push(egg);this.buffer.push(egg);this.allocate();
+      const developing = this.developing(), factor = this.careFactor(developing.length);
+      const untilEgg = rate > 0 ? (1 - this.progress) / rate : Infinity;
+      let untilStage = Infinity;
+      for (const egg of developing) untilStage = Math.min(untilStage, Math.max(0, this.broodConfig.stageDays[egg.stage as Exclude<Stage, 'adult'>] - egg.stageProgressDays) / factor);
+      const step = Math.min(remaining, untilEgg, untilStage);
+      this.progress += step * rate;
+      for (const egg of developing) egg.stageProgressDays += step * factor;
+      remaining = Math.max(0, remaining - step);
+      for (const egg of developing) {
+        if (egg.stageProgressDays + EPS < this.broodConfig.stageDays[egg.stage as Exclude<Stage, 'adult'>]) continue;
+        egg.stageProgressDays = 0;
+        egg.stage = egg.stage === 'egg' ? 'larva' : egg.stage === 'larva' ? 'pupa' : 'adult';
+        if (egg.stage === 'adult') {
+          const room = this.rooms.get(egg.chamberId!)!;
+          this.births.push({id: `born-${egg.id}`, eggId: egg.id, chamberId: egg.chamberId!, specialization: room.specialization, position: room.position ? {...room.position} : undefined});
+        }
+      }
+      this.allocate();
+      if (rate > 0 && this.progress >= 1 - EPS) {
+        this.progress = 0;
+        const egg: Egg = {id: `egg-${this.eggs.length + 1}`, targetSpecialization: this.nextTarget(), chamberId: null, stage: 'egg', stageProgressDays: 0};
+        this.eggs.push(egg);this.buffer.push(egg);this.allocate();
+      }
     }
   }
 
   get snapshot() {
-    const counts = this.occupied(), bufferRateFactor = this.bufferFactor();
+    const counts = this.occupied(), bufferRateFactor = this.bufferFactor(), developing = this.developing();
+    const bornCount = this.eggs.filter(egg => egg.stage === 'adult').length;
+    const stageCounts = {egg: 0, larva: 0, pupa: 0};
+    for (const egg of this.eggs) if (egg.chamberId && egg.stage !== 'adult') stageCounts[egg.stage]++;
     return {
       laidEggs: this.eggs.length, bufferCount: this.buffer.length, bufferCapacity: this.config.bufferCapacity,
-      assignedCount: this.eggs.length - this.buffer.length, layingProgress: this.progress,
+      assignedCount: this.eggs.length - this.buffer.length - bornCount, bornCount, stageCounts, layingProgress: this.progress,
+      careCapacity: this.effectiveNurses * this.broodConfig.broodPerNurse, careFactor: this.careFactor(developing.length),
       eggFactor: this.eggFactor, bufferRateFactor, effectiveEggsPerDay: this.config.eggsPerGameDay * this.eggFactor * bufferRateFactor,
       quotas: {...this.quotas},
-      eggs: this.eggs.map(egg => ({...egg, specialization: egg.chamberId ? this.rooms.get(egg.chamberId)!.specialization : null, stage: 'egg' as const, developmentProgress: 0})),
-      chambers: [...this.rooms.values()].map(room => ({...room, occupied: counts.get(room.id) ?? 0})),
+      eggs: this.eggs.map(egg => ({...egg, specialization: egg.chamberId ? this.rooms.get(egg.chamberId)!.specialization : null,
+        developmentProgress: egg.stage === 'adult' ? 1 : egg.stageProgressDays / this.broodConfig.stageDays[egg.stage]})),
+      chambers: [...this.rooms.values()].map(room => ({...room, position: room.position ? {...room.position} : undefined, occupied: counts.get(room.id) ?? 0})),
     };
   }
 }

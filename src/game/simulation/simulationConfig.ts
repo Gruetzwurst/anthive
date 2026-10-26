@@ -106,3 +106,7 @@ export const QUEEN_CONFIG = {
   bufferSlowdown: [{fill: 0.75, factor: 0.5}, {fill: 0.9, factor: 0.25}, {fill: 1, factor: 0}],
 };
 export type QueenConfig = typeof QUEEN_CONFIG;
+
+// C2 approved, adjustable development/care test values.
+export const BROOD_CONFIG = {stageDays: {egg: 1, larva: 3, pupa: 2}, broodPerNurse: 10, minimumCareFactor: 0.25};
+export type BroodConfig = typeof BROOD_CONFIG;

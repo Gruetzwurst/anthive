@@ -222,6 +222,52 @@ try:
             native_click('[data-action="close-construction"]')
             print('PASS: B3 real touch rectangle, confirmation, scrollable details and cancellation')
 
+        if '--brood-only' in sys.argv:
+            page("scene.gathering.resources.depositInStore('food-store',{resource:'food',amount:540});scene.gathering.resources.depositInStore('water-store',{resource:'water',amount:540});return true;")
+            assign_group('gathering','gathering','care',7)
+            native_click('[data-action="close-workforce"]')
+            assign_group('building','building','care',2)
+            native_click('[data-action="close-workforce"]')
+            print(json.dumps({'c2Care':page("""
+              scene.update(0,1000);const s=scene.gathering,rooms=s.queen.snapshot.chambers;
+              s.queen.advance(.8,1,[]);s.queen.advance(0,0,rooms,100);
+              scene.update(0,600000);const q=s.queen.snapshot;
+              if(q.stageCounts.larva!==4 || q.careCapacity!==45 || q.careFactor!==1 || s.getWorkers().filter(w=>w.actualWork==='care').length!==9)throw Error('Native care assignment or larval transition failed');
+              return {capacity:q.careCapacity,factor:q.careFactor,stages:q.stageCounts};
+            """)}))
+            click(586,20)
+            page('const d=document.querySelector("#workforce-panel");d.scrollTop=d.scrollHeight;return true;')
+            screenshot('anthive-c2-larvae.png')
+            native_click('[data-action="close-workforce"]')
+            page("scene.update(0,1800000);if(scene.gathering.queen.snapshot.stageCounts.pupa!==4)throw Error('Three-day larval phase failed');return true;")
+            print(json.dumps({'c2Births':page("""
+              scene.update(0,1200000);const s=scene.gathering,q=s.queen.snapshot,born=s.getWorkers().filter(w=>w.id.startsWith('born-'));
+              if(q.bornCount!==4 || born.length!==4 || s.getWorkers().length!==13 || new Set(born.map(w=>w.specialization)).size!==4)throw Error('Birth/native workforce integration failed');
+              const visible=[...scene.ants,...scene.builderWorkers];
+              if(visible.length!==13 || visible.some(w=>!w.body.visible))throw Error('A newborn worker is not individually visible');
+              if(q.laidEggs!==q.bufferCount+q.assignedCount+q.bornCount)throw Error('Brood conservation failed');
+              scene.update(0,100);if(s.getWorkers().length!==13)throw Error('Duplicate birth');scene.updateEconomyHud();
+              return {born:q.bornCount,workers:s.getWorkers().length,visible:visible.length,stages:q.stageCounts};
+            """)}))
+            command('WebDriver:SetWindowRect', {'width':844,'height':480})
+            for _ in range(50):
+                if page('const r=scene.game.canvas.getBoundingClientRect();return innerWidth<=844 && r.right<=844 && Math.abs(scene.scale.canvasBounds.width-r.width)<1;'):
+                    break
+                time.sleep(.1)
+            else:
+                raise AssertionError('Canvas resize did not settle')
+            click(586,20)
+            page('const d=document.querySelector("#workforce-panel");d.scrollTop=d.scrollHeight;return true;')
+            assert 'geschlüpft 4' in page('return document.querySelector("[data-role=queen-summary]").textContent;')
+            screenshot('anthive-c2-mobile.png')
+            native_click('[data-action="close-workforce"]')
+            check_layout()
+            command('WebDriver:Navigate', {'url':f'http://127.0.0.1:{vite_port}/?view=pond'})
+            hook();check_layout();screenshot('anthive-c2-pond.png')
+            command('Marionette:Quit', {'flags':['eForceQuit']});browser.wait(timeout=10);browser=None
+            print('PASS: C2 native foreign care, real 1/3/2 stages, four births, 13 visible native workers, brood balance, mobile UI and pond')
+            sys.exit(0)
+
         if '--queen-only' in sys.argv:
             check_layout()
             click(586,20)
@@ -237,7 +283,7 @@ try:
             print(json.dumps({'c1':page("""
               scene.update(0,600000);scene.updateEconomyHud();const s=scene.gathering.queen.snapshot;
               if(s.laidEggs!==5 || s.assignedCount!==5 || s.chambers.length!==4 || s.chambers.some(c=>c.capacity!==48 || !c.operational))throw Error('Queen/start room integration failed');
-              if(scene.gathering.getWorkers().length!==9 || s.eggs.some(e=>e.stage!=='egg' || e.developmentProgress!==0))throw Error('C2 mechanics started early');
+              if(scene.gathering.getWorkers().length!==9 || s.eggs.some(e=>e.stage!=='egg'))throw Error('Premature brood growth');
               scene.gathering.clock.setPaused(true);scene.update(0,600000);
               if(scene.gathering.queen.snapshot.laidEggs!==5)throw Error('Paused clock produced eggs');
               scene.gathering.clock.setPaused(false);

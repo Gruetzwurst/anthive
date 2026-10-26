@@ -4,8 +4,8 @@ import {QueenSystem} from '../src/game/simulation/queenSystem.ts';
 const kinds=['gathering','building','care','combat'];
 const rooms=(capacity=100)=>kinds.map(specialization=>({id:specialization,specialization,capacity,operational:true}));
 const shares={gathering:25,building:25,care:25,combat:25};
-function balance(q){const s=q.snapshot;assert.equal(s.laidEggs,s.bufferCount+s.assignedCount);assert.equal(new Set(s.eggs.map(e=>e.id)).size,s.laidEggs);assert.ok(s.eggs.every(e=>e.stage==='egg'&&e.developmentProgress===0));}
-test('five actual eggs per supplied game day, no reproduction on zero elapsed time, no C2 growth',()=>{
+function balance(q){const s=q.snapshot;assert.equal(s.laidEggs,s.bufferCount+s.assignedCount+s.bornCount);assert.equal(new Set(s.eggs.map(e=>e.id)).size,s.laidEggs);assert.ok(s.eggs.filter(e=>e.chamberId===null).every(e=>e.stage==='egg'&&e.developmentProgress===0));}
+test('five actual eggs per supplied game day, no reproduction on zero elapsed time, no premature growth',()=>{
  const q=new QueenSystem();q.advance(1,1,rooms());assert.equal(q.snapshot.laidEggs,5);assert.equal(q.snapshot.assignedCount,5);q.advance(0,1,rooms());assert.equal(q.snapshot.laidEggs,5);balance(q);
 });
 test('A3 egg factor affects production once and partial progress survives supply pause',()=>{
@@ -28,7 +28,7 @@ test('small percentage quotas survive deterministic rounding; invalid edits are 
 test('fractional small quotas stay fair even when unchanged settings are repeatedly applied',()=>{
  const q=new QueenSystem(),quotas={gathering:99.7,building:.1,care:.1,combat:.1};q.setQuotas(quotas);
  for(let i=0;i<200;i++){q.advance(1,1,rooms(2000));q.setQuotas(quotas);}
- assert.deepEqual(q.snapshot.chambers.map(r=>r.occupied),[997,1,1,1]);balance(q);
+ assert.deepEqual(kinds.map(kind=>q.snapshot.eggs.filter(e=>e.specialization===kind).length),[997,1,1,1]);balance(q);
 });
 test('full specialty waits without reassigning its eggs or blocking others; new room drains waiting eggs',()=>{
  const q=new QueenSystem(),r=rooms();r[0].operational=false;q.advance(4,1,r);

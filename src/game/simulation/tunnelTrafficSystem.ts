@@ -11,6 +11,7 @@ export class TunnelTrafficSystem {
   private segments = new Map<string, string | null>();
   private untilRefresh = 0;
   private version = 0;
+  private topology = 0;
   private updates = 0;
   private agents = 0;
   constructor(world: StartingWorld, config: TrafficConfig = TRAFFIC_CONFIG) {
@@ -21,8 +22,9 @@ export class TunnelTrafficSystem {
     this.world = world; this.config = {...config};
   }
   get revision(): number {return this.version;}
+  get topologyRevision(): number {return this.topology;}
   get stats() {return {revision: this.version, updates: this.updates, buckets: this.counts.size, agents: this.agents};}
-  invalidateTopology(): void {this.segments.clear();this.counts.clear();this.untilRefresh = 0;this.version++;}
+  invalidateTopology(): void {this.segments.clear();this.counts.clear();this.untilRefresh = 0;this.version++;this.topology++;}
   private segment(point: WorldPoint): string | null {
     const size = this.world.dimensions.tileSize;
     const cell = {column: Math.floor(point.x / size), row: Math.floor(point.y / size)}, key = `${cell.column},${cell.row}`;

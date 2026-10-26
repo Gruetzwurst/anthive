@@ -63,6 +63,7 @@ export type WorldLandmarks = {
 };
 
 export type StartingWorld = {
+  broodChambers?: Array<{id: string; specialization: BroodChamberKind; cells: WorldCellCoordinate[]}>;
   chamberFootprints?: WorldCellCoordinate[][];
   tiles: WorldTile[][];
   resources: WorldResource[];

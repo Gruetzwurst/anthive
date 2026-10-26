@@ -2,6 +2,7 @@ import { SPECIALIZATIONS, WORK_ASSIGNMENTS } from '../simulation/workforceSystem
 import type { Specialization, WorkAssignment } from '../simulation/workforceSystem.ts';
 import type { WorkforceSnapshot } from '../simulation/workforceSimulation.ts';
 import { WORKFORCE_CONFIG } from '../simulation/simulationConfig.ts';
+import type { EggQuotas, QueenSnapshot } from '../simulation/queenSystem';
 
 const SPECIALTY_LABELS: Record<Specialization, string> = {
   gathering: 'Sammlerinnen', building: 'Baumeisterinnen', care: 'Brutpflegerinnen', combat: 'Kämpferinnen',
@@ -22,8 +23,12 @@ export class WorkforcePanel {
   private submit = document.createElement('button');
   private feedback = document.createElement('p');
   private workers: WorkforceSnapshot[] = [];
+  private queenSummary = document.createElement('p');
+  private broodRooms = document.createElement('div');
+  private queenState?: () => QueenSnapshot;
 
-  constructor(parent: HTMLElement, moveWorkers: (specialization: Specialization, from: WorkAssignment, to: WorkAssignment, count: number) => void) {
+  constructor(parent: HTMLElement, moveWorkers: (specialization: Specialization, from: WorkAssignment, to: WorkAssignment, count: number) => void,
+    queen?: {snapshot: () => QueenSnapshot; setQuotas: (quotas: EggQuotas) => void}) {
     this.dialog.id = 'workforce-panel';
     this.dialog.setAttribute('aria-labelledby', 'workforce-title');
     const heading = document.createElement('h2'); heading.id = 'workforce-title'; heading.textContent = 'Arbeitsgruppen';
@@ -69,6 +74,29 @@ export class WorkforcePanel {
     const note = document.createElement('p'); note.className = 'workforce-note';
     note.textContent = 'Ohne passende Arbeit wird geruht. Aktuell sind keine Pflege- oder Kampfaufgaben verfügbar. Bei ausstehendem Wechsel werden Ladungen noch abgeliefert oder der Rückweg ins Nest beendet.';
     this.dialog.append(header, explanation, this.summary, tableScroll, form, this.feedback, note);
+    if (queen) {
+      this.queenState = queen.snapshot;
+      const title = document.createElement('h3');title.textContent = 'Königin und Eier';
+      this.queenSummary.dataset.role = 'queen-summary';this.broodRooms.dataset.role = 'brood-rooms';
+      const quotas = document.createElement('form');quotas.className = 'workforce-form';quotas.dataset.role = 'egg-quotas';
+      const inputs = new Map<Specialization, HTMLInputElement>(), current = queen.snapshot().quotas;
+      for (const kind of SPECIALIZATIONS) {
+        const label = document.createElement('label'), input = document.createElement('input');
+        input.type = 'number';input.min = '0';input.max = '100';input.step = '0.01';input.required = true;
+        input.name = `eggQuota-${kind}`;input.value = String(current[kind]);
+        label.append(`${SPECIALTY_LABELS[kind]} (%)`, input);quotas.append(label);inputs.set(kind, input);
+      }
+      const apply = document.createElement('button');apply.type = 'submit';apply.textContent = 'Zielanteile übernehmen';apply.dataset.action = 'apply-egg-quotas';
+      const result = document.createElement('p');result.setAttribute('role', 'status');result.dataset.role = 'egg-quota-feedback';
+      quotas.append(apply);quotas.addEventListener('submit', event => {
+        event.preventDefault();
+        try {queen.setQuotas(Object.fromEntries([...inputs].map(([kind, input]) => [kind, input.valueAsNumber])) as EggQuotas);result.textContent = 'Zielanteile für neue Eier übernommen.';this.updateQueen();}
+        catch (error) {result.textContent = (error as Error).message;}
+      });
+      const hint = document.createElement('p');hint.className = 'workforce-note';
+      hint.textContent = 'Zusammen 100 %. Die Automatik verteilt Eier auf passende freie Brutplätze. Wartende Eier behalten ihr bisheriges Ziel. Im Puffer entwickeln sie sich nicht; die weitere Brutentwicklung ist in dieser Vorschau noch nicht aktiv.';
+      this.dialog.append(title, this.queenSummary, quotas, result, hint, this.broodRooms);this.updateQueen();
+    }
     parent.append(this.dialog);
   }
 
@@ -91,6 +119,17 @@ export class WorkforcePanel {
       this.tableBody.append(row);
     }
     this.updateLimit();
+    this.updateQueen();
+  }
+
+  private updateQueen(): void {
+    const state = this.queenState?.();if (!state) return;
+    this.queenSummary.textContent = `Eierpuffer: ${state.bufferCount} / ${state.bufferCapacity} · zugewiesen: ${state.assignedCount} · Eiablage: ${state.effectiveEggsPerDay.toLocaleString('de-DE', {maximumFractionDigits: 2})} / Spieltag`;
+    this.broodRooms.replaceChildren();
+    for (const [index, room] of state.chambers.entries()) {
+      const row = document.createElement('p');row.textContent = `${SPECIALTY_LABELS[room.specialization]} · Kammer ${index + 1}: ${room.occupied} / ${room.capacity} Brutplätze · ${room.operational ? 'betriebsbereit' : 'nicht erreichbar oder noch nicht nutzbar'}`;
+      this.broodRooms.append(row);
+    }
   }
 
   private updateLimit(): void {

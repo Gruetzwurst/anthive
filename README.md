@@ -170,4 +170,12 @@ Collectors and builders share one traffic snapshot, including parked workers. St
 
 The existing cardinal pathfinder supports weighted travel costs. Sources, delivery stores and construction supply use expected travel time including congestion. Routes stay fixed during a passable journey and are reconsidered for new jobs or actual blockage. Cached routes invalidate when traffic or excavation changes; every ant keeps its identity and individual rendering.
 
-`python3 scripts/check-economy-browser.py --traffic-only` checks the live construction flow and nine visible workers, plus actual conserved deliveries with 500 individual collectors in an isolated browser simulation. This is not a 500-worker rendered-scene FPS benchmark. See `docs/B6-TUNNELVERKEHR-ERGEBNIS.md`. **Stop before C1.**
+`python3 scripts/check-economy-browser.py --traffic-only` checks the live construction flow and nine visible workers, plus actual conserved deliveries with 500 individual collectors in an isolated browser simulation. This is not a 500-worker rendered-scene FPS benchmark. See `docs/B6-TUNNELVERKEHR-ERGEBNIS.md`. C1 extends this below.
+
+### C1 queen and automatic egg allocation (2026-10-26)
+
+Open **Gruppen** and scroll to **Königin und Eier**. Set percentages for the four permanent specializations, totaling 100%. Defaults are 25% each. Allocation is automatic, preserves small fractional quotas over time, and balances occupancy between usable rooms of the same type. Quota edits affect future eggs; existing waiting eggs keep their intended target. Full/unreachable types leave their eggs waiting without redirecting them into another specialty.
+
+The existing clock and adult-supply factor drive 5 eggs per game day at full supply. The 50-egg queen buffer reduces laying to half rate from 75% full, quarter rate from 90%, and pauses at capacity. Existing start brood rooms provide 48 places each; additional finished reachable rooms use B5 capacity. All balance values remain centrally editable.
+
+C1 preserves egg identities and occupancy but does not develop or hatch eggs yet. C2 adds development and care; larval resource logistics follow later. No additional workers are created in C1. See `docs/C1-KOENIGIN-EIERZUWEISUNG-ERGEBNIS.md`; `python3 scripts/check-economy-browser.py --queen-only` runs the targeted browser check. **Stop before C2.**

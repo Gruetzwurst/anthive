@@ -222,6 +222,54 @@ try:
             native_click('[data-action="close-construction"]')
             print('PASS: B3 real touch rectangle, confirmation, scrollable details and cancellation')
 
+        if '--queen-only' in sys.argv:
+            check_layout()
+            click(586,20)
+            assert page('return document.querySelector("#workforce-panel").open;')
+            assert page('return document.querySelectorAll("[data-role=egg-quotas] input").length;') == 4
+            page("document.querySelector('[name=eggQuota-gathering]').value='24';return true;")
+            native_click('[data-action="apply-egg-quotas"]')
+            assert '100' in page('return document.querySelector("[data-role=egg-quota-feedback]").textContent;')
+            assert page('return scene.gathering.queen.snapshot.quotas.gathering;') == 25
+            page("document.querySelector('[name=eggQuota-gathering]').value='25';return true;")
+            native_click('[data-action="apply-egg-quotas"]')
+            native_click('[data-action="close-workforce"]')
+            print(json.dumps({'c1':page("""
+              scene.update(0,600000);scene.updateEconomyHud();const s=scene.gathering.queen.snapshot;
+              if(s.laidEggs!==5 || s.assignedCount!==5 || s.chambers.length!==4 || s.chambers.some(c=>c.capacity!==48 || !c.operational))throw Error('Queen/start room integration failed');
+              if(scene.gathering.getWorkers().length!==9 || s.eggs.some(e=>e.stage!=='egg' || e.developmentProgress!==0))throw Error('C2 mechanics started early');
+              scene.gathering.clock.setPaused(true);scene.update(0,600000);
+              if(scene.gathering.queen.snapshot.laidEggs!==5)throw Error('Paused clock produced eggs');
+              scene.gathering.clock.setPaused(false);
+              return {laid:s.laidEggs,assigned:s.assignedCount,buffer:s.bufferCount,rooms:s.chambers.map(r=>({kind:r.specialization,occupied:r.occupied,capacity:r.capacity}))};
+            """)}))
+            click(586,20)
+            page("for(const [kind,value] of Object.entries({gathering:100,building:0,care:0,combat:0}))document.querySelector('[name=eggQuota-'+kind+']').value=value;return true;")
+            native_click('[data-action="apply-egg-quotas"]')
+            page('const d=document.querySelector("#workforce-panel");d.scrollTop=d.scrollHeight;return true;')
+            screenshot('anthive-c1-queen-desktop.png')
+            native_click('[data-action="close-workforce"]')
+            page("scene.update(0,600000);scene.updateEconomyHud();const s=scene.gathering.queen.snapshot;if(s.laidEggs!==10 || s.chambers.find(c=>c.specialization==='gathering').occupied!==7)throw Error('Native quota change did not affect actual new eggs');return true;")
+            print(json.dumps({'buffer':page("const {QueenSystem}=await import('/src/game/simulation/queenSystem.ts');const q=new QueenSystem();q.advance(1000,1,[]);const s=q.snapshot;if(s.bufferCount!==50 || s.laidEggs!==50 || s.effectiveEggsPerDay!==0 || s.eggs.some(e=>e.developmentProgress!==0))throw Error('Queen buffer overflow/development');return {laid:s.laidEggs,buffer:s.bufferCount,rate:s.effectiveEggsPerDay};")}))
+            command('WebDriver:SetWindowRect', {'width':844,'height':480})
+            for _ in range(50):
+                if page('const r=scene.game.canvas.getBoundingClientRect();return innerWidth<=844 && r.right<=844 && Math.abs(scene.scale.canvasBounds.width-r.width)<1;'):
+                    break
+                time.sleep(.1)
+            else:
+                raise AssertionError('Canvas resize did not settle')
+            click(586,20)
+            page('const d=document.querySelector("#workforce-panel");d.scrollTop=d.scrollHeight;return true;')
+            assert 'zugewiesen: 10' in page('return document.querySelector("[data-role=queen-summary]").textContent;')
+            screenshot('anthive-c1-queen-mobile.png')
+            native_click('[data-action="close-workforce"]')
+            check_layout()
+            command('WebDriver:Navigate', {'url':f'http://127.0.0.1:{vite_port}/?view=pond'})
+            hook();check_layout();screenshot('anthive-c1-pond.png')
+            command('Marionette:Quit', {'flags':['eForceQuit']});browser.wait(timeout=10);browser=None
+            print('PASS: C1 native quotas/validation, real egg laying, start rooms, pause, buffer limit, no C2 workers, mobile UI and pond')
+            sys.exit(0)
+
         if '--furnishing-only' in sys.argv or '--chambers-only' in sys.argv or '--traffic-only' in sys.argv:
             assert page("return scene.excavation.materials.balance.initial===24 && scene.gathering.resources.getStore('building-material-store').amount===24;")
             page('scene.cameras.main.centerOn(150*24,28*24); return true;')

@@ -97,3 +97,12 @@ export const TRAFFIC_CONFIG = {
   minimumSpeedFactor: 0.6, refreshSeconds: 0.5,
 };
 export type TrafficConfig = typeof TRAFFIC_CONFIG;
+
+// C1: user-confirmed provisional egg rate, buffer and allocation test values.
+export const QUEEN_CONFIG = {
+  eggsPerGameDay: 5,
+  bufferCapacity: 50,
+  initialQuotas: {gathering: 25, building: 25, care: 25, combat: 25},
+  bufferSlowdown: [{fill: 0.75, factor: 0.5}, {fill: 0.9, factor: 0.25}, {fill: 1, factor: 0}],
+};
+export type QueenConfig = typeof QUEEN_CONFIG;

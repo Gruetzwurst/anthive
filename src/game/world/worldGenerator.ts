@@ -216,14 +216,19 @@ export function createStartingWorld(): StartingWorld {
     Array.from({length: (right - left) * (bottom - top)}, (_, index) => ({
       column: left + index % (right - left), row: top + Math.floor(index / (right - left)),
     }));
-  return {
-    chamberFootprints: [
+  const chamberFootprints = [
       rectangle(CENTER_COLUMN - 5, CENTER_COLUMN + 6, nestTopRow, nestBottomRow),
       rectangle(storageStartColumn, storageEndColumn, storageTopRow, storageBottomRow),
       rectangle(materialStoreLeftColumn, materialStoreRightColumn, materialStoreTopRow, materialStoreBottomRow),
       rectangle(waterStoreLeftColumn, waterStoreRightColumn, materialStoreTopRow, materialStoreBottomRow),
       ...Object.values(broodChambers).map(room => rectangle(room.left, room.right, broodChamberTopRow, broodChamberBottomRow)),
-    ],
+    ];
+  return {
+    chamberFootprints,
+    broodChambers: Object.keys(broodChambers).map((specialization, index) => ({
+      id: `start-brood-${specialization}`, specialization: specialization as BroodChamberKind,
+      cells: chamberFootprints[index + 4].map(cell => ({...cell})),
+    })),
     tiles: createStartingTiles(),
     resources: createStartingResources(landmarks),
     decorations: createStartingDecorations(),

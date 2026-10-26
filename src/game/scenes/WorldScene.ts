@@ -115,6 +115,9 @@ export class WorldScene extends Phaser.Scene {
         addWorker: (id, position) => this.excavation.addBuilder(id, position),
         removeWorker: id => this.excavation.removeBuilder(id),
         retireWorker: id => this.excavation.removeBuilder(id),
+        broodChambers: () => this.excavation.chambers.getChambers().filter(room => room.type.startsWith('brood-')).map(room => ({
+          id: `built-${room.id}`, specialization: room.type.slice(6) as 'gathering' | 'building' | 'care' | 'combat', capacity: room.capacity, operational: room.operational,
+        })),
         advanceWorkers: (seconds, factor) => this.excavation.advance(seconds, factor,
           id => this.gathering.workforce.getWorker(id).assignment === 'building',
           id => this.gathering.workforce.efficiency(id, 'building')),
@@ -137,6 +140,7 @@ export class WorldScene extends Phaser.Scene {
         this.gathering.moveWorkers(specialization, from, to, count);
         this.updateEconomyHud();
       },
+      {snapshot: () => this.gathering.queen.snapshot, setQuotas: quotas => this.gathering.queen.setQuotas(quotas)},
     );
     this.constructionPanel = new ConstructionPanel(document.querySelector('#game')!, {
       start: type => this.startDraft(type),

@@ -5,6 +5,7 @@ import type { Specialization, WorkAssignment, WorkforceWorker } from './workforc
 import type { SimulationConfig, AdultSupplyConfig } from './simulationConfig.ts';
 import type { ResourceSystem } from './resourceSystem.ts';
 import type { TunnelTrafficSystem } from './tunnelTrafficSystem.ts';
+import type { BroodRoom } from './queenSystem.ts';
 
 export type BuilderSnapshot = { id: string; position: WorldPoint; resting: boolean; readyToLeave?: boolean };
 export type WorkforceBuilderAdapter = {
@@ -13,6 +14,7 @@ export type WorkforceBuilderAdapter = {
   removeWorker: (id: string) => void;
   retireWorker: (id: string) => void;
   advanceWorkers: (realSeconds: number, workFactor: number) => void;
+  broodChambers?: () => BroodRoom[];
 };
 type EngineState = { engine: 'gathering' | 'building' | 'parked'; position: WorldPoint };
 export type WorkforceSnapshot = WorkforceWorker & {
@@ -35,6 +37,7 @@ export function createWorkforceSimulation(
   const states = new Map<string, EngineState>();
   const home = world.landmarks.nestChamberCenter;
   const simulation = createColonySimulation(world, {
+    broodChambers: () => builders?.broodChambers?.() ?? [],
     otherWorkers: () => {
       const activeBuilders = new Map(builders.workers().map(worker => [worker.id, worker]));
       return workforce.getWorkers().filter(worker => states.get(worker.id)?.engine !== 'gathering').map(worker => ({

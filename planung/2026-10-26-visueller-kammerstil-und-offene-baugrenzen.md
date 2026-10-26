@@ -12,13 +12,13 @@
 
 Der Spieler erwägt ergänzend **Maximalgrößen für Funktionskammern** und **mindestens zwei Erd-Kacheln Abstand zwischen unterschiedlichen Funktionskammern**, um das Nest lesbar zu halten und sehr große einzelne Funktionsräume zu vermeiden.
 
-**Noch nicht verbindlich festgelegt:** genaue Maximalflächen, Geltungsbereich und Messweise des Abstands, Umgang mit angrenzenden Kammern bzw. Bestand, und die notwendige Ausnahme für Verbindungstunnel.
+**Präzisierung des Spielers:** Entscheidend ist ausschließlich der **räumliche Abstand von mindestens zwei dazwischenliegenden Kacheln zwischen verschiedenen Funktionskammer-Flächen**; ob diese Zwischenkacheln Erde oder bereits ausgegrabene Gänge/Tunnel sind, ist **völlig gleichgültig**. Der freie Bau von Gängen und Durchgängen in diesem Abstand ist erlaubt. Es gibt **keinen Zwang zu zwei durchgehenden Erdwand-Kacheln**. Die Regel betrifft den Abstand von Kammer zu Kammer und nicht den Abstand zu Tunneln. **Noch offen:** genaue Maximalflächen und technische Abstandsmessung an Ecken/diagonalen Kacheln sowie Umgang mit bereits bestehenden Kammern.
 
 Zur Prüfung:
 - Die Vorlagen Klein/Mittel/Groß bleiben bei 1×/2×/4× der bislang festgelegten Mindestfläche. Die absolute Obergrenze für frei gezeichnete Räume sollte eigenständig gewählt werden, damit die freie Gestaltung einen Mehrwert behält.
-- Ein Zwei-Kachel-Wandabstand zwischen eigentlichen Kammerflächen kann klare Trennung schaffen; **Verbindungstunnel dürfen Zugänge durch die trennenden Erdstreifen schaffen**, sonst wären Funktionsräume schlecht nutzbar.
+- Ein **Abstand von zwei Kacheln zwischen Funktionskammer-Flächen**, unabhängig von ihrem Gelände-/Aushubzustand, verbessert die Lesbarkeit. Tunnel sind im Zwischenraum uneingeschränkt zulässig. **Keine obligatorische Erdwand**.
 - Ein Maximum verhindert einen einzigen übergroßen Funktionsraum, nicht das Erstellen vieler einzelner Räume. Der Abstand verbessert die Lesbarkeit, verhindert nicht das großflächige Ausgraben neutraler Tunnel/Hohlräume.
 - Erst nach konkret bestätigter Regel an Codex als Implementierungsauftrag geben.
 
 ## Status
-Nur die beiden visuellen B-Entscheidungen sind **beschlossen**. Abstand und Maximalgröße sind **Diskussionsstand**, keine Codex-Freigabe. Bestehende Kammergrößenvorlagen und Ruhekammerregeln bleiben unverändert.
+Die zwei visuellen B-Entscheidungen sind **beschlossen**. Die Abstandsidee wurde verbindlich auf **zwei Kacheln räumlichen Zwischenraum unabhängig von Erde oder Tunnel** präzisiert; genaue Eckmessung/Implementierungsdetails noch offen. Eine Maximalgröße ist weiterhin **Diskussionsstand**. **Noch keine Codex-Freigabe zur Implementierung.** Bestehende Kammergrößenvorlagen und Ruhekammerregeln bleiben unverändert.

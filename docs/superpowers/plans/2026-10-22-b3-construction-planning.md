@@ -49,8 +49,8 @@
 **Interfaces:** Native Dialog zum Start eines Plans (Typ), Werkzeugwahl, Bestätigung/Verwerfen in kompakter Zeichenleiste; Liste/Details mit Pause/Fortsetzen/Abbruch. Szenenauswahl durch Klick auf markierten Plan. Rendering liest getConstructionOrders(), zeigt Status + kurze wechselbasierte Meldungen. Pure Geometrie aus Task 1, Modellaktionen Task 2.
 
 - [x] Browser RED: Bauen-Button/Planformular fehlen, echte Pinsel-/Rechteckeingaben und Bestätigung legen nichts an.
-- [ ] GREEN: vorhandenen Stil und Zeichen-/Kamera-Fluss erweitern. Zeichnen erzeugt Vorschau, erst Bestätigen legt Plan an; Werkzeuge im Entwurf kombinierbar. Außerhalb Zeichnen Klick auswählbar/Kamera ziehbar. Dialog blockiert Karteneingabe; Touch mit bestehender echter Hardwareemulation. Aushub/Einrichtung/Materialvorschau getrennt sichtbar; keine virtuelle Betriebsbereitschaft.
-- [ ] Gesamttests, Welttests, Build und Browser vollständig erfolgreich; Screenshots Teich/Details/Querformat prüfen. Unabhängiges Gesamt-Review, Befunde mit RED→GREEN beheben, Ergebnisbericht/README, Commit/Push. Stopp vor B4.
+- [x] GREEN: vorhandenen Stil und Zeichen-/Kamera-Fluss erweitern. Zeichnen erzeugt Vorschau, erst Bestätigen legt Plan an; Werkzeuge im Entwurf kombinierbar. Außerhalb Zeichnen Klick auswählbar/Kamera ziehbar. Dialog blockiert Karteneingabe; Touch mit bestehender echter Hardwareemulation. Aushub/Einrichtung/Materialvorschau getrennt sichtbar; keine virtuelle Betriebsbereitschaft.
+- [x] Gesamttests, Welttests, Build und Browser vollständig erfolgreich; Screenshots Teich/Details/Querformat prüfen. Unabhängiges Gesamt-Review, Befunde mit RED→GREEN beheben, Ergebnisbericht/README, Commit/Push. Stopp vor B4.
 
 ## Ledger
 
@@ -59,3 +59,14 @@
 
 - Task 1 fertig (5f1873f): fehlendes Geometriemodul rot, 4/4 Tests grün. Task 2 fertig (06691a0): neun neue Auftragsprüfungen zuerst rot, anschließend einschließlich B2/B1 grün; weitere vier Pause-/Trägerverlustprüfungen grün. Modell-Gesamtlauf 130/130, anschließend aktueller Gesamtstand 134/134; Welt 10/10 und Build grün.
 - Task 3 Browser-RED gesehen: „B3 construction controls missing“. Native Bauplanung, kombinierbare Zeichenleiste, Karte/Details, Statusmarkierungen und Meldungen angebunden; Browser-GREEN läuft. Keine Aktivierung von Einrichtung oder Kapazität.
+
+- Task 3 Browser-GREEN: vollständiger A4/B1/B2/B3-Lauf erfolgreich; kombinierter 12-Kachel-Nahrungslagerplan, Pause/Resume, Kartenklick, tatsächlicher Verbindungstunnel und Wiederaufnahme der früheren Kammer, Abbruch/Verwerfen. Keine Kapazitätsaktivierung. Zusätzlich fokussierter B3-Lauf mit realer Touch-Rechteckzeichnung, Bestätigung, scrollbaren Details und Abbruch grün. Screenshots geprüft. Review 8a95e61..2908741 läuft.
+
+- Final review 8a95e61..2908741: zwei Important-Befunde (Pinselrückweg falscher letzter Zeigerpunkt; langsames Pan pro Einzelbewegung statt Gesamtverschiebung); keine Critical/Minor oder ausgesparte Verhaltensfragen. Gezielter echter Browser-RED mit A→B→A→C und 24 Ein-Pixel-Schritten läuft vor Feld-/Methodenkorrektur. Ein Fix-Pass, kein Zweitreview.
+
+- Final: fixed Pinselrückweg — tatsächliche kontinuierliche WebDriver-Geste A→B→A→C mit exaktem 7-Kachel-Footprint RED (`false`) → GREEN; vorheriger Zeigerpunkt getrennt von deduplizierter Auswahl.
+- Final: fixed langsames Pan — tatsächliche 24×1px-Geste über Baustelle RED (`false`, Dialog offen) → GREEN; Gesamtverschiebung vom Druckpunkt bestimmt dauerhafte Zieherkennung. Fokussierter kompletter B3-Maus-/Touchlauf nach beiden Fixes erfolgreich. Abschließende Gesamtsuite/Build/Standard-Browserlauf folgen.
+
+- Final fix pass committed 6c433c5. Nach beiden Eingabefixes: 134/134 Gesamttests, 10/10 Welttests, Build und Diffcheck grün. Beide echten Browserregressionen samt fokussiertem Maus-/Touchlauf grün. Vollständiger Standard-Schlusslauf läuft. Keine Minor-Befunde und keine Rulings.
+
+- Abschluss 26.10.2026: gestarteten Schlusslauf ausgewertet, vollständig erfolgreich einschließlich beider Eingaberegressionen und B3-Touch; keine neuen Testläufe oder Prüfagenten. Ergebnisbericht fertig. Nutzerpräferenz ab jetzt: gezielte Tests während der Arbeit, Gesamtsuite/Build einmal am Ende, kurze Logauszüge und Statusmeldungen; zusätzliche Prüfagenten nur nach Rücksprache. B4 nicht begonnen.

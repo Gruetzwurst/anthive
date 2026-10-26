@@ -114,7 +114,7 @@ export class GatheringSystem {
       const inFlight = [...this.workers.values()].filter(other => other !== worker && other.storeId === store.id).length;
       const fullness = store.capacity > 0 ? (store.amount + reserved) / store.capacity : 1;
       choices.push({ store, path, amount: Math.min(requested, free),
-        score: pathLength(path) / this.config.speed + inFlight * this.config.storeCongestionSeconds + fullness * this.config.storeFullnessSeconds });
+        score: this.travelSeconds(path) + inFlight * this.config.storeCongestionSeconds + fullness * this.config.storeFullnessSeconds });
     }
     return choices.sort((a, b) => a.score - b.score || a.store.id.localeCompare(b.store.id))[0] ?? null;
   }
@@ -143,7 +143,7 @@ export class GatheringSystem {
         const delivery = this.chooseStore(worker, access, source.resource, Math.min(available, this.config.carryCapacity));
         if (!delivery) continue;
         choices.push({ sourceId: source.id, path, delivery, demand: this.demand(source.resource, worker),
-          score: pathLength(path) / this.config.speed + delivery.score });
+          score: this.travelSeconds(path) + delivery.score });
       }
     }
     choices.sort((a, b) => b.demand - a.demand || a.score - b.score || a.sourceId.localeCompare(b.sourceId));
@@ -153,6 +153,10 @@ export class GatheringSystem {
     worker.expected = choice.delivery.amount;
     this.startPath(worker, choice.path, 'toSource');
     return true;
+  }
+
+  private travelSeconds(path: WorldPoint[]): number {
+    return this.navigation.travelSeconds?.(path, this.config.speed) ?? pathLength(path) / this.config.speed;
   }
 
   private startPath(worker: Worker, path: WorldPoint[], phase: 'toSource' | 'toStore' | 'returning'): void {
@@ -234,8 +238,9 @@ export class GatheringSystem {
           continue;
         }
         const length = distance(worker.position, target);
-        const spent = Math.min(remaining, length / this.config.speed);
-        const fraction = length > 0 ? Math.min(1, spent * this.config.speed / length) : 1;
+        const speed = this.config.speed * Math.min(this.navigation.speedFactor?.(worker.position) ?? 1, this.navigation.speedFactor?.(target) ?? 1);
+        const spent = Math.min(remaining, length / speed);
+        const fraction = length > 0 ? Math.min(1, spent * speed / length) : 1;
         worker.position.x += (target.x - worker.position.x) * fraction;
         worker.position.y += (target.y - worker.position.y) * fraction;
         remaining -= spent;

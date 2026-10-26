@@ -162,4 +162,12 @@ Fully furnished, reachable rooms supply capacity: food/water 10 units per tile, 
 
 Brood development, rest-place occupancy and the additional rest-room consumption discount remain pending; the discount factor and specific special-room unlock thresholds are undecided. No research tree or invented unlock values were added. All approved basic room types remain buildable from the start.
 
-`python3 scripts/check-economy-browser.py --chambers-only` verifies real furnishing and the resulting +120 food capacity, controls, mobile details and pond. See `docs/B5-KAMMERKAPAZITAETEN-ERGEBNIS.md`. **Stop before B6.**
+`python3 scripts/check-economy-browser.py --chambers-only` verifies real furnishing and the resulting +120 food capacity, controls, mobile details and pond. See `docs/B5-KAMMERKAPAZITAETEN-ERGEBNIS.md`. B6 extends this below.
+
+### B6 tunnel traffic (2026-10-26)
+
+Collectors and builders share one traffic snapshot, including parked workers. Straight one-tile-wide tunnel sections slow movement under load without becoming blocked. Initial adjustable values: 4 tiles per section, 4 workers before slowdown, 15% extra travel time per additional worker, minimum speed 60%, refresh every 0.5 simulation seconds. Work and interaction times are unaffected.
+
+The existing cardinal pathfinder supports weighted travel costs. Sources, delivery stores and construction supply use expected travel time including congestion. Routes stay fixed during a passable journey and are reconsidered for new jobs or actual blockage. Cached routes invalidate when traffic or excavation changes; every ant keeps its identity and individual rendering.
+
+`python3 scripts/check-economy-browser.py --traffic-only` checks the live construction flow and nine visible workers, plus actual conserved deliveries with 500 individual collectors in an isolated browser simulation. This is not a 500-worker rendered-scene FPS benchmark. See `docs/B6-TUNNELVERKEHR-ERGEBNIS.md`. **Stop before C1.**

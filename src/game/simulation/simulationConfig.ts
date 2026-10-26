@@ -90,3 +90,10 @@ export const CHAMBER_CONFIG = {
   broodPlacesPerTile: 2,
   restPlacesPerTile: 2,
 };
+
+// B6 provisional traffic test values; movement only, never work/capacity bonuses.
+export const TRAFFIC_CONFIG = {
+  segmentTiles: 4, freeAgentsPerSegment: 4, delayPerExtraAgent: 0.15,
+  minimumSpeedFactor: 0.6, refreshSeconds: 0.5,
+};
+export type TrafficConfig = typeof TRAFFIC_CONFIG;

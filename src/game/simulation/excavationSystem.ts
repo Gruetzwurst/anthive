@@ -6,6 +6,7 @@ import { ResourceSystem } from './resourceSystem.ts';
 import { BuildingMaterialSystem } from './buildingMaterialSystem.ts';
 import { EXCAVATION_CONFIG, CONSTRUCTION_CONFIG, CHAMBER_CONFIG } from './simulationConfig.ts';
 import { ChamberSystem } from './chamberSystem.ts';
+import type { TunnelTrafficSystem } from './tunnelTrafficSystem.ts';
 import type { ExcavationConfig } from './simulationConfig.ts';
 import { nonNegativeFinite, positiveFinite } from './validation.ts';
 import { PLAN_TYPES, PLAN_LABELS, mergeSelection, isConnectedSelection, constructionMaterialEstimate } from './constructionPlanning.ts';
@@ -56,6 +57,7 @@ export class ExcavationSystem {
   private notices: ConstructionNotice[] = [];
   private completedChambers: Array<{ id: number; type: PlanType; cells: Cell[] }> = [];
   private pathCache = new Map<string, WorldPoint[] | null>();
+  private traffic?: TunnelTrafficSystem;
 
   constructor(world: StartingWorld, resources: ResourceSystem, config: ExcavationConfig = EXCAVATION_CONFIG,
     minimumAreas: Readonly<Record<PlanType, number>> = CHAMBER_CONFIG.minimumArea) {
@@ -80,6 +82,7 @@ export class ExcavationSystem {
     }
     this.refreshOrders();
   }
+  setTraffic(traffic: TunnelTrafficSystem): void {this.traffic = traffic;this.pathCache.clear();}
   addBuilder(id: string, position: WorldPoint): void {
     if (!id.trim() || this.builders.has(id)) throw new Error('Builder needs a unique non-empty ID');
     if (!this.open(this.cell(position))) throw new Error('Builder must start in an open tunnel');
@@ -168,7 +171,7 @@ export class ExcavationSystem {
   private approach(worker: Builder, target: Cell): WorldPoint[] | null {
     const paths = cardinalNeighbors(target).filter(cell => this.open(cell))
       .map(cell => this.path(worker.position, this.center(cell))).filter((path): path is WorldPoint[] => path !== null)
-      .sort((a, b) => a.length - b.length);
+      .sort((a, b) => this.travelSeconds(worker.position, a) - this.travelSeconds(worker.position, b));
     return paths[0] ?? null;
   }
   private availableTargets(order: Order): Cell[] {
@@ -241,7 +244,7 @@ export class ExcavationSystem {
   private path(from: WorldPoint, to: WorldPoint): WorldPoint[] | null {
     const key = `${cellKey(this.cell(from))}>${to.x},${to.y}`;
     if (!this.pathCache.has(key)) {
-      const cells = findGridPath(this.cell(from), this.cell(to), cell => this.open(cell));
+      const cells = findGridPath(this.cell(from), this.cell(to), cell => this.open(cell), this.traffic ? (cell, previous) => this.traffic!.cellCost(cell, previous) : undefined);
       this.pathCache.set(key, cells ? [...cells.map(cell => this.center(cell)), { ...to }] : null);
     }
     return this.pathCache.get(key)!;
@@ -250,6 +253,10 @@ export class ExcavationSystem {
     const steps = Math.max(1, Math.ceil(distance(from, to) / (this.world.dimensions.tileSize / 4)));
     for (let i = 0; i <= steps; i++) if (!this.open(this.cell({ x: from.x + (to.x - from.x) * i / steps, y: from.y + (to.y - from.y) * i / steps }))) return false;
     return true;
+  }
+  private travelSeconds(from: WorldPoint, path: WorldPoint[]): number {
+    const points = [from, ...path];
+    return this.traffic?.travelSeconds(points, this.config.speed) ?? points.reduce((sum, point, i) => sum + (i ? distance(points[i-1], point) / this.config.speed : 0), 0);
   }
   private clearJob(worker: Builder): void {
     if (worker.job && ['dig', 'furnish'].includes(worker.job.kind) && worker.job.target) this.reservations.delete(cellKey(worker.job.target));
@@ -269,11 +276,7 @@ export class ExcavationSystem {
   private supplyChoice(worker: Builder, order: Order) {
     const need = order.required - order.used - this.materials.getAtSite(order.id) - this.inTransit(order);
     if (need <= EPS) return undefined;
-    const length = (start: WorldPoint, path: WorldPoint[]) => {
-      let total = 0, previous = start;
-      for (const point of path) { total += distance(previous, point); previous = point; }
-      return total;
-    };
+    const length = (start: WorldPoint, path: WorldPoint[]) => this.travelSeconds(start, path);
     return this.resources.listStores().filter(store => store.resource === 'buildingMaterial' && store.status === 'operational' && store.reachable)
       .map(store => {
         const reserved = [...this.builders.values()].filter(other => other.job?.kind === 'withdraw' && other.job.storeId === store.id)
@@ -305,7 +308,7 @@ export class ExcavationSystem {
   }
   private siteDelivery(worker: Builder, order: Order): Job | null {
     const paths = order.cells.map(cell => this.path(worker.position, this.center(cell))).filter((path): path is WorldPoint[] => path !== null);
-    paths.sort((a, b) => a.length - b.length);
+    paths.sort((a, b) => this.travelSeconds(worker.position, a) - this.travelSeconds(worker.position, b));
     return paths[0] ? { kind: 'deliverSite', phase: 'walking', path: paths[0], pathIndex: 0, order, progress: 0, duration: this.config.interactionSeconds } : null;
   }
   private chooseStore(worker: Builder) {
@@ -313,7 +316,7 @@ export class ExcavationSystem {
       && store.status === 'operational' && store.reachable && store.amount < store.capacity - EPS)
       .map(store => ({ store, path: this.path(worker.position, store.position) }))
       .filter((choice): choice is typeof choice & { path: WorldPoint[] } => choice.path !== null)
-      .sort((a, b) => a.path.length - b.path.length || a.store.id.localeCompare(b.store.id))[0];
+      .sort((a, b) => this.travelSeconds(worker.position, a.path) - this.travelSeconds(worker.position, b.path) || a.store.id.localeCompare(b.store.id))[0];
   }
   private pickup(worker: Builder, pileId: string): Job | null {
     if (this.materials.getCarried(worker.id) >= this.config.carryCapacity - EPS || !this.chooseStore(worker)) return null;
@@ -374,6 +377,7 @@ export class ExcavationSystem {
       if (!this.diggable(target)) { this.clearJob(worker); return; }
       const amount = this.rule(tile)!.yield;
       tile.state = 'open'; this.pathCache.clear(); this.changed.push({ ...target }); this.chamberAccessDirty = true;
+      this.traffic?.invalidateTopology();
       const pileId = this.materials.produce(this.center(target), amount);
       job.order!.progress.delete(cellKey(target));
       this.clearJob(worker);
@@ -432,8 +436,9 @@ export class ExcavationSystem {
             const target = job.path[job.pathIndex];
             if (!target) { job.phase = job.kind === 'dig' ? 'digging' : ['pickup', 'withdraw'].includes(job.kind) ? 'loading' : job.kind === 'furnish' ? 'furnishing' : 'unloading'; continue; }
             if (!this.canMove(worker.position, target)) { this.clearJob(worker); worker.status = 'Weg blockiert'; break; }
-            const length = distance(worker.position, target), spent = Math.min(remaining, length / this.config.speed);
-            const fraction = length > 0 ? Math.min(1, spent * this.config.speed / length) : 1;
+            const speed = this.config.speed * Math.min(this.traffic?.speedFactor(worker.position) ?? 1, this.traffic?.speedFactor(target) ?? 1);
+            const length = distance(worker.position, target), spent = Math.min(remaining, length / speed);
+            const fraction = length > 0 ? Math.min(1, spent * speed / length) : 1;
             worker.position.x += (target.x - worker.position.x) * fraction; worker.position.y += (target.y - worker.position.y) * fraction;
             remaining -= spent;
             if (fraction >= 1 - EPS) { worker.position = { ...target }; job.pathIndex++; }

@@ -1,4 +1,5 @@
-import type { StartingWorld } from '../world/worldTypes.ts';
+import type { StartingWorld, WorldPoint } from '../world/worldTypes.ts';
+import { TunnelTrafficSystem } from './tunnelTrafficSystem.ts';
 import { CollectorNavigation } from '../world/collectorNavigation.ts';
 import { createResourceSimulation } from './resourceSimulation.ts';
 import { GatheringSystem } from './gatheringSystem.ts';
@@ -12,7 +13,8 @@ export function createGatheringSimulation(
   gatheringConfig: GatheringConfig = GATHERING_CONFIG,
 ) {
   const simulation = createResourceSimulation(world, config);
-  const navigation = new CollectorNavigation(world);
+  const traffic = new TunnelTrafficSystem(world);
+  const navigation = new CollectorNavigation(world, traffic);
   const gathering = new GatheringSystem(simulation.resources, navigation, gatheringConfig);
   for (let index = 0; index < GATHERING_PREVIEW_COUNT; index++) {
     gathering.addCollector(`collector-${index}`, {
@@ -21,10 +23,11 @@ export function createGatheringSimulation(
     });
   }
   return {
-    clock: simulation.clock, resources: simulation.resources, gathering, navigation,
+    clock: simulation.clock, resources: simulation.resources, gathering, navigation, traffic,
     advance(realSeconds: number, hooks?: {
       workFactor: () => number;
       afterStep: (gameDays: number, realSeconds: number, workFactor: number) => void;
+      otherPositions?: () => WorldPoint[];
     }) {
       nonNegativeFinite(realSeconds, 'realSeconds');
       // Interleave real regeneration and movement rather than regenerating the
@@ -37,6 +40,7 @@ export function createGatheringSimulation(
         if (step.elapsedGameDays === 0) break;
         const factor = hooks?.workFactor() ?? 1;
         const elapsedSeconds = step.elapsedGameDays * simulation.clock.secondsPerGameDay;
+        traffic.advance(elapsedSeconds, [...gathering.getCollectors().map(worker => worker.position), ...hooks?.otherPositions?.() ?? []]);
         gathering.advance(elapsedSeconds, factor);
         hooks?.afterStep(step.elapsedGameDays, elapsedSeconds, factor);
       }

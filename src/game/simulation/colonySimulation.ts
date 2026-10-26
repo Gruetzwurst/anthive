@@ -5,7 +5,7 @@ import { createGatheringSimulation } from './gatheringSimulation.ts';
 import { ADULT_SUPPLY_CONFIG, SIMULATION_CONFIG } from './simulationConfig.ts';
 import type { AdultSupplyConfig, SimulationConfig } from './simulationConfig.ts';
 
-export type OtherAdultWorker = { id: string; resting: boolean };
+export type OtherAdultWorker = { id: string; resting: boolean; position?: WorldPoint };
 export type ColonyWorkerAdapter = {
   otherWorkers: () => OtherAdultWorker[];
   retireOtherWorker: (id: string) => void;
@@ -31,6 +31,7 @@ export function createColonySimulation(
     getDroppedLoads: () => droppedLoads.map(drop => ({ ...drop, position: { ...drop.position }, load: { ...drop.load } })),
     advance(realSeconds: number) {
       return simulation.advance(realSeconds, {
+        otherPositions: () => workers.otherWorkers().flatMap(worker => worker.position ? [worker.position] : []),
         workFactor: () => supply.snapshot.workFactor,
         afterStep(gameDays, seconds, factor) {
           workers.advanceOtherWorkers(seconds, factor);

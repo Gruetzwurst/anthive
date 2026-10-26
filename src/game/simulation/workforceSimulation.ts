@@ -4,6 +4,7 @@ import { WorkforceSystem } from './workforceSystem.ts';
 import type { Specialization, WorkAssignment, WorkforceWorker } from './workforceSystem.ts';
 import type { SimulationConfig, AdultSupplyConfig } from './simulationConfig.ts';
 import type { ResourceSystem } from './resourceSystem.ts';
+import type { TunnelTrafficSystem } from './tunnelTrafficSystem.ts';
 
 export type BuilderSnapshot = { id: string; position: WorldPoint; resting: boolean; readyToLeave?: boolean };
 export type WorkforceBuilderAdapter = {
@@ -25,7 +26,7 @@ const distance = (a: WorldPoint, b: WorldPoint) => Math.hypot(a.x - b.x, a.y - b
 /** B1 coordinates existing engines; all stocks, time and mortality remain A1–A3. */
 export function createWorkforceSimulation(
   world: StartingWorld,
-  builderSource: WorkforceBuilderAdapter | ((resources: ResourceSystem) => WorkforceBuilderAdapter),
+  builderSource: WorkforceBuilderAdapter | ((resources: ResourceSystem, traffic: TunnelTrafficSystem) => WorkforceBuilderAdapter),
   config?: SimulationConfig,
   supplyConfig?: AdultSupplyConfig,
 ) {
@@ -38,6 +39,7 @@ export function createWorkforceSimulation(
       const activeBuilders = new Map(builders.workers().map(worker => [worker.id, worker]));
       return workforce.getWorkers().filter(worker => states.get(worker.id)?.engine !== 'gathering').map(worker => ({
         id: worker.id, resting: activeBuilders.get(worker.id)?.resting ?? true,
+        position: activeBuilders.get(worker.id)?.position ?? states.get(worker.id)!.position,
       }));
     },
     retireOtherWorker: id => {
@@ -49,7 +51,7 @@ export function createWorkforceSimulation(
       reconcile();
     },
   }, config, supplyConfig);
-  builders = typeof builderSource === 'function' ? builderSource(simulation.resources) : builderSource;
+  builders = typeof builderSource === 'function' ? builderSource(simulation.resources, simulation.traffic) : builderSource;
   for (const collector of simulation.gathering.getCollectors()) {
     workforce.addWorker(collector.id, 'gathering');
     states.set(collector.id, { engine: 'gathering', position: { ...collector.position } });

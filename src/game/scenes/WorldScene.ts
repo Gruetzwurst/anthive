@@ -102,9 +102,10 @@ export class WorldScene extends Phaser.Scene {
   }
 
   create(): void {
-    this.gathering = createWorkforceSimulation(startingWorld, resources => {
+    this.gathering = createWorkforceSimulation(startingWorld, (resources, traffic) => {
       resources.depositInStore('building-material-store', { resource: 'buildingMaterial', amount: CONSTRUCTION_CONFIG.startingMaterial });
       this.excavation = new ExcavationSystem(startingWorld, resources);
+      this.excavation.setTraffic(traffic);
       const home = this.cellAt(nestChamberCenter.x, nestChamberCenter.y)!;
       for (let index = 0; index < 2; index++) this.excavation.addBuilder(`builder-${index}`, {
         x: (home.column + 0.35 + index * 0.3) * TILE_SIZE, y: (home.row + 0.5) * TILE_SIZE,

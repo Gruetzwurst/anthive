@@ -2,19 +2,26 @@ import type { StartingWorld, WorldCellCoordinate, WorldPoint } from './worldType
 import type { ResourceSource } from '../simulation/resourceTypes.ts';
 import { cardinalNeighbors, findGridPath } from './gridPathfinding.ts';
 import { createPondProfile } from './pondProfile.ts';
+import type { TunnelTrafficSystem } from '../simulation/tunnelTrafficSystem.ts';
 
 export type GatheringNavigation = {
   findPath(from: WorldPoint, to: WorldPoint): WorldPoint[] | null;
   canMove(from: WorldPoint, to: WorldPoint): boolean;
   sourceAccessPoints(source: ResourceSource): WorldPoint[];
+  speedFactor?(position: WorldPoint): number;
+  travelSeconds?(path: WorldPoint[], speed: number): number;
 };
 
 export class CollectorNavigation implements GatheringNavigation {
   private world: StartingWorld;
   private ponds: Array<{ id: string; left: number; right: number }>;
+  private traffic?: TunnelTrafficSystem;
+  private cache = new Map<string, WorldCellCoordinate[] | null>();
+  private cacheRevision = -1;
 
-  constructor(world: StartingWorld) {
+  constructor(world: StartingWorld, traffic?: TunnelTrafficSystem) {
     this.world = world;
+    this.traffic = traffic;
     const tile = world.dimensions.tileSize;
     this.ponds = world.decorations.filter(item => item.kind === 'pond').map(pond => {
       const profile = createPondProfile(pond.position.x, tile, pond.scale ?? 1, column => this.surfaceRow(column));
@@ -64,7 +71,13 @@ export class CollectorNavigation implements GatheringNavigation {
   }
 
   findPath(from: WorldPoint, to: WorldPoint): WorldPoint[] | null {
-    const cells = findGridPath(this.cell(from), this.cell(to), cell => this.passable(cell));
+    if (this.cacheRevision !== this.traffic?.revision) {this.cache.clear();this.cacheRevision = this.traffic?.revision ?? -1;}
+    const start = this.cell(from), goal = this.cell(to), key = `${start.column},${start.row}>${goal.column},${goal.row}`;
+    let cells = this.traffic ? this.cache.get(key) : undefined;
+    if (cells === undefined) {
+      cells = findGridPath(start, goal, cell => this.passable(cell), this.traffic ? (cell, from) => this.traffic!.cellCost(cell, from) : undefined);
+      if (this.traffic) {if (this.cache.size >= 2048) this.cache.clear();this.cache.set(key, cells);}
+    }
     if (!cells) return null;
     const size = this.world.dimensions.tileSize;
     const points = cells.map(cell => {
@@ -75,6 +88,11 @@ export class CollectorNavigation implements GatheringNavigation {
     });
     // Keep physical endpoints, including positions part-way along a cell.
     return [{ ...from }, ...points, { ...to }];
+  }
+
+  speedFactor(position: WorldPoint): number {return this.traffic?.speedFactor(position) ?? 1;}
+  travelSeconds(path: WorldPoint[], speed: number): number {
+    return this.traffic?.travelSeconds(path, speed) ?? path.reduce((sum, point, i) => sum + (i ? Math.hypot(point.x-path[i-1].x, point.y-path[i-1].y) / speed : 0), 0);
   }
 
   sourceAccessPoints(source: ResourceSource): WorldPoint[] {

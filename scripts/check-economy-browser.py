@@ -222,7 +222,7 @@ try:
             native_click('[data-action="close-construction"]')
             print('PASS: B3 real touch rectangle, confirmation, scrollable details and cancellation')
 
-        if '--furnishing-only' in sys.argv or '--chambers-only' in sys.argv:
+        if '--furnishing-only' in sys.argv or '--chambers-only' in sys.argv or '--traffic-only' in sys.argv:
             assert page("return scene.excavation.materials.balance.initial===24 && scene.gathering.resources.getStore('building-material-store').amount===24;")
             page('scene.cameras.main.centerOn(150*24,28*24); return true;')
             time.sleep(.1)
@@ -268,10 +268,39 @@ try:
             assert '24 / 24' in page("return document.querySelector('[data-role=construction-detail]').textContent;")
             screenshot('anthive-b5-complete-mobile.png')
             native_click('[data-action="close-construction"]')
+            if '--traffic-only' in sys.argv:
+                print(json.dumps({'b6':page("""
+                  const traffic=scene.gathering.traffic;
+                  if(scene.excavation.traffic!==traffic || traffic.stats.agents!==9)throw Error('Traffic is not shared by all nine workers');
+                  const visible=[...scene.ants,...scene.builderWorkers];
+                  if(visible.length!==9 || visible.some(w=>!w.body.visible))throw Error('Individual worker visibility lost');
+                  const {createStartingWorld}=await import('/src/game/world/worldGenerator.ts');
+                  const {CollectorNavigation}=await import('/src/game/world/collectorNavigation.ts');
+                  const {TunnelTrafficSystem}=await import('/src/game/simulation/tunnelTrafficSystem.ts');
+                  const {ResourceSystem}=await import('/src/game/simulation/resourceSystem.ts');
+                  const {GatheringSystem}=await import('/src/game/simulation/gatheringSystem.ts');
+                  const w=createStartingWorld(),p=c=>({x:(c+.5)*24,y:84});
+                  w.dimensions={columns:16,rows:8,tileSize:24};w.decorations=[];
+                  w.tiles=Array.from({length:8},()=>Array.from({length:16},()=>({terrain:'topsoil',state:'discovered'})));
+                  for(let c=1;c<14;c++)w.tiles[3][c].state='open';
+                  const t=new TunnelTrafficSystem(w),r=new ResourceSystem();
+                  r.addSource({id:'source',resource:'food',kind:'finite',position:p(12),capacity:5000,amount:5000,regenerationPerDay:0,recoveryDays:2});
+                  r.addStore({id:'store',resource:'food',position:p(1),capacity:5000,amount:0,status:'operational',reachable:true});
+                  const g=new GatheringSystem(r,new CollectorNavigation(w,t));
+                  for(let i=0;i<500;i++)g.addCollector('stress-'+i,p(1+i%12));
+                  const before=performance.now();
+                  for(let i=0;i<100;i++){t.advance(.1,g.getCollectors().map(a=>a.position));g.advance(.1);}
+                  const elapsedMs=performance.now()-before,ants=g.getCollectors(),stored=r.getStore('store').amount;
+                  const conserved=r.getSource('source').amount+stored+ants.reduce((s,a)=>s+(a.load?.amount??0),0);
+                  if(ants.length!==500 || new Set(ants.map(a=>a.id)).size!==500 || conserved!==5000 || stored===0)throw Error('500-worker transport/conservation failed');
+                  return {liveVisible:visible.length,stressWorkers:ants.length,simulationSeconds:10,elapsedMs:Math.round(elapsedMs),stored,traffic:t.stats};
+                """)}))
             command('WebDriver:Navigate', {'url':f'http://127.0.0.1:{vite_port}/?view=pond'})
             hook();check_layout();screenshot('anthive-b5-pond.png')
             command('Marionette:Quit', {'flags':['eForceQuit']});browser.wait(timeout=10);browser=None
             print('PASS: B5 initial24, parallel front, real furnishing, active +120 capacity, pause/resume, conserved material, mobile details and pond')
+            if '--traffic-only' in sys.argv:
+                print('PASS: B6 shared traffic, every live worker visible, 500 individual collectors, actual delivery and conservation')
             sys.exit(0)
 
         page("window.__b3Camera=[scene.cameras.main.scrollX,scene.cameras.main.scrollY]; scene.cameras.main.centerOn(150*24,38*24); return true;")

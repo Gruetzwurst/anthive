@@ -1,6 +1,8 @@
 import { PLAN_TYPES, PLAN_LABELS } from '../simulation/constructionPlanning';
 import type { PlanType } from '../simulation/constructionPlanning';
 import type { ConstructionOrderSnapshot, ConstructionStatus } from '../simulation/excavationSystem';
+import { CHAMBER_CONFIG } from '../simulation/simulationConfig';
+import { chamberCapacity } from '../simulation/chamberSystem';
 
 export type DrawingTool = 'brush' | 'rectangle' | 'pan';
 const STATUS_LABELS: Record<ConstructionStatus, string> = {
@@ -37,7 +39,7 @@ export class ConstructionPanel {
     const header = document.createElement('div'); header.className = 'workforce-header'; header.append(heading, close);
     const form = document.createElement('form'); form.className = 'construction-form';
     const type = document.createElement('select'); type.name = 'chamberType';
-    for (const value of PLAN_TYPES) type.add(new Option(PLAN_LABELS[value], value));
+    for (const value of PLAN_TYPES) type.add(new Option(value === 'tunnel' ? PLAN_LABELS[value] : `${PLAN_LABELS[value]} · ab ${CHAMBER_CONFIG.minimumArea[value]} Kacheln`, value));
     const label = document.createElement('label'); label.append('Neuen Plan zeichnen', type);
     const begin = this.button('Zeichnen', 'draw-plan', () => {}); begin.type = 'submit';
     form.append(label, begin);
@@ -110,7 +112,8 @@ export class ConstructionPanel {
     for (const text of [
       `#${order.id} ${PLAN_LABELS[order.type]} · ${constructionStatusLabel(order)}`,
       `Aushub: ${order.excavated} / ${order.total} Kacheln${order.partialDigSeconds > 0 ? ` · ${order.partialDigSeconds.toFixed(1)} s angegraben` : ''}`,
-      order.type === 'tunnel' ? 'Einrichtung: nicht erforderlich' : `Einrichtung: ${order.materialUsed} / ${order.materialRequired} Einheiten${order.status === 'furnished' ? ' · fertig eingerichtet' : ''} · noch keine nutzbare Kapazität`,
+      order.type === 'tunnel' ? 'Einrichtung: nicht erforderlich' : `Einrichtung: ${order.materialUsed} / ${order.materialRequired} Einheiten${order.status === 'furnished' ? ' · fertig eingerichtet' : ''}`,
+      order.type === 'tunnel' ? 'Kapazität: keine' : `Kapazität: ${order.operational ? order.capacity : 0} / ${chamberCapacity(order.type, order.total)} ${order.type.startsWith('brood-') ? 'Brutplätze' : order.type === 'rest' ? 'Ruheplätze' : 'Einheiten'} · ${order.operational ? 'betriebsbereit' : 'noch nicht nutzbar'}`,
       order.type === 'tunnel' ? 'Baumaterial für Einrichtung: 0' : `Baumaterial für Einrichtung: ${order.materialRequired} benötigt · ${order.materialUsed} eingesetzt · ${order.materialAtSite} an Baustelle · ${order.materialInTransit} unterwegs · ${Math.max(0, order.materialRequired - order.materialUsed - order.materialAtSite - order.materialInTransit)} noch zu liefern`,
     ]) { const paragraph = document.createElement('p'); paragraph.textContent = text; this.details.append(paragraph); }
     this.toggle.textContent = order.paused ? 'Fortsetzen' : 'Pausieren';

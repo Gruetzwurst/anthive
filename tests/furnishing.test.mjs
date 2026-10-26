@@ -25,7 +25,7 @@ test('wide front uses different reserved tiles; a narrow front never starts a la
  assert.equal(narrow.getBuilders().filter(w=>w.job?.kind==='dig').length,1);balanced(e);balanced(narrow);
 });
 
-test('9 real units furnish only 9/24; 15 later units resume and complete exactly once without capacity grant',()=>{
+test('9 real units furnish only 9/24; 15 later units resume and complete exactly once with capacity only at completion',()=>{
  const {e,cells,resources}=fixture(9,true);e.addBuilder('b',p(1));const id=e.addOrder(cells,'food');
  until(e,()=>e.getConstructionOrders()[0].materialUsed===9);e.advance(20);
  let o=e.getConstructionOrders()[0];assert.equal(o.materialUsed,9);assert.equal(o.status,'blocked');assert.equal(o.blockReason,'material');
@@ -49,7 +49,7 @@ test('actual warehouse pickup and site delivery precede consumption; fastest sto
 });
 
 for(const phase of ['loading','unloading','furnishing'])test(`cancel during ${phase} conserves stock, cargo, site material and real consumption`,()=>{
- const {e,cells}=fixture(24,true);const id=e.addOrder(cells,'rest');
+ const {e,cells}=fixture(24,true);const id=e.addOrder(cells,'food');
  until(e,()=>{const j=e.getBuilders()[0].job;return phase==='loading'?j?.kind==='withdraw'&&j.phase==='loading':phase==='unloading'?j?.kind==='deliverSite'&&j.phase==='unloading':j?.phase==='furnishing';});
  const used=e.materials.balance.consumed;e.cancelOrder(id);e.advance(20);
  assert.equal(e.getConstructionOrders()[0].status,'cancelled');assert.equal(e.materials.balance.consumed,used);

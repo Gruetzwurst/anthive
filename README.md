@@ -152,4 +152,14 @@ Builders share the current FIFO site's reachable front, with one reservation per
 
 The running map starts with **24 material** in its existing material store. Both new values are central provisional `CONSTRUCTION_CONFIG` values. Food/water and the standalone A1 resource foundation retain their existing initialization. Details now show actual installed, on-site and in-transit amounts. Fully furnished rooms generate one completion record; capacity/function activation and minimum-size validation remain B5.
 
-Run the targeted browser check with `python3 scripts/check-economy-browser.py --furnishing-only`. See `docs/B4-PARALLELBAU-ERGEBNIS.md`. **Stop before B5.**
+Run the targeted browser check with `python3 scripts/check-economy-browser.py --furnishing-only`. See `docs/B4-PARALLELBAU-ERGEBNIS.md`. B5 extends this below.
+
+### B5 chamber capacity (2026-10-26)
+
+Chamber plans now require the centrally configurable selected minimum areas: 12 tiles for stores, 20 for specialized brood rooms, 16 for rest rooms. Connected free shapes are supported. Existing start rooms and other chamber plans cannot be reused as a different room.
+
+Fully furnished, reachable rooms supply capacity: food/water 10 units per tile, building material 8, brood/rest 2 places. Each new store starts empty, keeps its own stock, and participates in existing real collection and construction deliveries. Details show actual usable capacity and operational status. Unfinished/unreachable rooms provide no usable capacity; unavailable stored stock is retained.
+
+Brood development, rest-place occupancy and the additional rest-room consumption discount remain pending; the discount factor and specific special-room unlock thresholds are undecided. No research tree or invented unlock values were added. All approved basic room types remain buildable from the start.
+
+`python3 scripts/check-economy-browser.py --chambers-only` verifies real furnishing and the resulting +120 food capacity, controls, mobile details and pond. See `docs/B5-KAMMERKAPAZITAETEN-ERGEBNIS.md`. **Stop before B6.**

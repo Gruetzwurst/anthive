@@ -4,7 +4,8 @@ import { diggingGradeAt } from '../world/worldGenerator.ts';
 import { cardinalNeighbors, cellKey, findGridPath } from '../world/gridPathfinding.ts';
 import { ResourceSystem } from './resourceSystem.ts';
 import { BuildingMaterialSystem } from './buildingMaterialSystem.ts';
-import { EXCAVATION_CONFIG, CONSTRUCTION_CONFIG } from './simulationConfig.ts';
+import { EXCAVATION_CONFIG, CONSTRUCTION_CONFIG, CHAMBER_CONFIG } from './simulationConfig.ts';
+import { ChamberSystem } from './chamberSystem.ts';
 import type { ExcavationConfig } from './simulationConfig.ts';
 import { nonNegativeFinite, positiveFinite } from './validation.ts';
 import { PLAN_TYPES, PLAN_LABELS, mergeSelection, isConnectedSelection, constructionMaterialEstimate } from './constructionPlanning.ts';
@@ -14,6 +15,7 @@ type Cell = WorldCellCoordinate;
 export type ConstructionStatus = 'planned' | 'digging' | 'blocked' | 'paused' | 'awaitingFurnishing' | 'furnishing' | 'furnished' | 'completed' | 'cancelled';
 export type ConstructionBlockReason = 'unreachable' | 'hardness' | 'material';
 export type ConstructionOrderSnapshot = {
+  capacity: number; operational: boolean;
   id: number; type: PlanType; cells: Cell[]; index: number; paused: boolean; status: ConstructionStatus;
   blockReason: ConstructionBlockReason | null; excavated: number; total: number; partialDigSeconds: number; materialRequired: number; materialUsed: number; materialAtSite: number; materialInTransit: number;
 };
@@ -39,26 +41,32 @@ export function requiredDiggingGrade(cell: Cell, tile: WorldTile): number {
 /** Existing cardinal digging/haul workflow, separated from Phaser for B2 tests. */
 export class ExcavationSystem {
   readonly materials: BuildingMaterialSystem;
+  readonly chambers: ChamberSystem;
   private world: StartingWorld;
   private resources: ResourceSystem;
   private config: ExcavationConfig;
+  private minimumAreas: Readonly<Record<PlanType, number>>;
   private builders = new Map<string, Builder>();
   private orders: Order[] = [];
   private reservations = new Set<string>();
   private changed: Cell[] = [];
+  private chamberAccessDirty = false;
   private grade = 0;
   private nextOrderId = 1;
   private notices: ConstructionNotice[] = [];
   private completedChambers: Array<{ id: number; type: PlanType; cells: Cell[] }> = [];
   private pathCache = new Map<string, WorldPoint[] | null>();
 
-  constructor(world: StartingWorld, resources: ResourceSystem, config: ExcavationConfig = EXCAVATION_CONFIG) {
+  constructor(world: StartingWorld, resources: ResourceSystem, config: ExcavationConfig = EXCAVATION_CONFIG,
+    minimumAreas: Readonly<Record<PlanType, number>> = CHAMBER_CONFIG.minimumArea) {
     positiveFinite(CONSTRUCTION_CONFIG.furnishingSecondsPerUnit, 'furnishingSecondsPerUnit');
     for (const key of ['speed', 'carryCapacity', 'interactionSeconds', 'maxStepSeconds'] as const) positiveFinite(config[key], key);
     for (const rule of Object.values(config.terrain)) { positiveFinite(rule.seconds, 'dig seconds'); nonNegativeFinite(rule.yield, 'material yield'); }
     this.world = world; this.resources = resources;
     this.config = { ...config, terrain: Object.fromEntries(Object.entries(config.terrain).map(([kind, rule]) => [kind, { ...rule }])) as ExcavationConfig['terrain'] };
     this.materials = new BuildingMaterialSystem(resources, config.carryCapacity);
+    this.minimumAreas = { ...minimumAreas };
+    this.chambers = new ChamberSystem(world, resources);
   }
   setDiggingGrade(grade: number): void {
     if (!Number.isInteger(grade) || grade < 0) throw new RangeError('Digging grade must be a nonnegative integer');
@@ -98,9 +106,11 @@ export class ExcavationSystem {
   }
   getConstructionOrders(): ConstructionOrderSnapshot[] {
     this.pathCache.clear(); this.refreshOrders();
+    const rooms = new Map(this.chambers.getChambers().map(room => [room.id, room]));
     return this.orders.map(order => {
       const excavated = order.cells.filter(cell => this.open(cell)).length;
       return { id: order.id, type: order.type, cells: order.cells.map(cell => ({ ...cell })), index: excavated,
+        capacity: rooms.get(order.id)?.capacity ?? 0, operational: rooms.get(order.id)?.operational ?? false,
         paused: order.paused, status: order.status, blockReason: order.blockReason, excavated, total: order.cells.length,
         partialDigSeconds: [...order.progress.values()].reduce((sum, value) => sum + value, 0),
         materialRequired: order.required, materialUsed: order.used, materialAtSite: this.materials.getAtSite(order.id),
@@ -141,8 +151,10 @@ export class ExcavationSystem {
       || !this.tile(cell) || !terrainDefinitions[this.tile(cell)!.terrain].diggable || this.tile(cell)!.state === 'rubble')) throw new RangeError('Nur gültige unterirdische Kacheln markieren');
     const selected = mergeSelection(cells);
     if (!isConnectedSelection(selected)) throw new RangeError('Ein Bauplan muss über gemeinsame Kanten zusammenhängen');
+    if (selected.length < this.minimumAreas[type]) throw new RangeError(`${PLAN_LABELS[type]} benötigt mindestens ${this.minimumAreas[type]} zusammenhängende Kacheln`);
     if (type !== 'tunnel') {
       const keys = new Set(selected.map(cellKey));
+      if (this.world.chamberFootprints?.some(room => room.some(cell => keys.has(cellKey(cell))))) throw new RangeError('Hier besteht bereits eine Kammer');
       if (this.orders.some(order => !order.cancelled && order.type !== 'tunnel' && order.cells.some(cell => keys.has(cellKey(cell))))) throw new RangeError('Hier ist bereits eine Kammer geplant');
     }
     const id = this.nextOrderId++;
@@ -361,7 +373,7 @@ export class ExcavationSystem {
       const target = job.target!, tile = this.tile(target)!;
       if (!this.diggable(target)) { this.clearJob(worker); return; }
       const amount = this.rule(tile)!.yield;
-      tile.state = 'open'; this.pathCache.clear(); this.changed.push({ ...target });
+      tile.state = 'open'; this.pathCache.clear(); this.changed.push({ ...target }); this.chamberAccessDirty = true;
       const pileId = this.materials.produce(this.center(target), amount);
       job.order!.progress.delete(cellKey(target));
       this.clearJob(worker);
@@ -388,6 +400,7 @@ export class ExcavationSystem {
       if (!order.cancelled && this.materials.getAtSite(order.id) >= 1 && this.materials.consumeAtSite(order.id, 1) === 1) {
         order.used++; order.installed.set(key, (order.installed.get(key) ?? 0) + 1); order.furnishingProgress.delete(key);
         if (order.used >= order.required && !order.completionNotified) {
+          this.chambers.registerFinished({id: order.id, type: order.type, cells: order.cells});
           order.completionNotified = true;
           this.completedChambers.push({ id: order.id, type: order.type, cells: order.cells.map(cell => ({ ...cell })) });
         }
@@ -434,6 +447,7 @@ export class ExcavationSystem {
         }
       }
     }
+    if (this.chamberAccessDirty) {this.chambers.refreshAccess(); this.chamberAccessDirty = false;}
     this.refreshOrders();
   }
 }

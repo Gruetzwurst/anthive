@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { createStartingWorld } from '../src/game/world/worldGenerator.ts';
 import { createWorkforceSimulation } from '../src/game/simulation/workforceSimulation.ts';
 import { ExcavationSystem } from '../src/game/simulation/excavationSystem.ts';
+import { EXCAVATION_CONFIG, CHAMBER_CONFIG } from '../src/game/simulation/simulationConfig.ts';
 const point=column=>({x:(column+.5)*24,y:60});
 const cell=column=>({column,row:2});
 function fixture(terrain='topsoil',capacity=20) {
@@ -15,7 +16,7 @@ function fixture(terrain='topsoil',capacity=20) {
  world.storageChambers=[{id:'material',resource:'buildingMaterial',position:point(0),areaTiles:capacity/8}];
  let excavation, simulation;
  simulation=createWorkforceSimulation(world, resources=>{
-  excavation=new ExcavationSystem(world,resources);excavation.setDiggingGrade(3);excavation.addBuilder('builder-0',point(2));
+  excavation=new ExcavationSystem(world,resources,EXCAVATION_CONFIG,{...CHAMBER_CONFIG.minimumArea,food:1});excavation.setDiggingGrade(3);excavation.addBuilder('builder-0',point(2));
   return {workers:()=>excavation.getBuilders(),addWorker:(id,pos)=>excavation.addBuilder(id,pos),removeWorker:id=>excavation.removeBuilder(id),retireWorker:id=>excavation.removeBuilder(id),
    advanceWorkers:(seconds,factor)=>excavation.advance(seconds,factor,id=>simulation.workforce.getWorker(id).assignment==='building',id=>simulation.workforce.efficiency(id,'building'))};
  });

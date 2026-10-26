@@ -689,7 +689,7 @@ export class WorldScene extends Phaser.Scene {
     for (const order of orders) {
       if (order.status === 'cancelled' || order.status === 'completed') continue;
       visible.add(order.id);
-      const color = order.status === 'blocked' ? 0xd86654 : order.paused ? 0xb99d65
+      const color = order.operational ? 0x8ebc83 : order.status === 'blocked' ? 0xd86654 : order.paused ? 0xb99d65
         : order.status === 'awaitingFurnishing' ? 0x80ccd4 : 0xf0c66d;
       this.constructionGraphics.fillStyle(color, .12).lineStyle(1, color, .8);
       for (const cell of order.cells) {

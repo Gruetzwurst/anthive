@@ -211,8 +211,8 @@ try:
             page('scene.cameras.main.centerOn(155*24,38*24); window.__b3TouchCount=scene.excavation.getConstructionOrders().length; return true;')
             time.sleep(.2)
             start_plan('water', touch=True)
-            draw_cells([154,37],[156,38],'rectangle', touch=True)
-            assert page('return scene.draftCells.length;') == 6
+            draw_cells([154,37],[157,39],'rectangle', touch=True)
+            assert page('return scene.draftCells.length;') == 12
             assert page('return scene.input.manager.activePointer.wasTouch;')
             native_click('[data-action="confirm-plan"]')
             assert page("const plans=scene.excavation.getConstructionOrders(); return plans.length===window.__b3TouchCount+1 && plans.at(-1).type==='water';")
@@ -222,7 +222,7 @@ try:
             native_click('[data-action="close-construction"]')
             print('PASS: B3 real touch rectangle, confirmation, scrollable details and cancellation')
 
-        if '--furnishing-only' in sys.argv:
+        if '--furnishing-only' in sys.argv or '--chambers-only' in sys.argv:
             assert page("return scene.excavation.materials.balance.initial===24 && scene.gathering.resources.getStore('building-material-store').amount===24;")
             page('scene.cameras.main.centerOn(150*24,28*24); return true;')
             time.sleep(.1)
@@ -243,7 +243,7 @@ try:
             native_click('[data-action="pause-order"]')
             page('for(let i=0;i<50;i++)scene.update(0,100);window.__b4Paused=scene.excavation.getConstructionOrders()[0].materialUsed;for(let i=0;i<100;i++)scene.update(0,100);return true;')
             assert page('return scene.excavation.getConstructionOrders()[0].materialUsed===window.__b4Paused;')
-            screenshot('anthive-b4-partial-furnishing.png')
+            screenshot('anthive-b5-partial-furnishing.png')
             native_click('[data-action="resume-order"]')
             native_click('[data-action="close-construction"]')
             balance=page("""
@@ -252,7 +252,7 @@ try:
               const o=scene.excavation.getConstructionOrders()[0],b=scene.excavation.materials.balance;
               if(o.status!=='furnished'||o.materialUsed!==24||b.consumed!==24)throw Error('Furnishing did not complete with real consumption');
               if(Math.abs(b.initial+b.produced-b.stored-b.ground-b.carried-b.atSites-b.consumed)>1e-8)throw Error('B4 conservation failed');
-              if(scene.gathering.resources.getStoreTotals('food').capacity!==540 || scene.gathering.getWorkers().length!==9)throw Error('Unexpected capacity or worker change');
+              if(scene.gathering.resources.getStoreTotals('food').capacity!==660 || scene.gathering.getWorkers().length!==9)throw Error('Unexpected capacity or worker change');
               scene.updateEconomyHud();return b;
             """)
             print(json.dumps({'b4':progress,'balance':balance}))
@@ -266,12 +266,12 @@ try:
             click(510,20)
             page("const d=document.querySelector('#construction-panel');d.scrollTop=d.scrollHeight;return true;")
             assert '24 / 24' in page("return document.querySelector('[data-role=construction-detail]').textContent;")
-            screenshot('anthive-b4-complete-mobile.png')
+            screenshot('anthive-b5-complete-mobile.png')
             native_click('[data-action="close-construction"]')
             command('WebDriver:Navigate', {'url':f'http://127.0.0.1:{vite_port}/?view=pond'})
-            hook();check_layout();screenshot('anthive-b4-pond.png')
+            hook();check_layout();screenshot('anthive-b5-pond.png')
             command('Marionette:Quit', {'flags':['eForceQuit']});browser.wait(timeout=10);browser=None
-            print('PASS: B4 initial24, parallel front, real furnishing, pause/resume, conserved material, mobile details and pond')
+            print('PASS: B5 initial24, parallel front, real furnishing, active +120 capacity, pause/resume, conserved material, mobile details and pond')
             sys.exit(0)
 
         page("window.__b3Camera=[scene.cameras.main.scrollX,scene.cameras.main.scrollY]; scene.cameras.main.centerOn(150*24,38*24); return true;")

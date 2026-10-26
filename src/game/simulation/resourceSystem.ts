@@ -73,6 +73,11 @@ export class ResourceSystem {
     return { ...store, position: { ...store.position } };
   }
 
+  setStoreReachable(id: string, reachable: boolean): void {
+    if (typeof reachable !== 'boolean') throw new TypeError('reachable must be boolean');
+    this.requireStore(id).reachable = reachable;
+  }
+
   getStoreTotals(resource: ResourceKind): { amount: number; capacity: number } {
     validateResource(resource);
     let amount = 0, capacity = 0;

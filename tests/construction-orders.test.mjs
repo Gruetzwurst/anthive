@@ -3,14 +3,16 @@ import {test} from 'node:test';
 import {createStartingWorld} from '../src/game/world/worldGenerator.ts';
 import {ResourceSystem} from '../src/game/simulation/resourceSystem.ts';
 import {ExcavationSystem} from '../src/game/simulation/excavationSystem.ts';
+import {EXCAVATION_CONFIG, CHAMBER_CONFIG} from '../src/game/simulation/simulationConfig.ts';
 const c=(column,row=3)=>({column,row});
 const p=(column,row=3)=>({x:(column+.5)*24,y:(row+.5)*24});
+// Tiny scheduler fixtures deliberately use configurable one-cell minima; B5 tests cover production minima.
 function fixture(){
  const world=createStartingWorld();world.dimensions={columns:18,rows:8,tileSize:24};
  world.tiles=Array.from({length:8},()=>Array.from({length:18},()=>({terrain:'topsoil',state:'discovered'})));
  for(let i=0;i<3;i++)world.tiles[3][i].state='open';
  const resources=new ResourceSystem();resources.addStore({id:'material',resource:'buildingMaterial',position:p(0),capacity:100,amount:0,status:'operational',reachable:true});
- const e=new ExcavationSystem(world,resources);e.addBuilder('a',p(2));return {e,world,resources};
+ const e=new ExcavationSystem(world,resources,EXCAVATION_CONFIG,Object.fromEntries(Object.keys(CHAMBER_CONFIG.minimumArea).map(type=>[type,1])));e.addBuilder('a',p(2));return {e,world,resources};
 }
 function until(e,predicate,limit=3000){for(let i=0;i<limit&&!predicate();i++)e.advance(.05);assert.ok(predicate());}
 function invariant(e){const b=e.materials.balance;assert.ok(Math.abs(b.initial+b.produced-b.stored-b.carried-b.ground-b.consumed)<1e-8);}

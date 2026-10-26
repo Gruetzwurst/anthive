@@ -80,3 +80,13 @@ export const CONSTRUCTION_CONFIG = {
   },
   noticeSeconds: 4,
 };
+
+// B5 user-selected, editable test values (2026-10-22).
+export const CHAMBER_CONFIG = {
+  minimumArea: {
+    tunnel: 1, food: 12, water: 12, buildingMaterial: 12,
+    'brood-gathering': 20, 'brood-building': 20, 'brood-care': 20, 'brood-combat': 20, rest: 16,
+  },
+  broodPlacesPerTile: 2,
+  restPlacesPerTile: 2,
+};

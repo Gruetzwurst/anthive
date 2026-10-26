@@ -63,6 +63,7 @@ export type WorldLandmarks = {
 };
 
 export type StartingWorld = {
+  chamberFootprints?: WorldCellCoordinate[][];
   tiles: WorldTile[][];
   resources: WorldResource[];
   decorations: WorldDecoration[];

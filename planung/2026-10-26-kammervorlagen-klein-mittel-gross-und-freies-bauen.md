@@ -25,7 +25,7 @@
 ## Technischer Auftrag an Codex (nach C5)
 1. Aktuellen lokalen Zustand und GitHub-Branches sichern/abgleichen; Umsetzung erst nach ausdrücklicher Freigabe und ohne vorhandene Grafik, Brunnen/Teich oder Gameplay zu überschreiben.
 2. UI zur Auswahl Klein/Mittel/Groß/Frei je Funktionskammertyp; die Vorlagen müssen vor Platzierung eine Vorschau mit belegten Kacheln anzeigen. Größe und tatsächliche Kapazität anzeigen.
-3. Eine zusammenhängende, zur Platzierung verschiebbare Vorschau je Größenoption anbieten; genaue Form/Seitenverhältnisse der Vorlagen **noch nicht festgelegt** (nicht eigenmächtig endgültige Grafikformen beschließen). Vorlagen intern aus existierenden Planungszellen erstellen und an denselben Validierungs-/FIFO-Bauprozess übergeben.
+3. Eine zusammenhängende, zur Platzierung verschiebbare Vorschau je Größenoption anbieten; **die Vorlagen sind nach dem Beschluss vom 26.10. zunächst ausnahmslos rechteckig (vier Ecken)**. Konkrete Seitenlängen/Seitenverhältnisse sind noch nicht beschlossen; Codex darf praktikable ganzzahlige Rechteckmaße zur bestätigten exakten Kachelfläche wählen. Vorlagen intern aus existierenden Planungszellen erstellen und an denselben Validierungs-/FIFO-Bauprozess übergeben.
 4. Keine Lockerung der bisherigen Erreichbarkeits-, Mindestgrößen-, Ressourcen- oder Einrichtungsanforderungen. Freie Bauweise unverändert.
 5. Tests: korrektes Flächenverhältnis 1:2:4; alle Kammertypen; identische Kosten/Kapazitäten für gleiche Flächen in Vorlage und Freihand; Platzierungskonflikte; dieselben Bau-/Betriebsregeln; Browserbedienung und bestehende Tests/Build.
 
@@ -38,4 +38,10 @@ Nutzer wünscht künftig **eigene Grafiken** zur Unterscheidung der Funktionskam
 - Individuelle Kapazität pro nutzbarer Kachel, zusätzliche Fläche kostet mehr Baumaterial.
 - Bestehende Ruhekammer-Automatik mit Verbrauchsfaktoren 100/80/50 % ist separater beschlossener Schritt nach C5, siehe `planung/2026-10-26-ruhekammern-nach-c5.md`.
 
-**Status:** Größen und paralleler Freimodus verbindlich beschlossen und zur späteren Implementierung vorgesehen; Vorlage-Geometrie und Raumgrafiken noch gemeinsam zu konkretisieren.
+**Status:** Größen und paralleler Freimodus verbindlich beschlossen und zur späteren Implementierung vorgesehen; Rechteckform der Vorlagen beschlossen; genaue Seitenlängen und Raumgrafiken noch gemeinsam zu konkretisieren.
+
+## Ergänzung vom 26.10.2026: Rechteckige Vorlagen
+
+Der Spieler möchte für **Klein/Mittel/Groß zunächst einfache vierseitige Rechtecke** verwenden, statt organischer oder unregelmäßiger vorgefertigter Formen. Diese Regel gilt **nur für die drei Vorlagen**, nicht für die Option „Frei“: Dort bleiben Pinsel, Rechteckwerkzeug und unregelmäßige zusammenhängende Kammerformen erlaubt. Jede Vorlage muss die bisher bestätigte **exakte Kachelanzahl** aufweisen. Weitere dekorative Raumgrafiken können später natürlichen/organischen Charakter ergänzen, ändern aber nicht die rechteckige Grundfläche.
+
+Noch offen sind die konkreten Seitenlängen je Größe. Eine optionale 90°-Drehung ist technisch naheliegend, aber nicht separat als verbindliche Bedienregel beschlossen.

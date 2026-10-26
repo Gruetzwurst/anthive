@@ -195,3 +195,9 @@ Care workers physically collect food or water from existing stores and deliver i
 **Gruppen → Königin und Eier** shows actual stock, target, in-transit supplies and empty reservoirs. Care cargo is individually visible on the map. Withdrawals, delivery, consumption, dropped loads and actual returns conserve resources. Care workers finish cargo safely before changing jobs. `python3 scripts/check-economy-browser.py --larvae-only` verifies the live flow. See `docs/C3-LARVENVERSORGUNG-ERGEBNIS.md`.
 
 Resource shortages are recorded; development penalties/recovery remain C4. The C2 care factor continues to apply. The local browser link stays development-current while Vite is running; reloading still starts a new game. **Stop before C4.**
+
+### Visible queen, brood and actual egg carrying (2026-10-26)
+
+The map now shows the queen, actual laid eggs, larvae and pupae. The queen's label shows time until the next egg; no startup brood or acceleration is added. Care workers carry a white egg from the queen to its reserved chamber, and development starts only after real arrival. Without assigned care workers eggs remain visibly waiting by the queen. Existing larval food/water deliveries and individual cargo remain visible, with small reservoir labels and feeding indicators in brood rooms.
+
+Reload the local game, assign at least one worker to **Pflegen** under **Gruppen**, and pan between the queen and the lower brood rooms. The first egg takes about two real minutes at good supply. `python3 scripts/check-economy-browser.py --visible-brood-only` checks the real visible sequence. See `docs/SICHTBARE-BRUT-ERGEBNIS.md`. **C4 remains pending.**

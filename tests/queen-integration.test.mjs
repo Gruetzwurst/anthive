@@ -24,7 +24,7 @@ test('actual completed extra brood chamber is discovered and receives waiting ta
  const s=createWorkforceSimulation(world,(resources,traffic)=>{
   resources.depositInStore('material',{resource:'buildingMaterial',amount:60});excavation=new ExcavationSystem(world,resources);excavation.setTraffic(traffic);excavation.addBuilder('builder',{x:60,y:84});
   return{workers:()=>excavation.getBuilders(),addWorker:(id,p)=>excavation.addBuilder(id,p),removeWorker:id=>excavation.removeBuilder(id),retireWorker:id=>excavation.removeBuilder(id),advanceWorkers:(seconds,factor)=>excavation.advance(seconds,factor),broodChambers:()=>excavation.chambers.getChambers().filter(c=>c.type.startsWith('brood-')).map(c=>({id:`built-${c.id}`,specialization:c.type.slice(6),capacity:c.capacity,operational:c.operational}))};
- });
+ },undefined,undefined,{eggTransport:false});
  s.queen.setQuotas({gathering:100,building:0,care:0,combat:0});s.advance(120);assert.equal(s.queen.snapshot.bufferCount,1);
  const cells=Array.from({length:20},(_,i)=>({column:3+i%5,row:2+Math.floor(i/5)}));excavation.addOrder(cells,'brood-gathering');
  for(let i=0;i<2000&&!s.queen.snapshot.assignedCount;i++)s.advance(.1);

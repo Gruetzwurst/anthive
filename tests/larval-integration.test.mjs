@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {createStartingWorld} from '../src/game/world/worldGenerator.ts';
 import {createWorkforceSimulation} from '../src/game/simulation/workforceSimulation.ts';
-function fixture(nurses=7){const world=createStartingWorld(),s=createWorkforceSimulation(world,{workers:()=>[],addWorker:()=>{},removeWorker:()=>{},retireWorker:()=>{},advanceWorkers:()=>{}});
+function fixture(nurses=7){const world=createStartingWorld(),s=createWorkforceSimulation(world,{workers:()=>[],addWorker:()=>{},removeWorker:()=>{},retireWorker:()=>{},advanceWorkers:()=>{}},undefined,undefined,{eggTransport:false});
  s.resources.depositInStore('food-store',{resource:'food',amount:100});s.resources.depositInStore('water-store',{resource:'water',amount:100});
  s.moveWorkers('gathering','gathering','care',nurses);s.advance(1);
  const rooms=s.queen.snapshot.chambers;s.queen.setQuotas({gathering:100,building:0,care:0,combat:0});s.queen.advance(.2,1,[]);s.queen.advance(1,0,rooms,100);return s;}

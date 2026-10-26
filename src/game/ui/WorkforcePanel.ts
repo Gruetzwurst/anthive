@@ -97,7 +97,7 @@ export class WorkforcePanel {
         catch (error) {result.textContent = (error as Error).message;}
       });
       const hint = document.createElement('p');hint.className = 'workforce-note';
-      hint.textContent = 'Zusammen 100 %. Die Automatik verteilt Eier auf passende freie Brutplätze. Wartende Eier behalten ihr bisheriges Ziel und entwickeln sich im Puffer nicht. Ei → Larve → Puppe → Ameise; Pflegemangel verlangsamt, tötet aber keine Brut. Pflegekräfte liefern echte Nahrung und Wasser. Leere Vorräte werden angezeigt; weitere Mangelfolgen sind noch nicht aktiv.';
+      hint.textContent = 'Zusammen 100 %. Die Automatik reserviert passende Brutplätze. Pflegekräfte tragen Eier von der Königin dorthin; erst bei Ankunft beginnt die Entwicklung. Ohne Pflegekraft warten die Eier sichtbar bei der Königin. Ei → Larve → Puppe → Ameise. Pflegekräfte liefern auch Nahrung und Wasser; weitere Mangelfolgen sind noch nicht aktiv.';
       this.dialog.append(title, this.queenSummary, quotas, result, hint, this.broodRooms);this.updateQueen();
     }
     parent.append(this.dialog);
@@ -133,7 +133,7 @@ export class WorkforcePanel {
     const stocks = new Map(this.larvalSupply?.().map(room=>[room.id,room]) ?? []);
     for (const [index, room] of state.chambers.entries()) {
       const row = document.createElement('p');row.textContent = `${SPECIALTY_LABELS[room.specialization]} · Kammer ${index + 1}: ${room.occupied} / ${room.capacity} Brutplätze · ${room.operational ? 'betriebsbereit' : 'nicht erreichbar oder noch nicht nutzbar'}`;
-      const brood = state.eggs.filter(egg => egg.chamberId === room.id);
+      const brood = state.eggs.filter(egg => egg.chamberId === room.id && egg.arrived);
       row.textContent += ` · ${brood.filter(egg => egg.stage === 'egg').length} Eier / ${brood.filter(egg => egg.stage === 'larva').length} Larven / ${brood.filter(egg => egg.stage === 'pupa').length} Puppen`;
       this.broodRooms.append(row);
       const stock = stocks.get(room.id);

@@ -9,7 +9,8 @@ export type EggQuotas = Record<Specialization, number>;
 export type BroodRoom = {id: string; specialization: Specialization; capacity: number; operational: boolean; position?: WorldPoint};
 export type BirthEvent = {id: string; eggId: string; specialization: Specialization; chamberId: string; position?: WorldPoint};
 type Stage = 'egg' | 'larva' | 'pupa' | 'adult';
-type Egg = {id: string; targetSpecialization: Specialization; chamberId: string | null; stage: Stage; stageProgressDays: number};
+type Egg = {id: string; targetSpecialization: Specialization; chamberId: string | null; stage: Stage; stageProgressDays: number;
+  arrived:boolean;carrierId:string|null;carried:boolean;origin:WorldPoint|null};
 const EPS = 1e-9;
 
 /** Queen, individual brood stages and atomic allocation share one event timeline. */
@@ -25,6 +26,34 @@ export class QueenSystem {
   private broodConfig: BroodConfig;
   private births: BirthEvent[] = [];
   private effectiveNurses = 0;
+  private queenOrigin: WorldPoint | null = null;
+
+  requireEggTransport(origin:WorldPoint):void {
+    if(this.eggs.length)throw new Error('Egg transport must be configured before laying');
+    nonNegativeFinite(origin.x,'queen.x');nonNegativeFinite(origin.y,'queen.y');this.queenOrigin={...origin};
+  }
+  getEggRequests() {
+    return this.buffer.filter(egg=>egg.chamberId && !egg.carrierId && this.rooms.get(egg.chamberId)?.operational)
+      .flatMap(egg=>{const destination=this.rooms.get(egg.chamberId!)?.position;return destination?[{eggId:egg.id,roomId:egg.chamberId!,position:{...egg.origin!},destination:{...destination}}]:[];});
+  }
+  claimEgg(id:string,carrierId:string):boolean {
+    const egg=this.buffer.find(egg=>egg.id===id);
+    if(!carrierId.trim() || !egg?.chamberId || egg.carrierId || !this.rooms.get(egg.chamberId)?.operational)return false;
+    egg.carrierId=carrierId;return true;
+  }
+  pickUpEgg(id:string,carrierId:string):boolean {
+    const egg=this.buffer.find(egg=>egg.id===id);if(!egg || egg.carrierId!==carrierId || egg.carried)return false;
+    egg.carried=true;return true;
+  }
+  deliverEgg(id:string,carrierId:string):boolean {
+    const egg=this.buffer.find(egg=>egg.id===id);
+    if(!egg?.chamberId || egg.carrierId!==carrierId || !egg.carried || !this.rooms.get(egg.chamberId)?.operational)return false;
+    egg.arrived=true;egg.carried=false;egg.carrierId=null;egg.origin=null;this.buffer=this.buffer.filter(other=>other!==egg);return true;
+  }
+  releaseEgg(id:string,carrierId:string,position:WorldPoint):void {
+    const egg=this.buffer.find(egg=>egg.id===id);if(!egg || egg.carrierId!==carrierId)return;
+    if(egg.carried)egg.origin={...position};egg.carrierId=null;egg.carried=false;
+  }
 
   constructor(config: QueenConfig = QUEEN_CONFIG, broodConfig: BroodConfig = BROOD_CONFIG) {
     for (const days of Object.values(broodConfig.stageDays)) positiveFinite(days, 'stageDays');
@@ -78,11 +107,13 @@ export class QueenSystem {
     if (!this.buffer.length) return;
     const counts = this.occupied(), waiting: Egg[] = [];
     for (const egg of this.buffer) {
+      if(this.queenOrigin && egg.chamberId){waiting.push(egg);continue;}
       const candidates = [...this.rooms.values()].filter(room => room.operational && room.specialization === egg.targetSpecialization && (counts.get(room.id) ?? 0) < room.capacity);
       candidates.sort((a, b) => (counts.get(a.id) ?? 0) - (counts.get(b.id) ?? 0) || a.id.localeCompare(b.id));
       const room = candidates[0];
       if (!room) {waiting.push(egg);continue;}
-      egg.chamberId = room.id;counts.set(room.id, (counts.get(room.id) ?? 0) + 1);
+      egg.chamberId = room.id;egg.arrived=!this.queenOrigin;counts.set(room.id, (counts.get(room.id) ?? 0) + 1);
+      if(this.queenOrigin)waiting.push(egg);
     }
     this.buffer = waiting;
   }
@@ -97,9 +128,9 @@ export class QueenSystem {
   }
 
   private developing(): Egg[] {
-    return this.eggs.filter(egg => egg.chamberId && egg.stage !== 'adult' && this.rooms.get(egg.chamberId)?.operational);
+    return this.eggs.filter(egg => egg.arrived && egg.chamberId && egg.stage !== 'adult' && this.rooms.get(egg.chamberId)?.operational);
   }
-  get hasDevelopingBrood(): boolean {return this.eggs.some(egg => egg.chamberId && egg.stage !== 'adult' && this.rooms.get(egg.chamberId)?.operational);}
+  get hasDevelopingBrood(): boolean {return this.eggs.some(egg => egg.arrived && egg.chamberId && egg.stage !== 'adult' && this.rooms.get(egg.chamberId)?.operational);}
   getLarvalRooms() {
     const larvae = new Map<string,number>();
     for (const egg of this.eggs) if (egg.chamberId && egg.stage==='larva') larvae.set(egg.chamberId,(larvae.get(egg.chamberId)??0)+1);
@@ -139,7 +170,8 @@ export class QueenSystem {
       this.allocate();
       if (rate > 0 && this.progress >= 1 - EPS) {
         this.progress = 0;
-        const egg: Egg = {id: `egg-${this.eggs.length + 1}`, targetSpecialization: this.nextTarget(), chamberId: null, stage: 'egg', stageProgressDays: 0};
+        const egg: Egg = {id: `egg-${this.eggs.length + 1}`, targetSpecialization: this.nextTarget(), chamberId: null, stage: 'egg', stageProgressDays: 0,
+          arrived:!this.queenOrigin,carrierId:null,carried:false,origin:this.queenOrigin?{...this.queenOrigin}:null};
         this.eggs.push(egg);this.buffer.push(egg);this.allocate();
       }
     }
@@ -149,14 +181,15 @@ export class QueenSystem {
     const counts = this.occupied(), bufferRateFactor = this.bufferFactor(), developing = this.developing();
     const bornCount = this.eggs.filter(egg => egg.stage === 'adult').length;
     const stageCounts = {egg: 0, larva: 0, pupa: 0};
-    for (const egg of this.eggs) if (egg.chamberId && egg.stage !== 'adult') stageCounts[egg.stage]++;
+    for (const egg of this.eggs) if (egg.arrived && egg.chamberId && egg.stage !== 'adult') stageCounts[egg.stage]++;
     return {
       laidEggs: this.eggs.length, bufferCount: this.buffer.length, bufferCapacity: this.config.bufferCapacity,
       assignedCount: this.eggs.length - this.buffer.length - bornCount, bornCount, stageCounts, layingProgress: this.progress,
       careCapacity: this.effectiveNurses * this.broodConfig.broodPerNurse, careFactor: this.careFactor(developing.length),
       eggFactor: this.eggFactor, bufferRateFactor, effectiveEggsPerDay: this.config.eggsPerGameDay * this.eggFactor * bufferRateFactor,
+      daysUntilNextEgg: this.config.eggsPerGameDay*this.eggFactor*bufferRateFactor>0 ? (1-this.progress)/(this.config.eggsPerGameDay*this.eggFactor*bufferRateFactor) : null,
       quotas: {...this.quotas},
-      eggs: this.eggs.map(egg => ({...egg, specialization: egg.chamberId ? this.rooms.get(egg.chamberId)!.specialization : null,
+      eggs: this.eggs.map(egg => ({...egg, origin:egg.origin?{...egg.origin}:null,specialization: egg.arrived && egg.chamberId ? this.rooms.get(egg.chamberId)!.specialization : null,
         developmentProgress: egg.stage === 'adult' ? 1 : egg.stageProgressDays / this.broodConfig.stageDays[egg.stage]})),
       chambers: [...this.rooms.values()].map(room => ({...room, position: room.position ? {...room.position} : undefined, occupied: counts.get(room.id) ?? 0})),
     };

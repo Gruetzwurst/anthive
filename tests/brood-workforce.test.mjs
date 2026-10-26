@@ -8,7 +8,7 @@ function fixture(){
  const s=createWorkforceSimulation(world,(resources,traffic)=>{
   excavation=new ExcavationSystem(world,resources);excavation.setTraffic(traffic);excavation.addBuilder('builder-0',world.landmarks.nestChamberCenter);excavation.addBuilder('builder-1',world.landmarks.nestChamberCenter);
   return{workers:()=>excavation.getBuilders(),addWorker:(id,p)=>excavation.addBuilder(id,p),removeWorker:id=>excavation.removeBuilder(id),retireWorker:id=>excavation.removeBuilder(id),advanceWorkers:(sec,f)=>excavation.advance(sec,f)};
- });s.resources.depositInStore('food-store',{resource:'food',amount:540});s.resources.depositInStore('water-store',{resource:'water',amount:540});return{s,world,excavation};
+ },undefined,undefined,{eggTransport:false});s.resources.depositInStore('food-store',{resource:'food',amount:540});s.resources.depositInStore('water-store',{resource:'water',amount:540});return{s,world,excavation};
 }
 test('explicit foreign care counts only after handoff, supplies half capacity, and genuinely replaces resting work',()=>{
  const {s}=fixture();s.resources.takeFromStore('food-store',100);s.resources.takeFromStore('water-store',100);s.advance(5);const carrier=s.gathering.getCollectors().find(c=>c.phase!=='idle');assert.ok(carrier);

@@ -40,6 +40,7 @@ import { CONSTRUCTION_CONFIG } from '../simulation/simulationConfig';
 import { cellKey } from '../world/gridPathfinding';
 import { EconomyHud, isEconomyHudPoint } from '../ui/EconomyHud';
 import { buildEconomyOverview } from '../ui/economyOverview';
+import { BroodRenderer } from '../world/BroodRenderer';
 
 const COLORS = {
   ...TERRAIN_PALETTE,
@@ -62,6 +63,8 @@ export class WorldScene extends Phaser.Scene {
   private economyHud!: EconomyHud;
   private workforcePanel!: WorkforcePanel;
   private constructionPanel!: ConstructionPanel;
+  private broodRenderer!:BroodRenderer;
+  private broodRefreshMs=100;
   private planning = false;
   private drawingTool: DrawingTool = 'brush';
   private planType: PlanType = 'tunnel';
@@ -132,6 +135,7 @@ export class WorldScene extends Phaser.Scene {
     this.buildingMaterialPileGraphics = this.add.graphics().setDepth(4);
     this.drawBuildingMaterialPile();
     this.drawLabels();
+    this.broodRenderer=new BroodRenderer(this,queenChamberCenter);
     this.createDigControls();
     this.createAnts();
     this.syncBuilderVisuals();
@@ -151,7 +155,7 @@ export class WorldScene extends Phaser.Scene {
       resume: id => { this.excavation.resumeOrder(id); this.updateConstruction(); },
       cancel: id => { this.excavation.cancelOrder(id); this.updateConstruction(); },
     });
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => { this.workforcePanel.destroy(); this.constructionPanel.destroy(); });
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => { this.workforcePanel.destroy(); this.constructionPanel.destroy();this.broodRenderer.destroy(); });
     this.economyHud = new EconomyHud(this, priority => {
       this.gathering.gathering.setPriority(priority);
       this.updateEconomyHud();
@@ -160,6 +164,7 @@ export class WorldScene extends Phaser.Scene {
     this.updateEconomyHud();
     this.frameWorld();
     this.enableCameraDrag();
+    this.renderBrood(0);
   }
 
   update(_time: number, delta: number): void {
@@ -169,6 +174,7 @@ export class WorldScene extends Phaser.Scene {
     if (changedCells.length) this.refreshSourceReachability();
     this.syncBuilderVisuals();
     this.syncMaterialPiles();
+    this.renderBrood(delta);
     const notices = this.excavation.drainConstructionNotices();
     if (notices.length) {
       this.constructionNotice = notices.map(notice => notice.message).join(' · ');
@@ -187,8 +193,9 @@ export class WorldScene extends Phaser.Scene {
       if (state.position.x !== ant.body.x) ant.body.setScale(state.position.x < ant.body.x ? -1 : 1, 1);
       ant.body.setPosition(state.position.x, state.position.y);
       const carried = state.load ?? collectors.get(ant.id)?.load;
-      ant.load.setVisible((carried?.amount ?? 0) > 0);
-      ant.load.setFillStyle(carried?.resource === 'water' ? 0x71d0d5 : 0xe3aa4e);
+      ant.load.setVisible(!!state.eggId || (carried?.amount ?? 0) > 0);
+      ant.load.setFillStyle(state.eggId?0xfff2cf:carried?.resource === 'water' ? 0x71d0d5 : 0xe3aa4e);
+      ant.load.setDisplaySize(state.eggId?5:6,state.eggId?8:5);
     });
     this.ants = this.ants.filter(ant => visibleWorkers.has(ant.id));
     this.foodStockLabel?.setText(`NAHRUNG: ${this.gathering.resources.getStore('food-store').amount.toFixed(1)}`);
@@ -215,6 +222,13 @@ export class WorldScene extends Phaser.Scene {
         this.gathering.navigation.findPath(nestChamberCenter, access) !== null);
       this.sourceReachability.set(source.id, reachable);
     }
+  }
+  private renderBrood(delta:number):void {
+    this.broodRefreshMs+=delta;if(this.broodRefreshMs<100)return;
+    const elapsed=this.broodRefreshMs;this.broodRefreshMs=0;
+    const rooms=new Map((startingWorld.broodChambers??[]).map(room=>[room.id,room.cells]));
+    for(const order of this.excavation.getConstructionOrders())if(order.type.startsWith('brood-'))rooms.set(`built-${order.id}`,order.cells);
+    this.broodRenderer.update(elapsed,this.gathering.queen.snapshot,rooms,this.gathering.broodSupply.getRooms(),TILE_SIZE,this.gathering.clock.secondsPerGameDay);
   }
 
   private updateEconomyHud(): void {
@@ -376,7 +390,7 @@ export class WorldScene extends Phaser.Scene {
 
   private drawLabels(): void {
     this.add
-      .text(queenChamberCenter.x, queenChamberCenter.y, 'KÖNIGINNENKAMMER', {
+      .text(queenChamberCenter.x, queenChamberCenter.y-28, 'KÖNIGINNENKAMMER', {
         color: '#c8d1cd',
         fontFamily: 'system-ui, sans-serif',
         fontSize: '8px',

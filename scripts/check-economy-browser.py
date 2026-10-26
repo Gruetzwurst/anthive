@@ -222,13 +222,56 @@ try:
             native_click('[data-action="close-construction"]')
             print('PASS: B3 real touch rectangle, confirmation, scrollable details and cancellation')
 
+        if '--visible-brood-only' in sys.argv:
+            page("scene.gathering.resources.depositInStore('food-store',{resource:'food',amount:540});scene.gathering.resources.depositInStore('water-store',{resource:'water',amount:540});scene.cameras.main.centerOn(160*24,24*24);return true;")
+            assert page('return scene.broodRenderer.queen.visible && scene.gathering.queen.snapshot.laidEggs===0;')
+            screenshot('anthive-visible-queen.png')
+            page("scene.update(0,120000);scene.renderBrood(100);const q=scene.gathering.queen.snapshot;if(q.bufferCount!==1 || q.assignedCount!==0 || q.eggs[0].stageProgressDays!==0 || !scene.broodRenderer.bodies.has('egg-1'))throw Error('Real egg is not visibly waiting at queen');return true;")
+            screenshot('anthive-visible-laid-egg.png')
+            assign_group('gathering','gathering','care',1)
+            native_click('[data-action="close-workforce"]')
+            print(json.dumps({'eggPickup':page("""
+              const s=scene.gathering;
+              for(let i=0;i<5000&&!s.getWorkers().some(w=>w.eggId==='egg-1');i++)scene.update(0,100);
+              const carrier=s.getWorkers().find(w=>w.eggId==='egg-1');scene.renderBrood(100);
+              if(!carrier || !scene.ants.find(w=>w.id===carrier.id)?.load.visible || scene.broodRenderer.bodies.has('egg-1'))throw Error('Egg carrier/visibility is incorrect');
+              if(s.queen.snapshot.eggs[0].stageProgressDays!==0)throw Error('Egg developed before arrival');
+              scene.cameras.main.centerOn(carrier.position.x,carrier.position.y);return {id:carrier.id,position:carrier.position};
+            """)}))
+            screenshot('anthive-visible-egg-carried.png')
+            page("for(let i=0;i<5000&&!scene.gathering.queen.snapshot.eggs[0].arrived;i++)scene.update(0,100);scene.renderBrood(100);const e=scene.gathering.queen.snapshot.eggs[0];if(!e.arrived || !scene.broodRenderer.bodies.has(e.id) || e.stageProgressDays>.001)throw Error('Egg arrival did not start actual brood at zero');return true;")
+            assign_group('gathering','gathering','care',6)
+            native_click('[data-action="close-workforce"]')
+            assign_group('building','building','care',2)
+            native_click('[data-action="close-workforce"]')
+            print(json.dumps({'feeding':page("""
+              scene.update(0,600000);const s=scene.gathering;
+              for(let i=0;i<2000&&!(s.broodSupply.balance.food.consumed>0&&s.broodSupply.balance.water.consumed>0);i++)scene.update(0,100);
+              scene.renderBrood(100);const e=s.queen.snapshot.eggs[0],visual=scene.broodRenderer.bodies.get(e.id);
+              if(e.stage!=='larva' || visual?.stage!=='larva' || s.broodSupply.balance.food.consumed<=0 || s.broodSupply.balance.water.consumed<=0)throw Error('Visible larva is not really supplied');
+              scene.cameras.main.centerOn(149.5*24,33*24);return {stage:e.stage,balance:s.broodSupply.balance};
+            """)}))
+            screenshot('anthive-visible-larvae-fed.png')
+            page("scene.update(0,1800000);scene.renderBrood(100);if(scene.gathering.queen.snapshot.eggs[0].stage!=='pupa' || scene.broodRenderer.bodies.get('egg-1')?.stage!=='pupa')throw Error('Pupal drawing does not match real brood');return true;")
+            screenshot('anthive-visible-pupae.png')
+            check_layout()
+            command('WebDriver:Navigate', {'url':f'http://127.0.0.1:{vite_port}/?view=pond'})
+            hook();check_layout();screenshot('anthive-visible-pond.png')
+            command('Marionette:Quit', {'flags':['eForceQuit']});browser.wait(timeout=10);browser=None
+            print('PASS: visible queen, real laid/waiting egg, actual nurse pickup and arrival, no development in transit, visible supplied larva and pupa, pond intact')
+            sys.exit(0)
+
+        # Older phase checks seed a precise assigned cohort; the visible-brood
+        # check below exercises actual pickup and delivery instead of this setup.
+        page("window.__placeFixtureEggs=q=>{for(const r of q.getEggRequests()){q.claimEgg(r.eggId,'fixture');q.pickUpEgg(r.eggId,'fixture');q.deliverEgg(r.eggId,'fixture');}};return true;")
+
         if '--larvae-only' in sys.argv:
             page("scene.gathering.resources.depositInStore('food-store',{resource:'food',amount:540});scene.gathering.resources.depositInStore('water-store',{resource:'water',amount:540});return true;")
             assign_group('gathering','gathering','care',7)
             native_click('[data-action="close-workforce"]')
             print(json.dumps({'c3Pickup':page("""
               scene.update(0,1000);const s=scene.gathering,rooms=s.queen.snapshot.chambers;
-              s.queen.setQuotas({gathering:100,building:0,care:0,combat:0});s.queen.advance(.2,1,[]);s.queen.advance(1,0,rooms,100);
+              s.queen.setQuotas({gathering:100,building:0,care:0,combat:0});s.queen.advance(.2,1,[]);s.queen.advance(0,0,rooms,100);window.__placeFixtureEggs(s.queen);s.queen.advance(1,0,rooms,100);
               for(let i=0;i<5000&&!s.getWorkers().some(w=>w.load?.amount>0);i++)scene.update(0,100);
               const carrier=s.getWorkers().find(w=>w.load?.amount>0);
               if(!carrier || carrier.actualWork!=='care' || carrier.load.amount>5 || !scene.ants.find(a=>a.id===carrier.id)?.load.visible)throw Error('No real visible nurse cargo');
@@ -278,7 +321,7 @@ try:
             native_click('[data-action="close-workforce"]')
             print(json.dumps({'c2Care':page("""
               scene.update(0,1000);const s=scene.gathering,rooms=s.queen.snapshot.chambers;
-              s.queen.advance(.8,1,[]);s.queen.advance(0,0,rooms,100);
+              s.queen.advance(.8,1,[]);s.queen.advance(0,0,rooms,100);window.__placeFixtureEggs(s.queen);
               scene.update(0,600000);const q=s.queen.snapshot;
               if(q.stageCounts.larva!==4 || q.careCapacity!==45 || q.careFactor!==1 || s.getWorkers().filter(w=>w.actualWork==='care').length!==9)throw Error('Native care assignment or larval transition failed');
               return {capacity:q.careCapacity,factor:q.careFactor,stages:q.stageCounts};
@@ -317,6 +360,11 @@ try:
             sys.exit(0)
 
         if '--queen-only' in sys.argv:
+            page("scene.gathering.resources.depositInStore('food-store',{resource:'food',amount:540});scene.gathering.resources.depositInStore('water-store',{resource:'water',amount:540});return true;")
+            assign_group('gathering','gathering','care',7)
+            native_click('[data-action=\"close-workforce\"]')
+            assign_group('building','building','care',2)
+            native_click('[data-action=\"close-workforce\"]')
             check_layout()
             click(586,20)
             assert page('return document.querySelector("#workforce-panel").open;')
@@ -329,7 +377,7 @@ try:
             native_click('[data-action="apply-egg-quotas"]')
             native_click('[data-action="close-workforce"]')
             print(json.dumps({'c1':page("""
-              scene.update(0,600000);scene.updateEconomyHud();const s=scene.gathering.queen.snapshot;
+              scene.update(0,600000);scene.update(0,30000);scene.updateEconomyHud();const s=scene.gathering.queen.snapshot;
               if(s.laidEggs!==5 || s.assignedCount!==5 || s.chambers.length!==4 || s.chambers.some(c=>c.capacity!==48 || !c.operational))throw Error('Queen/start room integration failed');
               if(scene.gathering.getWorkers().length!==9 || s.eggs.some(e=>e.stage!=='egg'))throw Error('Premature brood growth');
               scene.gathering.clock.setPaused(true);scene.update(0,600000);
@@ -343,7 +391,7 @@ try:
             page('const d=document.querySelector("#workforce-panel");d.scrollTop=d.scrollHeight;return true;')
             screenshot('anthive-c1-queen-desktop.png')
             native_click('[data-action="close-workforce"]')
-            page("scene.update(0,600000);scene.updateEconomyHud();const s=scene.gathering.queen.snapshot;if(s.laidEggs!==10 || s.chambers.find(c=>c.specialization==='gathering').occupied!==7)throw Error('Native quota change did not affect actual new eggs');return true;")
+            page("scene.update(0,600000);scene.update(0,30000);scene.updateEconomyHud();const s=scene.gathering.queen.snapshot;if(s.laidEggs!==10 || s.chambers.find(c=>c.specialization==='gathering').occupied!==7)throw Error('Native quota change did not affect actual new eggs');return true;")
             print(json.dumps({'buffer':page("const {QueenSystem}=await import('/src/game/simulation/queenSystem.ts');const q=new QueenSystem();q.advance(1000,1,[]);const s=q.snapshot;if(s.bufferCount!==50 || s.laidEggs!==50 || s.effectiveEggsPerDay!==0 || s.eggs.some(e=>e.developmentProgress!==0))throw Error('Queen buffer overflow/development');return {laid:s.laidEggs,buffer:s.bufferCount,rate:s.effectiveEggsPerDay};")}))
             command('WebDriver:SetWindowRect', {'width':844,'height':480})
             for _ in range(50):

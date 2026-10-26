@@ -1,7 +1,7 @@
 import type {WorldPoint} from '../world/worldTypes.ts';
 import type {GatheringNavigation} from '../world/collectorNavigation.ts';
 import type {ResourceAmount} from './resourceTypes.ts';
-import type {BroodRoom} from './queenSystem.ts';
+import type {BroodRoom,QueenSystem} from './queenSystem.ts';
 import type {ResourceSystem} from './resourceSystem.ts';
 import {LARVAL_SUPPLY_CONFIG} from './simulationConfig.ts';
 import type {LarvalSupplyConfig} from './simulationConfig.ts';
@@ -12,9 +12,9 @@ const KINDS: Kind[] = ['food', 'water'], EPS = 1e-9;
 export type LarvalRoom = BroodRoom & {larvae: number};
 type Stock = {amount: number; target: number; capacity: number; refilling: boolean; consumed: number; unmet: number};
 type Room = LarvalRoom & Record<Kind, Stock>;
-type Job = {kind: 'pickup' | 'delivery' | 'return'; phase: 'walking' | 'interaction';
-  path: WorldPoint[]; index: number; progress: number; amount: number; resource: Kind; roomId?: string; storeId?: string};
-type Nurse = {id: string; position: WorldPoint; load: ResourceAmount | null; targetRoomId?: string; enabled: boolean; job: Job | null; retry: number};
+type Job = {kind: 'pickup' | 'delivery' | 'return' | 'eggPickup' | 'eggDelivery'; phase: 'walking' | 'interaction';
+  path: WorldPoint[]; index: number; progress: number; amount: number; resource?: Kind; roomId?: string; storeId?: string;eggId?:string};
+type Nurse = {id: string; position: WorldPoint; load: ResourceAmount | null;eggId:string|null; targetRoomId?: string; enabled: boolean; job: Job | null; retry: number};
 type Drop = {id: string; position: WorldPoint; load: ResourceAmount};
 const distance = (a: WorldPoint, b: WorldPoint) => Math.hypot(a.x-b.x, a.y-b.y);
 const empty = (): Stock => ({amount: 0, target: 0, capacity: 0, refilling: false, consumed: 0, unmet: 0});
@@ -29,6 +29,8 @@ export class BroodSupplySystem {
   private drops: Drop[] = [];
   private withdrawn = {food: 0, water: 0};
   private returned = {food: 0, water: 0};
+  private eggTransport?: QueenSystem;
+  setEggTransport(queen:QueenSystem):void {this.eggTransport=queen;}
   constructor(resources: ResourceSystem, navigation: GatheringNavigation, config: LarvalSupplyConfig = LARVAL_SUPPLY_CONFIG) {
     for (const key of ['reserveDays','carryCapacity','speed','interactionSeconds','retrySeconds','maxStepSeconds'] as const) positiveFinite(config[key], key);
     for (const kind of KINDS) nonNegativeFinite(config.perLarvaPerDay[kind], kind);
@@ -81,22 +83,26 @@ export class BroodSupplySystem {
   addNurse(id: string, position: WorldPoint): void {
     if (!id.trim() || this.nurses.has(id)) throw new Error('Nurse requires a unique ID');
     nonNegativeFinite(position.x, 'position.x');nonNegativeFinite(position.y, 'position.y');
-    this.nurses.set(id, {id, position: {...position}, load: null, enabled: true, job: null, retry: 0});
+    this.nurses.set(id, {id, position: {...position}, load: null,eggId:null, enabled: true, job: null, retry: 0});
   }
   setNursingEnabled(id: string, enabled: boolean): void {
     const nurse = this.nurses.get(id);if (!nurse) throw new Error('Unknown nurse');
     nurse.enabled = enabled;
-    if (!enabled && !nurse.load && nurse.job?.phase === 'walking') nurse.job = null;
+    if (!enabled && !nurse.load && !nurse.eggId && nurse.job?.phase === 'walking') {
+      if(nurse.job.eggId)this.eggTransport?.releaseEgg(nurse.job.eggId,id,nurse.position);
+      nurse.job = null;
+    }
     if (!enabled) nurse.retry = 0;
   }
   removeNurse(id: string): void {
     const nurse = this.nurses.get(id);if (!nurse) return;
     if (nurse.load) this.drops.push({id: `care-drop-${this.drops.length+1}`, position: {...nurse.position}, load: {...nurse.load}});
+    const eggId=nurse.eggId??nurse.job?.eggId;if(eggId)this.eggTransport?.releaseEgg(eggId,id,nurse.position);
     this.nurses.delete(id);
   }
   getNurses() {
     return [...this.nurses.values()].map(nurse => ({id: nurse.id, position: {...nurse.position}, load: nurse.load ? {...nurse.load} : null,
-      readyToLeave: !nurse.load && !nurse.job, active: !!nurse.job, job: nurse.job ? {kind: nurse.job.kind, phase: nurse.job.phase, resource: nurse.job.resource, roomId: nurse.job.roomId, storeId: nurse.job.storeId} : null}));
+      eggId:nurse.eggId,readyToLeave: !nurse.load && !nurse.eggId && !nurse.job, active: !!nurse.job, job: nurse.job ? {kind: nurse.job.kind, phase: nurse.job.phase, resource: nurse.job.resource, roomId: nurse.job.roomId, storeId: nurse.job.storeId} : null}));
   }
   getDroppedLoads(): Drop[] {return this.drops.map(drop => ({...drop, position: {...drop.position}, load: {...drop.load}}));}
   get balance() {
@@ -107,10 +113,15 @@ export class BroodSupplySystem {
     return result;
   }
   private travel(path: WorldPoint[]): number {return this.navigation.travelSeconds?.(path,this.config.speed) ?? path.reduce((s,p,i) => s+(i?distance(path[i-1],p)/this.config.speed:0),0);}
-  private start(kind: Job['kind'], path: WorldPoint[], resource: Kind, amount: number, roomId?: string, storeId?: string): Job {
+  private start(kind: Job['kind'], path: WorldPoint[], resource: Kind|undefined, amount: number, roomId?: string, storeId?: string): Job {
     return {kind,path,index:0,phase:'walking',progress:0,resource,amount,roomId,storeId};
   }
   private assign(nurse: Nurse): boolean {
+    if(nurse.eggId){
+      const room=this.eggTransport?.snapshot.chambers.find(room=>room.id===nurse.targetRoomId);
+      const path=room?.operational&&room.position?this.navigation.findPath(nurse.position,room.position):null;
+      if(!path)return false;nurse.job={...this.start('eggDelivery',path,undefined,1,room!.id),eggId:nurse.eggId};return true;
+    }
     if (nurse.load) {
       const resource = nurse.load.resource as Kind, room = this.rooms.get(nurse.targetRoomId ?? '');
       const path = room?.operational && room.position && room[resource].capacity-room[resource].amount > EPS ? this.navigation.findPath(nurse.position,room.position) : null;
@@ -133,20 +144,35 @@ export class BroodSupplySystem {
       }
     }
     choices.sort((a,b) => a.coverage-b.coverage || a.cost-b.cost || a.room.id.localeCompare(b.room.id) || a.resource.localeCompare(b.resource) || a.storeId.localeCompare(b.storeId));
-    const choice = choices[0];if (!choice) return false;
+    const choice = choices[0];if (!choice) {
+      const eggs=this.eggTransport?.getEggRequests().map(request=>({request,path:this.navigation.findPath(nurse.position,request.position),delivery:this.navigation.findPath(request.position,request.destination)}))
+        .filter(candidate=>candidate.path&&candidate.delivery).sort((a,b)=>this.travel(a.path!)+this.travel(a.delivery!)-this.travel(b.path!)-this.travel(b.delivery!) || a.request.eggId.localeCompare(b.request.eggId));
+      for(const egg of eggs??[])if(this.eggTransport!.claimEgg(egg.request.eggId,nurse.id)){
+        nurse.job={...this.start('eggPickup',egg.path!,undefined,1,egg.request.roomId),eggId:egg.request.eggId};return true;
+      }
+      return false;
+    }
     nurse.job = this.start('pickup',choice.path,choice.resource,choice.amount,choice.room.id,choice.storeId);return true;
   }
   private finish(nurse: Nurse, job: Job): void {
+    if(job.kind==='eggPickup' || job.kind==='eggDelivery'){
+      if(job.kind==='eggPickup'){
+        if(this.eggTransport?.pickUpEgg(job.eggId!,nurse.id)){nurse.eggId=job.eggId!;nurse.targetRoomId=job.roomId;}
+        else this.eggTransport?.releaseEgg(job.eggId!,nurse.id,nurse.position);
+      }else if(this.eggTransport?.deliverEgg(job.eggId!,nurse.id)){nurse.eggId=null;nurse.targetRoomId=undefined;}
+      nurse.job=null;return;
+    }
+    const resource=job.resource!;
     if (job.kind==='pickup') {
       const room = this.rooms.get(job.roomId!);
-      const need = room?.operational ? Math.max(0,room[job.resource].target-room[job.resource].amount-this.inTransit(room.id,job.resource)+job.amount) : 0;
+      const need = room?.operational ? Math.max(0,room[resource].target-room[resource].amount-this.inTransit(room.id,resource)+job.amount) : 0;
       const load = this.resources.takeFromStore(job.storeId!,Math.min(job.amount,need));
-      if (load.amount>EPS) {nurse.load=load;nurse.targetRoomId=job.roomId;this.withdrawn[job.resource]+=load.amount;}
+      if (load.amount>EPS) {nurse.load=load;nurse.targetRoomId=job.roomId;this.withdrawn[resource]+=load.amount;}
     } else if (job.kind==='delivery' && nurse.load) {
       const room = this.rooms.get(job.roomId!);
-      if (room?.operational) {const stock=room[job.resource],amount=Math.min(nurse.load.amount,Math.max(0,stock.capacity-stock.amount));stock.amount+=amount;nurse.load.amount-=amount;this.refreshRefill(stock);}
+      if (room?.operational) {const stock=room[resource],amount=Math.min(nurse.load.amount,Math.max(0,stock.capacity-stock.amount));stock.amount+=amount;nurse.load.amount-=amount;this.refreshRefill(stock);}
     } else if (job.kind==='return' && nurse.load) {
-      const amount=this.resources.depositInStore(job.storeId!,nurse.load);nurse.load.amount-=amount;this.returned[job.resource]+=amount;
+      const amount=this.resources.depositInStore(job.storeId!,nurse.load);nurse.load.amount-=amount;this.returned[resource]+=amount;
     }
     if (nurse.load && nurse.load.amount<=EPS) {nurse.load=null;nurse.targetRoomId=undefined;}
     nurse.job=null;

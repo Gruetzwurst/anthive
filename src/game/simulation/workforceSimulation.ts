@@ -24,6 +24,7 @@ export type WorkforceSnapshot = WorkforceWorker & {
   resting: boolean;
   pending: boolean;
   load?: ResourceAmount | null;
+  eggId?:string|null;
 };
 const distance = (a: WorldPoint, b: WorldPoint) => Math.hypot(a.x - b.x, a.y - b.y);
 
@@ -33,6 +34,7 @@ export function createWorkforceSimulation(
   builderSource: WorkforceBuilderAdapter | ((resources: ResourceSystem, traffic: TunnelTrafficSystem) => WorkforceBuilderAdapter),
   config?: SimulationConfig,
   supplyConfig?: AdultSupplyConfig,
+  options: {eggTransport:boolean} = {eggTransport:true},
 ) {
   let builders: WorkforceBuilderAdapter;
   const workforce = new WorkforceSystem();
@@ -69,6 +71,7 @@ export function createWorkforceSimulation(
     },
   }, config, supplyConfig);
   builders = typeof builderSource === 'function' ? builderSource(simulation.resources, simulation.traffic) : builderSource;
+  if(options.eggTransport){simulation.queen.requireEggTransport(world.landmarks.queenChamberCenter);simulation.broodSupply.setEggTransport(simulation.queen);}
   for (const collector of simulation.gathering.getCollectors()) {
     workforce.addWorker(collector.id, 'gathering');
     states.set(collector.id, { engine: 'gathering', position: { ...collector.position } });
@@ -133,7 +136,7 @@ export function createWorkforceSimulation(
       const collector = collectors.get(worker.id), builder = activeBuilders.get(worker.id);
       const nurse=nurses.get(worker.id),careActive = state.engine === 'care' && (hasBrood || !!nurse?.active);
       const actualWork = state.engine==='care' ? careActive?'care':'rest' : state.engine === 'parked' ? 'rest' : state.engine;
-      return { ...worker, position: { ...(nurse?.position ?? collector?.position ?? builder?.position ?? state.position) }, actualWork,load:nurse?.load,
+      return { ...worker, position: { ...(nurse?.position ?? collector?.position ?? builder?.position ?? state.position) }, actualWork,load:nurse?.load,eggId:nurse?.eggId,
         resting: careActive ? false : state.engine === 'parked' || (collector ? collector.phase === 'idle' || collector.phase === 'waiting' : builder?.resting ?? true),
         pending: state.engine==='care' ? worker.assignment!=='care' : state.engine !== 'parked' && actualWork !== worker.assignment,
       };

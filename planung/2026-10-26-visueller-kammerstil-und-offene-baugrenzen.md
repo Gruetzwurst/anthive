@@ -1,50 +1,41 @@
-# ANTHIVE – Visueller Kammerstil und Prüfung von Baugrenzen
+# ANTHIVE – Visueller Kammerstil, Maximalflächen und Abstand
 
-**Beschlossene Gestaltungsentscheidungen vom 26.10.2026.** Planung, keine Code- oder Grafikänderung.
+**Verbindliche Planungsbeschlüsse vom 26.10.2026.** Keine Code- oder Grafikänderung. Umsetzung erst nach C5 mit erneuter Freigabe.
 
-## Zwei verbindliche Gestaltungsentscheidungen (beide Variante B)
+## Visueller Kammerstil – zwei Entscheidungen B
 
-1. **Ausgewogene Raumerkennbarkeit:** Funktionskammern werden primär durch tatsächliche Einrichtung, Inhalt und Nutzung unterscheidbar; hinzu kommen dezente Unterschiede an Boden, Rand und Wand. Keine aufdringlichen künstlichen Farbblöcke oder menschlich wirkenden Möbel. Neutrale Hohlräume bleiben neutral, geplante und unfertige Räume sind als solche kenntlich.
-2. **Brutkammern leicht unterscheidbar:** Die vier Spezialisierungen teilen eine gemeinsame natürliche Brutkammer-Gestaltung; dezente Symbole, Muster oder Akzente unterscheiden Sammlerinnen-, Baumeisterinnen-, Kämpferinnen- und Brutpflegerinnen-Brutkammern. Keine stark abweichenden Fantasie-Räume.
-3. Ziel: unterscheidbare Einrichtungen und nach aktuellem Lagerbestand bzw. Belegung visuell veränderliche Inhalte. Weitere konkrete Kunst-/Grafikformen sind noch auszuarbeiten; **keine Grafiken erzeugen oder Spielcode anpassen**.
+1. **Ausgewogen und natürlich:** Eingerichtete Funktionsräume werden hauptsächlich über Inhalt, Ausstattung und Nutzung sichtbar; dazu kommen dezente Unterschiede bei Boden, Rändern und Wänden. Keine grellen Funktionsfarben oder unpassenden menschlichen Möbel.
+2. **Brutkammern leicht unterscheidbar:** Die vier Spezialisierungen teilen sich eine gemeinsame natürliche Brutgestaltung, erhalten aber dezente Symbole/Muster/Akzente für Sammlerinnen, Baumeisterinnen, Kämpferinnen und Brutpflegerinnen.
+3. Ein nur ausgegrabener Hohlraum ist keine fertige Funktionskammer. Geplant / im Bau / fertig aber leer / fertig und benutzt sollen nachvollziehbar unterscheidbar sein. Inhalte und Belegung dürfen sich dynamisch darstellen. Konkrete Grafiken sind noch zu gestalten.
 
-## Verbindliche Bauregeln: Maximalgröße und Kammerabstand
+## Maximalfläche je einzelner Kammer – Größensystem C
 
-**Nutzerbeschluss vom 26.10.2026.** Gilt für die Planung **neuer Funktionskammern**; die bereits existierenden Startkammern sollen dadurch nicht nachträglich unbrauchbar werden. Bestehende Raumfunktionen, freie Tunnel und fertiggestellte Räume bleiben unangetastet.
+**Maximum = 2 × Kachelfläche der großen quadratischen Vorlage.** Die Auswahl Klein/Mittel/Groß/Frei und die verbindlichen Seitenmaße stehen auch in `planung/2026-10-26-kammervorlagen-klein-mittel-gross-und-freies-bauen.md`.
 
-### Maximalflächen
-
-Für jede Funktionskammer gilt: **Maximum = 2 × Flächengröße der Vorlage „Groß“ = 8 × bisherige Mindestfläche.** Darüber hinaus muss der Spieler **eine neue, eigenständige Funktionskammer** planen. Das ist **keine Obergrenze für die Anzahl von Kammern** gleichen Typs.
-
-| Funktionskammer | Klein | Mittel | Groß | Maximum je einzelner Kammer |
+| Kammertyp | Klein | Mittel | Groß | Maximum pro frei gestalteter Kammer |
 | --- | ---: | ---: | ---: | ---: |
-| Nahrungslager | 12 | 24 | 48 | **96** |
-| Wasserlager | 12 | 24 | 48 | **96** |
-| Baumateriallager | 12 | 24 | 48 | **96** |
-| Ruhekammer | 16 | 32 | 64 | **128** |
-| Brutkammer Sammlerinnen | 20 | 40 | 80 | **160** |
-| Brutkammer Baumeisterinnen | 20 | 40 | 80 | **160** |
-| Brutkammer Kämpferinnen | 20 | 40 | 80 | **160** |
-| Brutkammer Brutpflegerinnen | 20 | 40 | 80 | **160** |
+| Nahrungslager | 4×4 = 16 | 6×6 = 36 | 8×8 = 64 | **128 Kacheln** |
+| Wasserlager | 4×4 = 16 | 6×6 = 36 | 8×8 = 64 | **128 Kacheln** |
+| Baumateriallager | 4×4 = 16 | 6×6 = 36 | 8×8 = 64 | **128 Kacheln** |
+| Ruhekammer | 4×4 = 16 | 6×6 = 36 | 8×8 = 64 | **128 Kacheln** |
+| Brutkammern (alle vier Spezialisierungen) | 5×5 = 25 | 7×7 = 49 | 9×9 = 81 | **162 Kacheln** |
 
-Angaben in **Kacheln**, nicht Seitenlängen. Vorlagen bleiben optional; die freie zusammenhängende Formgestaltung bleibt bis zum typabhängigen Maximum erhalten. Bei Überschreitung soll die Bauvorschau verständlich anzeigen, warum der Bauplan nicht bestätigt werden kann. Für die Königinnenkammer wurde noch keine Mindestfläche oder reguläre baubare Vorlage beschlossen; nicht eigenmächtig ein Maximum aus der Tabelle ableiten.
+Diese Tabelle ersetzt ältere Vorlagenflächen (12/24/48, 16/32/64, 20/40/80) und Maxima (96/128/160) als **Vorlagen- und Obergrenzenfestlegungen**. Die alten freien **Mindestflächen** bleiben bei 12 Kacheln für Lager, 16 für Ruhekammern und 20 für Brutkammern. Kosten und Kapazitäten werden weiterhin anhand der **wirklichen Kachelfläche** berechnet. Für die Königinnenkammer wurde keine neue baubare Vorlage oder Maximalgröße festgelegt.
 
-### Abstand zwischen Funktionskammern
+Größere frei gezeichnete Kammern bis zum Maximum bleiben erlaubt; darüber ist eine **separate neue Kammer** nötig. Die Anzahl der Kammern ist nicht begrenzt. Vorhandene Startkammern dürfen nicht rückwirkend unbrauchbar werden.
 
-- **Zwischen den belegten Kachelflächen zweier verschiedener Funktionskammern müssen mindestens zwei ganze Kacheln Zwischenraum liegen.** Dies gilt **seitlich und diagonal/an Ecken**.
-- Maßgeblich ist die Lage der Kammerflächen, **nicht** der Untergrundzustand: Erde, leere Fläche und bereits ausgehobene **Gänge/Tunnel** dürfen die beiden Zwischenkacheln ausfüllen. **Keine verpflichtende Erdwand**.
-- Eine eindeutige technische Interpretation bei quadratischen Kacheln: Für **jedes** Kachelpaar aus unterschiedlichen Kammern muss `max(abs(dx), abs(dy)) >= 3` gelten, wobei `dx,dy` die Differenz der Kachelkoordinaten sind. Damit bleiben auch an Ecken zwei Kachelpositionen frei; diagonale Berührung oder nur eine diagonale Zwischenkachel ist unzulässig.
-- Reine Tunnelkacheln gelten **nicht** als Funktionskammer-Flächen und dürfen durch den Abstand führen und die Räume zugänglich machen.
-- Regel für **alle** neu geplanten Funktionskammern unabhängig von ihrer Funktion (auch zwei Kammern desselben Typs), nicht nur zwischen verschiedenen Kammertypen.
-- Prüfung bereits bei Platzierung/Bestätigung gegen geplante, im Bau befindliche und fertiggestellte Kammerflächen; keine Umgehung durch späteres Ausgraben des Zwischenraums als Tunnel. Ein Gang im Zwischenraum macht aus zwei Kammern nicht automatisch eine einzige Kammer.
+## Verbindlicher Kammerabstand
 
-### Grenzen und Umsetzung
+- Zwischen den **Kachelflächen beliebiger zwei Funktionskammern** müssen **zwei ganze Kachelpositionen Zwischenraum** liegen, sowohl seitlich als auch diagonal/an Ecken. Dies gilt auch zwischen zwei Kammern gleichen Typs.
+- Die Zwischenflächen dürfen **Erde, vorhandene offene Kacheln oder Tunnel** sein. **Keine Pflicht zu einer Erdwand**. Tunnel dürfen die Kammern verbinden und zählen nicht selbst als Funktionskammer.
+- Technisch für jedes Paar `(x1,y1)` und `(x2,y2)` aus zwei unterschiedlichen Kammern: `max(abs(x1-x2), abs(y1-y2)) >= 3`. Damit dürfen Kammerflächen nicht unmittelbar benachbart oder nur durch eine Kachel getrennt sein, auch diagonal.
+- Gegen geplante, im Bau befindliche und betriebsbereite Kammern prüfen. Zwei bereits vorhandene, zuvor zulässige Startkammern werden nicht nachträglich umgebaut oder deaktiviert.
+- Reine Tunnel können frei durch den Abstand verlaufen; spätere Tunnelgrabung verbindet Kammern nicht automatisch zu einer Funktionskammer.
 
-- Diese beiden Grenzen schützen **Größe einzelner Funktionskammern** und die **Lesbarkeit des Nests**; sie verhindern **nicht**, dass der Spieler einen großen Bergbereich als neutrale Tunnel/Hohlräume ausgräbt oder viele getrennte Kammern baut. Das ist ausdrücklich kein Grund für eine neue globale Aushubgrenze.
-- Keine willkürliche Erhöhung oder Verringerung der Kammerkapazität. Kapazitäten und Baumaterialkosten bleiben flächenbasiert. Größere Kammern erfordern entsprechend mehr Einrichtungsmaterial.
-- Bei einer späteren Codex-Umsetzung Tests für genau anliegende, eine Kachel getrennte, zwei Kacheln getrennte und diagonal benachbarte Kammern; alle Raumarten und freie Formen, Vorlagen, bestehende Kammern und Tunnelzugänge abdecken.
-- **Jetzt nur planen, noch keine Code- oder Grafikänderung.** Nach C5 und ausdrücklicher Implementierungsfreigabe den lokalen und GitHub-Stand vor Umsetzung prüfen.
+## Abgrenzung und spätere Tests
 
-## Status
+Maximalfläche und Abstand schützen die Lesbarkeit und begrenzen einzelne Funktionsräume, **nicht** die Menge an neutralen ausgegrabenen Hohlräumen oder die Anzahl separat eingerichteter Kammern. Kein pauschales Verbot, den Berg großflächig auszugraben.
 
-**Visueller Stil B/B, Maximalflächen und Kammerabstand von zwei Kacheln einschließlich Diagonalen verbindlich beschlossen.** Konkrete Kunstassets und geometrische Vorlagenformen bleiben gesondert auszuarbeiten.
+Tests für Freihand und Vorlagen: alle Maße und Maxima, diagonale sowie seitliche Null-/Ein-/Zwei-Kachel-Abstände, geplante und fertige Räume, Tunnelzugänge, korrekte Material- und Kapazitätsbilanz, existierende Startkammern.
+
+**Status:** Visueller Stil B/B, Größensystem C, Maxima und Abstand beschlossen. Konkrete Kunstassets offen. Keine Codex-Implementierung ohne spätere Freigabe.

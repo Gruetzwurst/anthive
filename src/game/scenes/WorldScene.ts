@@ -141,7 +141,7 @@ export class WorldScene extends Phaser.Scene {
         this.gathering.moveWorkers(specialization, from, to, count);
         this.updateEconomyHud();
       },
-      {snapshot: () => this.gathering.queen.snapshot, setQuotas: quotas => this.gathering.queen.setQuotas(quotas)},
+      {snapshot: () => this.gathering.queen.snapshot, setQuotas: quotas => this.gathering.queen.setQuotas(quotas), supply:()=>this.gathering.broodSupply.getRooms()},
     );
     this.constructionPanel = new ConstructionPanel(document.querySelector('#game')!, {
       start: type => this.startDraft(type),
@@ -186,7 +186,7 @@ export class WorldScene extends Phaser.Scene {
       if (!state) { ant.body.destroy(); return; }
       if (state.position.x !== ant.body.x) ant.body.setScale(state.position.x < ant.body.x ? -1 : 1, 1);
       ant.body.setPosition(state.position.x, state.position.y);
-      const carried = collectors.get(ant.id)?.load;
+      const carried = state.load ?? collectors.get(ant.id)?.load;
       ant.load.setVisible((carried?.amount ?? 0) > 0);
       ant.load.setFillStyle(carried?.resource === 'water' ? 0x71d0d5 : 0xe3aa4e);
     });

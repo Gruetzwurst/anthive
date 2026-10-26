@@ -100,12 +100,17 @@ export class QueenSystem {
     return this.eggs.filter(egg => egg.chamberId && egg.stage !== 'adult' && this.rooms.get(egg.chamberId)?.operational);
   }
   get hasDevelopingBrood(): boolean {return this.eggs.some(egg => egg.chamberId && egg.stage !== 'adult' && this.rooms.get(egg.chamberId)?.operational);}
+  getLarvalRooms() {
+    const larvae = new Map<string,number>();
+    for (const egg of this.eggs) if (egg.chamberId && egg.stage==='larva') larvae.set(egg.chamberId,(larvae.get(egg.chamberId)??0)+1);
+    return [...this.rooms.values()].map(room => ({...room, position:room.position?{...room.position}:undefined, larvae:larvae.get(room.id)??0}));
+  }
   private careFactor(count: number): number {
     return count ? Math.max(this.broodConfig.minimumCareFactor, Math.min(1, this.effectiveNurses * this.broodConfig.broodPerNurse / count)) : 1;
   }
   drainBirths(): BirthEvent[] {const births = this.births;this.births = [];return births.map(birth => ({...birth, position: birth.position ? {...birth.position} : undefined}));}
 
-  advance(gameDays: number, eggFactor: number, rooms: readonly BroodRoom[], effectiveNurses = 0): void {
+  advance(gameDays: number, eggFactor: number, rooms: readonly BroodRoom[], effectiveNurses = 0, onBroodInterval?: (gameDays:number)=>void): void {
     nonNegativeFinite(gameDays, 'gameDays');nonNegativeFinite(eggFactor, 'eggFactor');
     nonNegativeFinite(effectiveNurses, 'effectiveNurses');this.effectiveNurses = effectiveNurses;
     if (eggFactor > 1) throw new RangeError('Egg factor must not exceed one');
@@ -118,6 +123,7 @@ export class QueenSystem {
       let untilStage = Infinity;
       for (const egg of developing) untilStage = Math.min(untilStage, Math.max(0, this.broodConfig.stageDays[egg.stage as Exclude<Stage, 'adult'>] - egg.stageProgressDays) / factor);
       const step = Math.min(remaining, untilEgg, untilStage);
+      if (step>0) onBroodInterval?.(step);
       this.progress += step * rate;
       for (const egg of developing) egg.stageProgressDays += step * factor;
       remaining = Math.max(0, remaining - step);

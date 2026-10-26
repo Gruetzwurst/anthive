@@ -3,6 +3,7 @@ import type { Specialization, WorkAssignment } from '../simulation/workforceSyst
 import type { WorkforceSnapshot } from '../simulation/workforceSimulation.ts';
 import { WORKFORCE_CONFIG } from '../simulation/simulationConfig.ts';
 import type { EggQuotas, QueenSnapshot } from '../simulation/queenSystem';
+import type { BroodSupplySystem } from '../simulation/broodSupplySystem';
 
 const SPECIALTY_LABELS: Record<Specialization, string> = {
   gathering: 'Sammlerinnen', building: 'Baumeisterinnen', care: 'Brutpflegerinnen', combat: 'Kämpferinnen',
@@ -26,9 +27,10 @@ export class WorkforcePanel {
   private queenSummary = document.createElement('p');
   private broodRooms = document.createElement('div');
   private queenState?: () => QueenSnapshot;
+  private larvalSupply?: () => ReturnType<BroodSupplySystem['getRooms']>;
 
   constructor(parent: HTMLElement, moveWorkers: (specialization: Specialization, from: WorkAssignment, to: WorkAssignment, count: number) => void,
-    queen?: {snapshot: () => QueenSnapshot; setQuotas: (quotas: EggQuotas) => void}) {
+    queen?: {snapshot: () => QueenSnapshot; setQuotas: (quotas: EggQuotas) => void; supply?: () => ReturnType<BroodSupplySystem['getRooms']>}) {
     this.dialog.id = 'workforce-panel';
     this.dialog.setAttribute('aria-labelledby', 'workforce-title');
     const heading = document.createElement('h2'); heading.id = 'workforce-title'; heading.textContent = 'Arbeitsgruppen';
@@ -76,6 +78,7 @@ export class WorkforcePanel {
     this.dialog.append(header, explanation, this.summary, tableScroll, form, this.feedback, note);
     if (queen) {
       this.queenState = queen.snapshot;
+      this.larvalSupply = queen.supply;
       const title = document.createElement('h3');title.textContent = 'Königin und Eier';
       this.queenSummary.dataset.role = 'queen-summary';this.broodRooms.dataset.role = 'brood-rooms';
       const quotas = document.createElement('form');quotas.className = 'workforce-form';quotas.dataset.role = 'egg-quotas';
@@ -94,7 +97,7 @@ export class WorkforcePanel {
         catch (error) {result.textContent = (error as Error).message;}
       });
       const hint = document.createElement('p');hint.className = 'workforce-note';
-      hint.textContent = 'Zusammen 100 %. Die Automatik verteilt Eier auf passende freie Brutplätze. Wartende Eier behalten ihr bisheriges Ziel und entwickeln sich im Puffer nicht. Ei → Larve → Puppe → Ameise; Pflegemangel verlangsamt, tötet aber keine Brut. Larvenfütterung ist in dieser Vorschau noch nicht aktiv.';
+      hint.textContent = 'Zusammen 100 %. Die Automatik verteilt Eier auf passende freie Brutplätze. Wartende Eier behalten ihr bisheriges Ziel und entwickeln sich im Puffer nicht. Ei → Larve → Puppe → Ameise; Pflegemangel verlangsamt, tötet aber keine Brut. Pflegekräfte liefern echte Nahrung und Wasser. Leere Vorräte werden angezeigt; weitere Mangelfolgen sind noch nicht aktiv.';
       this.dialog.append(title, this.queenSummary, quotas, result, hint, this.broodRooms);this.updateQueen();
     }
     parent.append(this.dialog);
@@ -127,11 +130,20 @@ export class WorkforcePanel {
     this.queenSummary.textContent = `Eierpuffer: ${state.bufferCount} / ${state.bufferCapacity} · zugewiesen: ${state.assignedCount} · Eiablage: ${state.effectiveEggsPerDay.toLocaleString('de-DE', {maximumFractionDigits: 2})} / Spieltag`;
     this.queenSummary.textContent += ` · Eier ${state.stageCounts.egg} · Larven ${state.stageCounts.larva} · Puppen ${state.stageCounts.pupa} · geschlüpft ${state.bornCount} · Pflegetempo ${Math.round(state.careFactor * 100)} %`;
     this.broodRooms.replaceChildren();
+    const stocks = new Map(this.larvalSupply?.().map(room=>[room.id,room]) ?? []);
     for (const [index, room] of state.chambers.entries()) {
       const row = document.createElement('p');row.textContent = `${SPECIALTY_LABELS[room.specialization]} · Kammer ${index + 1}: ${room.occupied} / ${room.capacity} Brutplätze · ${room.operational ? 'betriebsbereit' : 'nicht erreichbar oder noch nicht nutzbar'}`;
       const brood = state.eggs.filter(egg => egg.chamberId === room.id);
       row.textContent += ` · ${brood.filter(egg => egg.stage === 'egg').length} Eier / ${brood.filter(egg => egg.stage === 'larva').length} Larven / ${brood.filter(egg => egg.stage === 'pupa').length} Puppen`;
       this.broodRooms.append(row);
+      const stock = stocks.get(room.id);
+      if (stock) {
+        const amount = (value:number)=>value.toLocaleString('de-DE',{maximumFractionDigits:2});
+        const detail=document.createElement('p');detail.className='workforce-note';detail.dataset.role='larval-stock';detail.dataset.roomId=room.id;
+        detail.textContent=`Larvenvorrat: Nahrung ${amount(stock.food.amount)} / Ziel ${amount(stock.food.target)} · Wasser ${amount(stock.water.amount)} / Ziel ${amount(stock.water.target)} · unterwegs ${amount(stock.food.inTransit)} Nahrung, ${amount(stock.water.inTransit)} Wasser`;
+        if(stock.operational && stock.larvae>0 && (stock.food.amount<=1e-9 || stock.water.amount<=1e-9))detail.textContent+=' · Vorrat leer';
+        this.broodRooms.append(detail);
+      }
     }
   }
 

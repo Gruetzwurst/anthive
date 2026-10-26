@@ -222,6 +222,54 @@ try:
             native_click('[data-action="close-construction"]')
             print('PASS: B3 real touch rectangle, confirmation, scrollable details and cancellation')
 
+        if '--larvae-only' in sys.argv:
+            page("scene.gathering.resources.depositInStore('food-store',{resource:'food',amount:540});scene.gathering.resources.depositInStore('water-store',{resource:'water',amount:540});return true;")
+            assign_group('gathering','gathering','care',7)
+            native_click('[data-action="close-workforce"]')
+            print(json.dumps({'c3Pickup':page("""
+              scene.update(0,1000);const s=scene.gathering,rooms=s.queen.snapshot.chambers;
+              s.queen.setQuotas({gathering:100,building:0,care:0,combat:0});s.queen.advance(.2,1,[]);s.queen.advance(1,0,rooms,100);
+              for(let i=0;i<5000&&!s.getWorkers().some(w=>w.load?.amount>0);i++)scene.update(0,100);
+              const carrier=s.getWorkers().find(w=>w.load?.amount>0);
+              if(!carrier || carrier.actualWork!=='care' || carrier.load.amount>5 || !scene.ants.find(a=>a.id===carrier.id)?.load.visible)throw Error('No real visible nurse cargo');
+              const b=s.broodSupply.balance[carrier.load.resource];
+              if(b.withdrawn<=0 || b.carried<=0)throw Error('Cargo was not withdrawn from a real store');
+              scene.cameras.main.centerOn(carrier.position.x,carrier.position.y);return {id:carrier.id,load:carrier.load,position:carrier.position};
+            """)}))
+            screenshot('anthive-c3-nurse-cargo.png')
+            print(json.dumps({'c3Supply':page("""
+              const s=scene.gathering;
+              for(let i=0;i<5000&&!(s.broodSupply.balance.food.consumed>0 && s.broodSupply.balance.water.consumed>0);i++)scene.update(0,100);
+              const balances=s.broodSupply.balance;
+              for(const kind of ['food','water']){const b=balances[kind];if(b.consumed<=0 || Math.abs(b.withdrawn-b.atChambers-b.carried-b.consumed-b.dropped-b.returned)>1e-8)throw Error('C3 real supply/conservation failed: '+kind);}
+              const room=s.broodSupply.getRooms().find(r=>r.larvae>0);
+              if(!room || room.food.target!==room.larvae || room.water.target!==room.larvae || room.food.amount<=0 || room.water.amount<=0)throw Error('Private larval reservoirs failed');
+              if(s.getWorkers().length!==9 || new Set([...scene.ants,...scene.builderWorkers].map(w=>w.id)).size!==9)throw Error('Worker identities/visibility changed');
+              scene.updateEconomyHud();return {balances,larvae:room.larvae,food:room.food,water:room.water};
+            """)}))
+            click(586,20)
+            page('const d=document.querySelector("#workforce-panel");d.scrollTop=d.scrollHeight;return true;')
+            assert 'Larvenvorrat' in page('return document.querySelector("[data-role=brood-rooms]").textContent;')
+            screenshot('anthive-c3-reservoirs.png')
+            native_click('[data-action="close-workforce"]')
+            command('WebDriver:SetWindowRect', {'width':844,'height':480})
+            for _ in range(50):
+                if page('const r=scene.game.canvas.getBoundingClientRect();return innerWidth<=844 && r.right<=844 && Math.abs(scene.scale.canvasBounds.width-r.width)<1;'):
+                    break
+                time.sleep(.1)
+            else:
+                raise AssertionError('Canvas resize did not settle')
+            click(586,20)
+            page('const d=document.querySelector("#workforce-panel");d.scrollTop=d.scrollHeight;return true;')
+            screenshot('anthive-c3-mobile.png')
+            native_click('[data-action="close-workforce"]')
+            check_layout()
+            command('WebDriver:Navigate', {'url':f'http://127.0.0.1:{vite_port}/?view=pond'})
+            hook();check_layout();screenshot('anthive-c3-pond.png')
+            command('Marionette:Quit', {'flags':['eForceQuit']});browser.wait(timeout=10);browser=None
+            print('PASS: C3 native nurse assignment, visible cargo, real pickup/delivery, separate reservoirs, larval consumption, exact balance, mobile UI and pond')
+            sys.exit(0)
+
         if '--brood-only' in sys.argv:
             page("scene.gathering.resources.depositInStore('food-store',{resource:'food',amount:540});scene.gathering.resources.depositInStore('water-store',{resource:'water',amount:540});return true;")
             assign_group('gathering','gathering','care',7)

@@ -8,6 +8,7 @@ import { CHAMBER_CONFIG } from './simulationConfig.ts';
 import { QueenSystem } from './queenSystem.ts';
 import type { BroodRoom, BirthEvent } from './queenSystem.ts';
 import { cardinalNeighbors, cellKey } from '../world/gridPathfinding.ts';
+import { BroodSupplySystem } from './broodSupplySystem.ts';
 
 export type OtherAdultWorker = { id: string; resting: boolean; position?: WorldPoint };
 export type ColonyWorkerAdapter = {
@@ -33,6 +34,7 @@ export function createColonySimulation(
   const simulation = createGatheringSimulation(world, config);
   const supply = new AdultSupplySystem(simulation.resources, supplyConfig);
   const queen = new QueenSystem();
+  const broodSupply = new BroodSupplySystem(simulation.resources,simulation.navigation);
   let topology = -1, startingRooms: BroodRoom[] = [];
   const broodRooms = (includeAdditional = true): BroodRoom[] => {
     if (topology !== simulation.traffic.topologyRevision) {
@@ -55,16 +57,18 @@ export function createColonySimulation(
   };
   // Dynamic builder adapters are initialized by the caller after construction.
   queen.advance(0, supply.snapshot.eggFactor, broodRooms(false));
+  broodSupply.syncRooms(queen.getLarvalRooms());
   const droppedLoads: DroppedResourceLoad[] = [];
   return {
-    ...simulation, supply, queen,
-    getDroppedLoads: () => droppedLoads.map(drop => ({ ...drop, position: { ...drop.position }, load: { ...drop.load } })),
+    ...simulation, supply, queen, broodSupply,
+    getDroppedLoads: () => [...droppedLoads,...broodSupply.getDroppedLoads()].map(drop => ({ ...drop, position: { ...drop.position }, load: { ...drop.load } })),
     advance(realSeconds: number) {
       return simulation.advance(realSeconds, {
         otherPositions: () => workers.otherWorkers().flatMap(worker => worker.position ? [worker.position] : []),
         workFactor: () => supply.snapshot.workFactor,
         afterStep(gameDays, seconds, factor) {
           const eggFactor = supply.snapshot.eggFactor;
+          broodSupply.syncRooms(queen.getLarvalRooms());
           workers.advanceOtherWorkers(seconds, factor);
           const collectors = simulation.gathering.getCollectors();
           const other = workers.otherWorkers();
@@ -75,7 +79,9 @@ export function createColonySimulation(
             restingWorkers: resting,
             queens: 1, // The existing queen is counted separately from workers.
           });
-          queen.advance(gameDays, eggFactor, broodRooms(), (workers.effectiveNurses?.() ?? 0) * factor);
+          queen.advance(gameDays, eggFactor, broodRooms(), (workers.effectiveNurses?.() ?? 0) * factor,
+            days=>broodSupply.consume(days,queen.getLarvalRooms()));
+          broodSupply.syncRooms(queen.getLarvalRooms());
           if (workers.birthWorker) for (const birth of queen.drainBirths()) workers.birthWorker(birth);
           // Stable IDs make the provisional loss selection deterministic; never
           // include the queen or create replacement workers automatically.

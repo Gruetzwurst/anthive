@@ -110,3 +110,11 @@ export type QueenConfig = typeof QUEEN_CONFIG;
 // C2 approved, adjustable development/care test values.
 export const BROOD_CONFIG = {stageDays: {egg: 1, larva: 3, pupa: 2}, broodPerNurse: 10, minimumCareFactor: 0.25};
 export type BroodConfig = typeof BROOD_CONFIG;
+
+// C3 selected test values. Reuse established walking/interaction timings.
+export const LARVAL_SUPPLY_CONFIG = {
+  perLarvaPerDay: {food: 0.5, water: 0.5}, reserveDays: 2, refillFraction: 0.5, carryCapacity: 5,
+  speed: GATHERING_CONFIG.speed, interactionSeconds: GATHERING_CONFIG.interactionSeconds,
+  retrySeconds: GATHERING_CONFIG.retrySeconds, maxStepSeconds: GATHERING_MAX_STEP_SECONDS,
+};
+export type LarvalSupplyConfig = typeof LARVAL_SUPPLY_CONFIG;

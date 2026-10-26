@@ -186,4 +186,12 @@ Assigned brood now develops through egg (1 game day), larva (3), and pupa (2), t
 
 Explicitly assigned care workers count after completing their previous work/return. Foreign care retains 50% efficiency, adult work impairment reduces effective care capacity, and care counts as active adult work while reachable brood exists. This is a provisional shared care pool; room-specific nurse movement and feeding are not implemented here. Larval food/water logistics follow C3 and shortage handling follows C4.
 
-**Gruppen → Königin und Eier** shows stages, births, care speed and chamber occupancy. Each newborn joins the existing worker engines, appears individually at its brood room and consumes adult resources from the following simulation step. `python3 scripts/check-economy-browser.py --brood-only` verifies actual stages, native care assignments and four births increasing visible workers from 9 to 13. See `docs/C2-BRUTENTWICKLUNG-ERGEBNIS.md`. **Stop before C3.**
+**Gruppen → Königin und Eier** shows stages, births, care speed and chamber occupancy. Each newborn joins the existing worker engines, appears individually at its brood room and consumes adult resources from the following simulation step. `python3 scripts/check-economy-browser.py --brood-only` verifies actual stages, native care assignments and four births increasing visible workers from 9 to 13. See `docs/C2-BRUTENTWICKLUNG-ERGEBNIS.md`. C3 extends this below.
+
+### C3 real larval supplies (2026-10-26)
+
+Care workers physically collect food or water from existing stores and deliver it into each brood room's separate private reservoirs. Larvae consume 0.5 of each resource per game day; eggs/pupae consume none. Reservoir targets cover two days of current larval demand, refill starts at 50%, and each trip carries at most five units of one resource. Reservations prevent duplicate orders; shrinking demand preserves actual stock and cargo. No larvae means no new order.
+
+**Gruppen → Königin und Eier** shows actual stock, target, in-transit supplies and empty reservoirs. Care cargo is individually visible on the map. Withdrawals, delivery, consumption, dropped loads and actual returns conserve resources. Care workers finish cargo safely before changing jobs. `python3 scripts/check-economy-browser.py --larvae-only` verifies the live flow. See `docs/C3-LARVENVERSORGUNG-ERGEBNIS.md`.
+
+Resource shortages are recorded; development penalties/recovery remain C4. The C2 care factor continues to apply. The local browser link stays development-current while Vite is running; reloading still starts a new game. **Stop before C4.**

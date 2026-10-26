@@ -26,7 +26,7 @@ test('remote earlier chamber stays blocked; later connecting tunnel unlocks orig
  assert.deepEqual(e.getBuilders()[0].job.target,c(6));
  until(e,()=>e.getOrders().length===0);
  const plans=e.getConstructionOrders();assert.deepEqual(plans.map(p=>p.id),[first,second]);
- assert.equal(plans[0].status,'awaitingFurnishing');assert.equal(plans[0].type,'water');
+ assert.equal(plans[0].status,'blocked');assert.equal(plans[0].blockReason,'material');assert.equal(plans[0].type,'water');
  assert.equal(plans[0].materialRequired,4);assert.equal(plans[1].status,'completed');
  assert.equal(resources.listStores().length,1);assert.equal(resources.getStoreTotals('water').capacity,0);
  invariant(e);

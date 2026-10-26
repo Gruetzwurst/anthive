@@ -70,8 +70,10 @@ export const EXCAVATION_CONFIG = {
 };
 export type ExcavationConfig = typeof EXCAVATION_CONFIG;
 
-// B3 read-only furnishing estimates from approved test values; no consumption yet.
+// Approved construction test values; capacities are activated separately in B5.
 export const CONSTRUCTION_CONFIG = {
+  startingMaterial: 24,
+  furnishingSecondsPerUnit: 2,
   materialPerTile: {
     tunnel: 0, food: 2, water: 2, buildingMaterial: 2,
     'brood-gathering': 3, 'brood-building': 3, 'brood-care': 3, 'brood-combat': 3, rest: 2,

@@ -5,10 +5,10 @@ import type { ConstructionOrderSnapshot, ConstructionStatus } from '../simulatio
 export type DrawingTool = 'brush' | 'rectangle' | 'pan';
 const STATUS_LABELS: Record<ConstructionStatus, string> = {
   planned: 'Geplant', digging: 'Ausgraben', blocked: 'Blockiert', paused: 'Pausiert',
-  awaitingFurnishing: 'Einrichtung ausstehend', completed: 'Abgeschlossen', cancelled: 'Abgebrochen',
+  awaitingFurnishing: 'Einrichtung ausstehend', furnishing: 'Einrichten', furnished: 'Fertig eingerichtet', completed: 'Abgeschlossen', cancelled: 'Abgebrochen',
 };
 export const constructionStatusLabel = (order: ConstructionOrderSnapshot) => order.status === 'blocked'
-  ? `Blockiert · ${order.blockReason === 'hardness' ? 'Grabkraft fehlt' : 'nicht erreichbar'}` : STATUS_LABELS[order.status];
+  ? `Blockiert · ${order.blockReason === 'hardness' ? 'Grabkraft fehlt' : order.blockReason === 'material' ? 'Baumaterial fehlt' : 'nicht erreichbar'}` : STATUS_LABELS[order.status];
 type Actions = {
   start: (type: PlanType) => void; tool: (tool: DrawingTool) => void;
   confirm: () => void; discard: () => void;
@@ -45,7 +45,7 @@ export class ConstructionPanel {
       event.preventDefault(); this.actions.start(type.value as PlanType); this.dialog.close();
     });
     const explanation = document.createElement('p'); explanation.className = 'workforce-note';
-    explanation.textContent = 'Pinsel und Rechteck lassen sich im selben Entwurf verbinden. Erst Bestätigen erteilt den Auftrag. Kammern brauchen nach dem Aushub noch Einrichtung; ihr geplanter Typ bleibt fest.';
+    explanation.textContent = 'Pinsel und Rechteck lassen sich im selben Entwurf verbinden. Erst Bestätigen erteilt den Auftrag. Nach dem Aushub werden Kammern mit echtem Baumaterial eingerichtet. Ihr geplanter Typ bleibt fest.';
     this.list.className = 'construction-list'; this.list.dataset.role = 'construction-orders';
     this.details.dataset.role = 'construction-detail'; this.details.setAttribute('aria-live', 'polite');
     this.feedback.setAttribute('role', 'status');
@@ -105,13 +105,13 @@ export class ConstructionPanel {
   private renderDetails(): void {
     const order = this.orders.find(order => order.id === this.selectedId);
     this.details.replaceChildren();
-    this.toggle.hidden = this.cancel.hidden = !order || order.status === 'completed' || order.status === 'cancelled';
+    this.toggle.hidden = this.cancel.hidden = !order || ['completed', 'cancelled', 'furnished'].includes(order.status);
     if (!order) { this.details.textContent = 'Baustelle auf der Karte oder in der Liste auswählen.'; return; }
     for (const text of [
       `#${order.id} ${PLAN_LABELS[order.type]} · ${constructionStatusLabel(order)}`,
       `Aushub: ${order.excavated} / ${order.total} Kacheln${order.partialDigSeconds > 0 ? ` · ${order.partialDigSeconds.toFixed(1)} s angegraben` : ''}`,
-      order.type === 'tunnel' ? 'Einrichtung: nicht erforderlich' : 'Einrichtung: noch nicht begonnen · keine nutzbare Kapazität',
-      order.type === 'tunnel' ? 'Baumaterial für Einrichtung: 0' : `Baumaterial für Einrichtung: ${order.materialRequired} benötigt · 0 eingesetzt · ${order.materialRequired} offen`,
+      order.type === 'tunnel' ? 'Einrichtung: nicht erforderlich' : `Einrichtung: ${order.materialUsed} / ${order.materialRequired} Einheiten${order.status === 'furnished' ? ' · fertig eingerichtet' : ''} · noch keine nutzbare Kapazität`,
+      order.type === 'tunnel' ? 'Baumaterial für Einrichtung: 0' : `Baumaterial für Einrichtung: ${order.materialRequired} benötigt · ${order.materialUsed} eingesetzt · ${order.materialAtSite} an Baustelle · ${order.materialInTransit} unterwegs · ${Math.max(0, order.materialRequired - order.materialUsed - order.materialAtSite - order.materialInTransit)} noch zu liefern`,
     ]) { const paragraph = document.createElement('p'); paragraph.textContent = text; this.details.append(paragraph); }
     this.toggle.textContent = order.paused ? 'Fortsetzen' : 'Pausieren';
     this.toggle.dataset.action = order.paused ? 'resume-order' : 'pause-order';

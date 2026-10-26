@@ -53,3 +53,17 @@ test('blocked partial load may rest but cannot be removed by group handoff befor
  assert.equal(excavation.materials.balance.stored,1);
  assert.equal(excavation.materials.balance.consumed,4);
 });
+
+test('real B1 reassignment finishes one furnishing unit and leaves actual site stock intact',()=>{
+ const {simulation,excavation,world}=fixture('topsoil',40);
+ const cells=Array.from({length:12},(_,i)=>cell(i+3));for(const c of cells)world.tiles[c.row][c.column].state='open';
+ const pile=excavation.materials.produce(point(0),24);
+ while(excavation.materials.getGround().some(p=>p.id===pile)){
+  excavation.materials.pickUp(pile,'external',5);excavation.materials.deposit('external','material');
+ }
+ excavation.addOrder(cells,'food');until(simulation,()=>excavation.getBuilders()[0]?.job?.phase==='furnishing');
+ simulation.moveWorkers('building','building','rest',1);
+ until(simulation,()=>simulation.getWorkers().find(w=>w.id==='builder-0').actualWork==='rest');
+ assert.equal(excavation.getConstructionOrders()[0].materialUsed,1);
+ const b=excavation.materials.balance;assert.equal(b.carried,0);assert.equal(b.initial+b.produced,b.stored+b.ground+b.atSites+b.consumed);
+});

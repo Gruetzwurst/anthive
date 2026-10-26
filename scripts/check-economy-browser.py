@@ -222,6 +222,58 @@ try:
             native_click('[data-action="close-construction"]')
             print('PASS: B3 real touch rectangle, confirmation, scrollable details and cancellation')
 
+        if '--furnishing-only' in sys.argv:
+            assert page("return scene.excavation.materials.balance.initial===24 && scene.gathering.resources.getStore('building-material-store').amount===24;")
+            page('scene.cameras.main.centerOn(150*24,28*24); return true;')
+            time.sleep(.1)
+            start_plan('food')
+            draw_cells([148,27],[151,29],'rectangle')
+            native_click('[data-action="confirm-plan"]')
+            native_click('[data-action="close-construction"]')
+            progress=page("""
+              for(let i=0;i<2000 && scene.excavation.getBuilders().filter(w=>w.job?.kind==='dig').length<2;i++)scene.update(0,100);
+              const workers=scene.excavation.getBuilders().filter(w=>w.job?.kind==='dig');
+              if(workers.length!==2 || new Set(workers.map(w=>JSON.stringify(w.job.target))).size!==2)throw Error('Parallel front reservation failed');
+              for(let i=0;i<3000 && scene.excavation.getConstructionOrders()[0].materialUsed===0;i++)scene.update(0,100);
+              scene.updateEconomyHud();
+              if(scene.excavation.getConstructionOrders()[0].materialUsed===0)throw Error('No real furnishing');
+              return {parallelBuilders:workers.length,used:scene.excavation.getConstructionOrders()[0].materialUsed};
+            """)
+            click(510,20)
+            native_click('[data-action="pause-order"]')
+            page('for(let i=0;i<50;i++)scene.update(0,100);window.__b4Paused=scene.excavation.getConstructionOrders()[0].materialUsed;for(let i=0;i<100;i++)scene.update(0,100);return true;')
+            assert page('return scene.excavation.getConstructionOrders()[0].materialUsed===window.__b4Paused;')
+            screenshot('anthive-b4-partial-furnishing.png')
+            native_click('[data-action="resume-order"]')
+            native_click('[data-action="close-construction"]')
+            balance=page("""
+              for(let i=0;i<4000 && scene.excavation.getConstructionOrders()[0].status!=='furnished';i++)scene.update(0,100);
+              for(let i=0;i<200;i++)scene.update(0,100);
+              const o=scene.excavation.getConstructionOrders()[0],b=scene.excavation.materials.balance;
+              if(o.status!=='furnished'||o.materialUsed!==24||b.consumed!==24)throw Error('Furnishing did not complete with real consumption');
+              if(Math.abs(b.initial+b.produced-b.stored-b.ground-b.carried-b.atSites-b.consumed)>1e-8)throw Error('B4 conservation failed');
+              if(scene.gathering.resources.getStoreTotals('food').capacity!==540 || scene.gathering.getWorkers().length!==9)throw Error('Unexpected capacity or worker change');
+              scene.updateEconomyHud();return b;
+            """)
+            print(json.dumps({'b4':progress,'balance':balance}))
+            command('WebDriver:SetWindowRect', {'width':844,'height':480})
+            for _ in range(50):
+                if page('const r=scene.game.canvas.getBoundingClientRect();return innerWidth<=844 && r.right<=844 && Math.abs(scene.scale.canvasBounds.width-r.width)<1;'):
+                    break
+                time.sleep(.1)
+            else:
+                raise AssertionError('Canvas resize did not settle')
+            click(510,20)
+            page("const d=document.querySelector('#construction-panel');d.scrollTop=d.scrollHeight;return true;")
+            assert '24 / 24' in page("return document.querySelector('[data-role=construction-detail]').textContent;")
+            screenshot('anthive-b4-complete-mobile.png')
+            native_click('[data-action="close-construction"]')
+            command('WebDriver:Navigate', {'url':f'http://127.0.0.1:{vite_port}/?view=pond'})
+            hook();check_layout();screenshot('anthive-b4-pond.png')
+            command('Marionette:Quit', {'flags':['eForceQuit']});browser.wait(timeout=10);browser=None
+            print('PASS: B4 initial24, parallel front, real furnishing, pause/resume, conserved material, mobile details and pond')
+            sys.exit(0)
+
         page("window.__b3Camera=[scene.cameras.main.scrollX,scene.cameras.main.scrollY]; scene.cameras.main.centerOn(150*24,38*24); return true;")
         time.sleep(.1)
         start_plan('tunnel')

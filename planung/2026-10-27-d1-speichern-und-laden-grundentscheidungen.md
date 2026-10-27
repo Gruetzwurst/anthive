@@ -18,10 +18,19 @@
 - Lokal gespeicherte Daten können durch Löschen von Browserdaten, private Sitzungen, Browserwechsel oder Speicherausfälle verloren gehen. **Exportdateien dienen daher als eigenständige Sicherungsmöglichkeit**, sind aber nicht automatisch eine Cloud-Sicherung.
 - Technische Speicher-API (z. B. IndexedDB), Dateiformat, Exportname, Umgang mit Namenskonflikten, Importe inkompatibler Versionen und Export-/Importoberfläche werden bei der D1-Detailplanung festgelegt; Codex soll keine offenen Produktentscheidungen eigenmächtig treffen.
 
+## Autosave und Sicherungskopien – verbindlich beschlossen am 27.10.2026
+
+- **Autosave alle 5 realen Minuten** (nicht alle 5 Spielminuten). Die automatische Speicherung bezieht sich jeweils auf die aktuell gespielte Kolonie, ohne andere Kolonien zu überschreiben.
+- **Drei automatische Sicherungskopien pro Kolonie**, zusätzlich zum jeweils aktuellen Spielstand. Dies sind Sicherungen der **einzelnen Kolonie**, keine globale Dreiergrenze für alle Spielstände.
+- Ziel der Sicherungen ist die Wiederherstellung bei Problemen mit dem aktuellen Spielstand. **Noch nicht entschieden** ist, wie und wann die drei Kopien aktualisiert bzw. rotiert werden. Insbesondere ist nicht automatisch beschlossen, alle drei bei jedem Fünf-Minuten-Autosave neu zu überschreiben.
+- Manuelles Speichern und Export/Import bleiben wie zuvor beschlossen.
+- Ob zusätzlich beim Verbergen des Tabs, bei wichtigen Ereignissen oder beim Beenden gespeichert wird, ist **noch offen**. Ein zuverlässiges Speichern exakt beim Schließen des Browserfensters kann technisch nicht garantiert werden.
+- Alle noch offenen Wiederherstellungs- und Sicherungsregeln vor der Implementierung gemeinsam entscheiden.
+
 ## Noch nicht entschieden – ausdrücklich nicht eigenmächtig implementieren
 
-- Automatisches Speicherintervall und welche Ereignisse zusätzlich speichern.
-- Art und Anzahl von Sicherungskopien, Wiederherstellungsstrategie bei beschädigten oder inkompatiblen Spielständen.
+- Zusätzliche Autosave-Auslöser außer dem festen 5-Minuten-Intervall (z. B. Tabwechsel, bestimmte Spielereignisse).
+- Rotation und Aktualisierungszeitpunkte der drei Sicherungskopien; Wiederherstellungsstrategie bei beschädigten oder inkompatiblen Spielständen.
 - Detailverhalten von Export/Import: Dateiformat, Prüfung, Dateinamen, Konfliktbehandlung und Fehlerfall (Grundfunktion bereits beschlossen).
 - Start-/Kolonieauswahl und das Verhalten beim Starten einer neuen Kolonie.
 - Löschen/Umbenennen von Kolonien und eventuelle Warn- oder Bestätigungsschritte.
@@ -37,4 +46,4 @@
 - Mehrere Kolonien müssen vollständig getrennt bleiben, auch nach Neuladen des Browsers.
 - Vor Codex-Auftrag offene Regeln mit dem Spieler konkretisieren; dann in kleinen getesteten Paketen implementieren.
 
-**Status:** Automatisch + manuell, mehrere unabhängige Kolonien ohne feste Slotzahl **und lokales Speichern mit Datei-Export/-Import (Variante B)** sind verbindlich beschlossen; alle übrigen Details bleiben zur weiteren gemeinsamen Planung offen. **Keinen Spielcode ändern.**
+**Status:** Automatisch + manuell, mehrere unabhängige Kolonien ohne feste Slotzahl, lokales Speichern mit Datei-Export/-Import (Variante B), **Autosave alle 5 realen Minuten** und **drei automatische Sicherungskopien pro Kolonie** verbindlich beschlossen. Rotation und Wiederherstellung sind noch zu planen. **Keinen Spielcode ändern.**

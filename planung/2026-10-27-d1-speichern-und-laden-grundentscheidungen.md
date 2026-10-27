@@ -93,11 +93,21 @@
 - **Kein Papierkorb vorgesehen**; auch keine automatische Wiederherstellung nach endgültiger Löschung, wenn vorher kein Export erfolgt ist. Der Spieler wird eindeutig auf den dauerhaften Verlust hingewiesen.
 - Noch offen: exakte Buttontexte und grafische Gestaltung sowie das Speicherfehlerverhalten beim endgültigen Löschvorgang. **Keinen Spielcode ändern.**
 
+## Namenskonflikte beim Import – Variante B (verbindlich beschlossen am 27.10.2026)
+
+- Wird eine Koloniedatei importiert und existiert bereits eine lokale Kolonie **mit demselben sichtbaren Namen**, zeigt ANTHIVE einen **klaren Dialog mit bewusster Wahl** an. Es darf **keine automatische Überschreibung** stattfinden.
+- **Sichere Voreinstellung:** „Als neue Kolonie importieren“ und einen **neuen Namen vergeben**. Die bestehende Kolonie bleibt mitsamt Spielstand und Sicherungen unverändert.
+- **Alternative nur nach ausdrücklicher Auswahl:** „Bestehende Kolonie ersetzen“. Vor dem unwiderruflichen Ersetzen die betroffene Zielkolonie **eindeutig identifizieren**, den Verlust des bisherigen Zustands samt lokal gespeicherten Sicherungen erklären und eine **separate Bestätigung** einfordern. Eine vorherige Exportmöglichkeit als zusätzliche Absicherung anbieten.
+- ANTHIVE verwendet **interne eindeutige Kolonie-IDs** zur sicheren Zuordnung. **Übereinstimmende Namen allein sind niemals ausreichender Beleg für dieselbe Kolonie**; Ersetzen muss sich auf die ausdrücklich ausgewählte Zielkolonie beziehen.
+- Importdatei vor jeder Änderung **vollständig auf Lesbarkeit, Formatversion und Konsistenz prüfen**. Bei Abbruch, ungültiger Datei oder gescheitertem Import darf die vorhandene Kolonie nicht zerstört/teilweise überschrieben werden.
+- Falls kein Namenskonflikt vorliegt, erfolgt der Import als eigene Kolonie, sofern die Datei gültig ist und der Speicher ausreicht. Exakte Importdialog-Gestaltung, interne Dateiformate und Versionsmigration bleiben gesondert zu planen.
+- **Nur Planungsfestlegung; keine Umsetzung am Code.**
+
 ## Noch nicht entschieden – ausdrücklich nicht eigenmächtig implementieren
 
 - Weitere zusätzliche Speicherereignisse außer dem nun beschlossenen Tab-Verbergen/App-Hintergrund (z. B. nach Bauabschluss oder großen Kolonieereignissen).
 - Detailprüfung von Beschädigung/Inkompatibilität sowie Umgang mit fehlendem Speicherplatz bei Wiederherstellungen.
-- Detailverhalten von Export/Import: Dateiformat, Prüfung, Dateinamen, Konfliktbehandlung und Fehlerfall (Grundfunktion bereits beschlossen).
+- Restliche Export-/Importdetails: Dateiformat, Prüfung, Dateinamen, inkompatible Versionen und Fehlerfall; **Namenskonflikt Variante B ist entschieden**.
 - Detailverhalten beim Gründen einer neuen Kolonie und Darstellung/Sortierung/Lösch- und Umbenennungsregeln der Kolonieverwaltung (das grundlegende Startmenü mit Schnellstart ist beschlossen).
 - Details zur Umbenennung von Kolonien und sonstige UI-Fragen; das Löschen mit optionalem Export und ausdrücklicher Bestätigung ist nun entschieden.
 - Versionierung und Migration von Speicherständen nach Spielupdates.
@@ -112,4 +122,4 @@
 - Mehrere Kolonien müssen vollständig getrennt bleiben, auch nach Neuladen des Browsers.
 - Vor Codex-Auftrag offene Regeln mit dem Spieler konkretisieren; dann in kleinen getesteten Paketen implementieren.
 
-**Status:** Automatisch + manuell, mehrere unabhängige Kolonien, lokal mit Datei-Export/-Import (B), Autosave alle 5 Minuten aktiver Echtzeit, drei gestaffelte Sicherungen je Kolonie (Aktualisierungsintervalle 15/60/180 Minuten aktiver Spielzeit) und Wiederherstellung C sowie **zusätzlicher best-effort Speicherversuch bei Tab-Verbergen/App-Hintergrund (Variante B)** verbindlich beschlossen. Startmenü Variante B (Hauptmenü mit vorausgewählter letzter Kolonie und Ein-Klick-Fortsetzen) beschlossen; **Löschen nach Variante B** (vorher optional Export anbieten, dann ausdrücklich endgültig bestätigen) beschlossen; Details zu Fehlerfällen, Import und weiteren Funktionen der Kolonieverwaltung bleiben offen. **Keinen Spielcode ändern.**
+**Status:** Automatisch + manuell, mehrere unabhängige Kolonien, lokal mit Datei-Export/-Import (B), Autosave alle 5 Minuten aktiver Echtzeit, drei gestaffelte Sicherungen je Kolonie (Aktualisierungsintervalle 15/60/180 Minuten aktiver Spielzeit) und Wiederherstellung C sowie **zusätzlicher best-effort Speicherversuch bei Tab-Verbergen/App-Hintergrund (Variante B)** verbindlich beschlossen. Startmenü Variante B (Hauptmenü mit vorausgewählter letzter Kolonie und Ein-Klick-Fortsetzen) beschlossen; **Löschen nach Variante B** (vorher optional Export anbieten, dann ausdrücklich endgültig bestätigen) beschlossen; Namenskonflikte beim Import **Variante B** (neuen Namen vergeben oder bewusst bestehende Kolonie ersetzen) beschlossen; Details zu Fehlerfällen, Dateiformat und weiteren Funktionen der Kolonieverwaltung bleiben offen. **Keinen Spielcode ändern.**

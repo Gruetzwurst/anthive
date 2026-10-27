@@ -39,3 +39,15 @@ Maximalfläche und Abstand schützen die Lesbarkeit und begrenzen einzelne Funkt
 Tests für Freihand und Vorlagen: alle Maße und Maxima, diagonale sowie seitliche Null-/Ein-/Zwei-Kachel-Abstände, geplante und fertige Räume, Tunnelzugänge, korrekte Material- und Kapazitätsbilanz, existierende Startkammern.
 
 **Status:** Visueller Stil B/B, Größensystem C, Maxima und Abstand beschlossen. Konkrete Kunstassets offen. Keine Codex-Implementierung ohne spätere Freigabe.
+
+## Ergänzung vom 27.10.2026 – sichtbarer Einrichtungsfortschritt (verbindlich)
+
+- Der Spieler wählt den **Funktionskammertyp bereits im bestehenden Baumenü**; der Kammertyp ist im bestehenden Bauplan gespeichert. Es ist **keine neue automatische Erkennung** frei gezeichneter Räume notwendig. Auch für freie Formen bestimmt der vorhandene Kammertyp die Darstellung.
+- **Während Baumeisterinnen eine fertig ausgegrabene Kammer tatsächlich mit Baumaterial einrichten, wird die typbezogene Einrichtung nach und nach sichtbar.** Ein vollständig ausgehobener, aber noch nicht eingerichteter Raum bleibt ein erkennbarer Rohbau. Keine schlagartige vollständige Umwandlung erst bei Bauabschluss.
+- Der sichtbare Fortschritt muss an den **echten, vorhandenen Einrichtungsfortschritt** gekoppelt sein. Keine rein zeitgesteuerten Dekorationen, keine erfundenen Materialien oder Fertigstellungsprozente. Pausierte, blockierte oder nicht versorgte Aufträge dürfen optisch nicht weitergebaut werden.
+- Wände/Boden/Ränder und charakteristische, natürliche Grundausstattung sollen modular über die tatsächlich geplante Kachelfläche funktionieren: **gleiche Darstellungslogik für Quadratvorlagen und frei gezeichnete, unregelmäßige zusammenhängende Räume**. Einzigartige Komplettgrafiken für jede mögliche Kammergeometrie sind nicht erforderlich.
+- Zwischen **unfertiger Einrichtung** und **aktiver Funktion** besteht ein wichtiger Unterschied: Der Raum darf schon teilweise ausgestattet aussehen, **liefert aber erst nach vollständiger Einrichtung seine Kapazität und Funktion**, wie bereits beschlossen.
+- **Grundausstattung** macht fertiggestellte, noch leere Kammern erkennbar; tatsächliche Nahrung-/Wasser-/Materialhaufen und belegte Ruhe-/Brutplätze entsprechen nach Fertigstellung den wirklichen Beständen/Individuen. Keine Phantomressourcen für die Optik.
+- Modulare Einrichtung soll Zugänge, Wege und Ameisen nicht optisch verdecken. Bei freier Kammerform werden geeignete Innen-, Rand- und Eingangskacheln entsprechend berücksichtigt.
+- Noch offen: konkrete Grafikassets, Zwischenstufen/Animationen und Detailregeln der modularen Dekorplatzierung. Sie sind **keine Freigabe**, Änderungen am Spielcode oder Grafiken jetzt vorzunehmen.
+- Spätere Prüfung durch Codex: Einrichtung 0/teilweise/voll, pausiert/blockiert, freie ungewöhnliche Kammerformen, keine Kapazität vor Abschluss, danach korrekte echte Lagerbestände/Belegung; Tests und Build.

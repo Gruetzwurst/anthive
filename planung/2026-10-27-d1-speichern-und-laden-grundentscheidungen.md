@@ -27,10 +27,19 @@
 - Ob zusätzlich beim Verbergen des Tabs, bei wichtigen Ereignissen oder beim Beenden gespeichert wird, ist **noch offen**. Ein zuverlässiges Speichern exakt beim Schließen des Browserfensters kann technisch nicht garantiert werden.
 - Alle noch offenen Wiederherstellungs- und Sicherungsregeln vor der Implementierung gemeinsam entscheiden.
 
+## Wiederherstellung – Variante C (verbindlich beschlossen am 27.10.2026)
+
+- **Kombination aus Fehlerwiederherstellung und manueller Auswahl:** Erkennt ANTHIVE beim Laden einen beschädigten/unbrauchbaren aktuellen Spielstand, informiert es den Spieler und **bietet die verfügbaren, als gültig erkannten Sicherungen mit Datum/Uhrzeit zur Auswahl an**. Kein stillschweigendes automatisches Zurücksetzen.
+- **Jederzeitiger manueller Zugriff:** Auch ohne Fehler darf der Spieler über die Kolonieverwaltung die vorhandenen älteren Sicherungsstände seiner Kolonie aufrufen und bei Bedarf wiederherstellen.
+- **Bewusste Bestätigung vor dem Zurücksetzen:** Vor dem tatsächlichen Wiederherstellen zeigt ANTHIVE klar, dass dadurch Fortschritt seit der gewählten Sicherung verloren gehen könnte. Eine Wiederherstellung darf nicht versehentlich durch bloßes Ansehen der Sicherung ausgelöst werden.
+- **Aktuellen Zustand möglichst schützen:** Wenn der gegenwärtige Spielstand noch lesbar und gültig ist, soll vor der Wiederherstellung möglichst eine separate, klar erkennbare Sicherheitskopie angeboten bzw. angelegt werden; ein beschädigter Stand darf nicht als vertrauenswürdige Kopie ausgegeben werden. Die genaue technische Strategie und ihr Verhalten bei knappem Speicher sind noch offen.
+- **Keine Kolonieverwechslung:** Wiederherstellung ist nur innerhalb der ausgewählten Kolonie vorgesehen und darf andere Kolonien nicht verändern.
+- Die **drei automatischen Sicherungskopien pro Kolonie** bleiben beschlossen. **Welche Zeitpunkte** die Sicherungen repräsentieren, wann sie rotieren und wie lange sie zurückreichen, ist weiterhin **nicht entschieden**.
+
 ## Noch nicht entschieden – ausdrücklich nicht eigenmächtig implementieren
 
 - Zusätzliche Autosave-Auslöser außer dem festen 5-Minuten-Intervall (z. B. Tabwechsel, bestimmte Spielereignisse).
-- Rotation und Aktualisierungszeitpunkte der drei Sicherungskopien; Wiederherstellungsstrategie bei beschädigten oder inkompatiblen Spielständen.
+- Rotation und Aktualisierungszeitpunkte der drei Sicherungskopien; Detailprüfung von Beschädigung/Inkompatibilität sowie Umgang mit fehlendem Speicherplatz bei Wiederherstellungen.
 - Detailverhalten von Export/Import: Dateiformat, Prüfung, Dateinamen, Konfliktbehandlung und Fehlerfall (Grundfunktion bereits beschlossen).
 - Start-/Kolonieauswahl und das Verhalten beim Starten einer neuen Kolonie.
 - Löschen/Umbenennen von Kolonien und eventuelle Warn- oder Bestätigungsschritte.
@@ -46,4 +55,4 @@
 - Mehrere Kolonien müssen vollständig getrennt bleiben, auch nach Neuladen des Browsers.
 - Vor Codex-Auftrag offene Regeln mit dem Spieler konkretisieren; dann in kleinen getesteten Paketen implementieren.
 
-**Status:** Automatisch + manuell, mehrere unabhängige Kolonien ohne feste Slotzahl, lokales Speichern mit Datei-Export/-Import (Variante B), **Autosave alle 5 realen Minuten** und **drei automatische Sicherungskopien pro Kolonie** verbindlich beschlossen. Rotation und Wiederherstellung sind noch zu planen. **Keinen Spielcode ändern.**
+**Status:** Automatisch + manuell, mehrere unabhängige Kolonien, lokales Speichern mit Datei-Export/-Import (Variante B), Autosave alle 5 realen Minuten, drei automatische Sicherungskopien pro Kolonie und **Wiederherstellung C** (Fehlerauswahl sowie jederzeitiger manueller Zugriff) verbindlich beschlossen. **Rotation und Detailfragen noch offen. Keinen Spielcode ändern.**

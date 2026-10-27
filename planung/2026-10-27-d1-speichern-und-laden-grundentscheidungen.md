@@ -82,13 +82,24 @@
 - **Geplanter, noch nicht im Detail beschlossener Entwurf für die Kolonieverwaltung:** Übersicht vieler Kolonien mit Name, zuletzt gespielt, Spieltag, Ameisenzahl und Speicherstatus; Auswahl/Laden; Umbenennen; Export; Import; drei Backups mit Datum und Wiederherstellung; Löschen mit Bestätigung. Konkrete UI, Sortierung und Lösch-/Namenskonfliktregeln noch gemeinsam festlegen.
 - **Ausschließlich Planung**, keine Änderungen am Spielcode, keine Implementierungsfreigabe.
 
+## Kolonie löschen – Variante B (verbindlich beschlossen am 27.10.2026)
+
+- In der Kolonieverwaltung gibt es für jede Kolonie eine bewusst gewählte Aktion **„Kolonie löschen“**, nicht als leicht versehentlich auslösbare Standardaktion.
+- **Vor dem endgültigen Löschen** fragt ANTHIVE ausdrücklich, ob der Spieler die betroffene Kolonie **zuerst als Datei exportieren** möchte. Dieser Export ist ein **Angebot**, keine Pflicht.
+- Drei klare Wege: **„Erst exportieren“**, **„Ohne Export löschen“** und **„Abbrechen“**. Das tatsächliche Löschen verlangt zusätzlich eine eindeutige bewusste Bestätigung; der Koloniename muss dabei sichtbar sein.
+- **Bei „Erst exportieren“ wird nicht unmittelbar gelöscht.** Die Anwendung darf erst nach einer eindeutigen erneuten Löschbestätigung fortfahren; ein erfolgreich ausgelöster Browserdownload ist nicht immer gleichbedeutend damit, dass der Nutzer die Datei langfristig gesichert hat. Dieser Sachverhalt muss verständlich kommuniziert werden. Falls der Export fehlschlägt, darf deshalb kein automatisches Löschen stattfinden.
+- Bei endgültiger Bestätigung werden **die betreffende Kolonie einschließlich ihrer lokal gespeicherten drei Sicherungskopien** gelöscht, damit Speicher freigegeben wird. Eine extern heruntergeladene Exportdatei wird dabei nicht verändert.
+- Das Löschen darf **keine andere Kolonie** oder deren Sicherungen berühren. War die gelöschte Kolonie der zuletzt gespielte Stand, wird die Schnellstart-Vorauswahl passend bereinigt.
+- **Kein Papierkorb vorgesehen**; auch keine automatische Wiederherstellung nach endgültiger Löschung, wenn vorher kein Export erfolgt ist. Der Spieler wird eindeutig auf den dauerhaften Verlust hingewiesen.
+- Noch offen: exakte Buttontexte und grafische Gestaltung sowie das Speicherfehlerverhalten beim endgültigen Löschvorgang. **Keinen Spielcode ändern.**
+
 ## Noch nicht entschieden – ausdrücklich nicht eigenmächtig implementieren
 
 - Weitere zusätzliche Speicherereignisse außer dem nun beschlossenen Tab-Verbergen/App-Hintergrund (z. B. nach Bauabschluss oder großen Kolonieereignissen).
 - Detailprüfung von Beschädigung/Inkompatibilität sowie Umgang mit fehlendem Speicherplatz bei Wiederherstellungen.
 - Detailverhalten von Export/Import: Dateiformat, Prüfung, Dateinamen, Konfliktbehandlung und Fehlerfall (Grundfunktion bereits beschlossen).
 - Detailverhalten beim Gründen einer neuen Kolonie und Darstellung/Sortierung/Lösch- und Umbenennungsregeln der Kolonieverwaltung (das grundlegende Startmenü mit Schnellstart ist beschlossen).
-- Löschen/Umbenennen von Kolonien und eventuelle Warn- oder Bestätigungsschritte.
+- Details zur Umbenennung von Kolonien und sonstige UI-Fragen; das Löschen mit optionalem Export und ausdrücklicher Bestätigung ist nun entschieden.
 - Versionierung und Migration von Speicherständen nach Spielupdates.
 - Verhalten bei vollem Speicher, fehlgeschlagenem Speichern und Browser-Datenschutz-/Löschvorgängen.
 - Umgang mit bereits laufenden Arbeiten, Transportladungen, gebauten/geplanten Kammern, Ressourcen, Königin, Eiern, Brut, individuellen Ameisen, Arbeitsgruppen und Spieluhr, damit beim Laden keine Duplikate oder Verluste entstehen.
@@ -101,4 +112,4 @@
 - Mehrere Kolonien müssen vollständig getrennt bleiben, auch nach Neuladen des Browsers.
 - Vor Codex-Auftrag offene Regeln mit dem Spieler konkretisieren; dann in kleinen getesteten Paketen implementieren.
 
-**Status:** Automatisch + manuell, mehrere unabhängige Kolonien, lokal mit Datei-Export/-Import (B), Autosave alle 5 Minuten aktiver Echtzeit, drei gestaffelte Sicherungen je Kolonie (Aktualisierungsintervalle 15/60/180 Minuten aktiver Spielzeit) und Wiederherstellung C sowie **zusätzlicher best-effort Speicherversuch bei Tab-Verbergen/App-Hintergrund (Variante B)** verbindlich beschlossen. Startmenü Variante B (Hauptmenü mit vorausgewählter letzter Kolonie und Ein-Klick-Fortsetzen) beschlossen; Details zu Fehlerfällen, Import und Kolonieverwaltung bleiben offen. **Keinen Spielcode ändern.**
+**Status:** Automatisch + manuell, mehrere unabhängige Kolonien, lokal mit Datei-Export/-Import (B), Autosave alle 5 Minuten aktiver Echtzeit, drei gestaffelte Sicherungen je Kolonie (Aktualisierungsintervalle 15/60/180 Minuten aktiver Spielzeit) und Wiederherstellung C sowie **zusätzlicher best-effort Speicherversuch bei Tab-Verbergen/App-Hintergrund (Variante B)** verbindlich beschlossen. Startmenü Variante B (Hauptmenü mit vorausgewählter letzter Kolonie und Ein-Klick-Fortsetzen) beschlossen; **Löschen nach Variante B** (vorher optional Export anbieten, dann ausdrücklich endgültig bestätigen) beschlossen; Details zu Fehlerfällen, Import und weiteren Funktionen der Kolonieverwaltung bleiben offen. **Keinen Spielcode ändern.**

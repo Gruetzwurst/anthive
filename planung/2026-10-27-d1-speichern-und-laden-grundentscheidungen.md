@@ -115,6 +115,32 @@
 - Spätere Tests: vollgelaufener Speicher, private/gesperrte Browserspeicherung, fehlgeschlagenes Backup, unterbrochener Schreibvorgang, Export trotz Speicherfehler, mehrere Kolonien und Wiederaufnahme nach Platzfreigabe.
 - **Nur Planung; keine Spielcodeänderung und keine Implementierungsfreigabe.**
 
+## Kompatibilität alter Spielstände nach Updates – Variante B (verbindlich beschlossen am 27.10.2026)
+
+- **Bereits gespeicherte Kolonien sollen nach ANTHIVE-Updates möglichst weiterhin spielbar bleiben.** Bei Änderungen am Speicherformat versucht ANTHIVE, ältere gültige Spielstände auf die neue Version **sicher und kontrolliert zu migrieren**, anstatt sie pauschal für ungültig zu erklären.
+- Das Speicherformat erhält eine **eindeutige Versionskennung**. Vor einer notwendigen Umwandlung werden Herkunftsversion, Zielversion und Gültigkeit überprüft; nur ausdrücklich unterstützte Migrationsschritte dürfen ausgeführt werden.
+- **Schutz vor der Migration:** Den gültigen alten Stand möglichst unverändert und separat erhalten bzw. eine eigene Sicherheitskopie anlegen. Er darf bei einer abgebrochenen oder fehlgeschlagenen Umwandlung nicht zerstört werden. Diese technische Migrationssicherung ist **nicht** mit der regulären 15/60/180-Minuten-Backup-Rotation zu verwechseln.
+- Die Umwandlung ist **atomar** zu behandeln: Ein neuer Spielstand wird erst nach vollständiger erfolgreicher Konvertierung und Validierung als aktuell nutzbar freigegeben. Bei Fehler oder ununterstützter Version Meldung und sichere Rückfall-/Exportmöglichkeit anbieten; keine stillschweigende Neuerstellung der Kolonie.
+- Die gespeicherte Kolonie soll ihren tatsächlichen Zustand einschließlich Ameisen, Brut, Königin, Welt, Ressourcen, Bauaufträgen, Kammern, Gruppen und Spieltag beibehalten. Neue Spielfelder müssen sinnvoll und nachvollziehbar initialisiert werden; keine erfundenen Ressourcen oder Ameisen.
+- **Keine absolute Garantie für jede beliebige zukünftige oder uralte Version:** Unterstützte Versionssprünge klar benennen und bei fehlender Migration verständlich warnen, statt Daten zu verwerfen.
+- Datei-**Importe** alter Exporte ebenfalls durch die unterstützte Validierungs-/Migrationslogik prüfen; bestehende Kolonien niemals ohne explizite Auswahl überschreiben.
+- Spätere Tests: alte gültige Spielstände und Exportdateien migrieren, Zwischenversionen, fehlende/fehlerhafte Versionsangabe, inkompatibler Stand, absichtlich unterbrochene Migration, unveränderte alte Sicherung, Bestandsgleichheit und Isolation der Kolonien.
+- **Dies ist eine Planungsentscheidung, keine Freigabe, Spielcode oder bestehende Speicherstände jetzt zu verändern.**
+
+## Noch offene D1-Entscheidungen (Inventur nach Variante B)
+
+**Produkt-/UX-Fragen, vor dem Codex-Auftrag entscheiden:**
+1. **Kolonieverwaltung:** Neue Kolonien benennen, Umbenennen, Standardsortierung, angezeigte Metadaten und Bedienung bei vielen Kolonien (bisherige Vorschläge noch nicht verbindlich).
+2. **Export-/Import-Details:** Dateinamen, benutzerseitig sichtbare Informationen, Importfehlerhinweise; grundlegende Export-/Importfunktion und Namenskonflikt-Variante B sind bereits verbindlich.
+3. **Rücksicherung in Sonderfällen:** Umgang mit unlesbarem aktuellen Stand, mit zu wenig Platz für die vorgeschlagene Sicherheitskopie vor dem Wiederherstellen und mit inkompatiblen Backups.
+4. **Spielstart ohne bestehenden Speicherstand:** automatische Namensvorschläge, Erstanlage und Auswahl; das Hauptmenü mit Schnellstart ist bereits verbindlich.
+
+**Technik-/Abnahmefragen für Codex, keine gesonderten Spielerentscheidungen nötig, solange er die Beschlüsse respektiert:**
+- Zuverlässige lokale Speicherung (z. B. IndexedDB), versionierte Datenstruktur, Integritäts-/Plausibilitätsprüfung, sicheres Schreiben ohne Beschädigung alter Daten und Unterstützung der 15/60/180-Minuten-Rotation.
+- Komplette Wiederherstellung des Simulationszustands einschließlich gerade transportierender/arbeitender Ameisen, Ressourcenreservierungen, Brutstadien, Queue/Arbeitsgruppen und Zeit-/Zufallszustand, soweit vorhanden. Keine Duplikation oder Verluste beim Laden.
+- Tests für mehrere Kolonien, kaputte Daten, Storage-Quota, parallel auslösende Speicherereignisse, Export/Import und Versionsmigration.
+- Implementierung in kleinen Paketen **erst nach ausdrücklicher Freigabe**; vorher C5-Stand und andere beschlossene Post-C5-Planungen konsistent berücksichtigen.
+
 ## Noch nicht entschieden – ausdrücklich nicht eigenmächtig implementieren
 
 - Weitere zusätzliche Speicherereignisse außer dem nun beschlossenen Tab-Verbergen/App-Hintergrund (z. B. nach Bauabschluss oder großen Kolonieereignissen).
@@ -122,7 +148,7 @@
 - Restliche Export-/Importdetails: Dateiformat, Prüfung, Dateinamen, inkompatible Versionen und Fehlerfall; **Namenskonflikt Variante B ist entschieden**.
 - Detailverhalten beim Gründen einer neuen Kolonie und Darstellung/Sortierung/Lösch- und Umbenennungsregeln der Kolonieverwaltung (das grundlegende Startmenü mit Schnellstart ist beschlossen).
 - Details zur Umbenennung von Kolonien und sonstige UI-Fragen; das Löschen mit optionalem Export und ausdrücklicher Bestätigung ist nun entschieden.
-- Versionierung und Migration von Speicherständen nach Spielupdates.
+- Konkretes Dateischema und unterstützte Versionsmigrationen technisch ausarbeiten; **grundsätzlich sichere automatische Migration (Variante B) ist beschlossen**.
 - Technische Details bei fehlgeschlagenen Schreibvorgängen und gelöschten Browserdaten; bei **vollem Speicher ist Variante B entschieden** (warnen und Lösungen anbieten, niemals automatisch löschen).
 - Umgang mit bereits laufenden Arbeiten, Transportladungen, gebauten/geplanten Kammern, Ressourcen, Königin, Eiern, Brut, individuellen Ameisen, Arbeitsgruppen und Spieluhr, damit beim Laden keine Duplikate oder Verluste entstehen.
 
@@ -134,4 +160,4 @@
 - Mehrere Kolonien müssen vollständig getrennt bleiben, auch nach Neuladen des Browsers.
 - Vor Codex-Auftrag offene Regeln mit dem Spieler konkretisieren; dann in kleinen getesteten Paketen implementieren.
 
-**Status:** Automatisch + manuell, mehrere unabhängige Kolonien, lokal mit Datei-Export/-Import (B), Autosave alle 5 Minuten aktiver Echtzeit, drei gestaffelte Sicherungen je Kolonie (Aktualisierungsintervalle 15/60/180 Minuten aktiver Spielzeit) und Wiederherstellung C sowie **zusätzlicher best-effort Speicherversuch bei Tab-Verbergen/App-Hintergrund (Variante B)** verbindlich beschlossen. Startmenü Variante B (Hauptmenü mit vorausgewählter letzter Kolonie und Ein-Klick-Fortsetzen) beschlossen; **Löschen nach Variante B** (vorher optional Export anbieten, dann ausdrücklich endgültig bestätigen) beschlossen; Namenskonflikte beim Import **Variante B** (neuen Namen vergeben oder bewusst bestehende Kolonie ersetzen) beschlossen; Bei **vollem Browserspeicher Variante B** (Warnung, Export/Verwaltung anbieten, niemals automatische Löschung) beschlossen; technische Fehlerfälle, Dateiformat und weitere Funktionen der Kolonieverwaltung bleiben offen. **Keinen Spielcode ändern.**
+**Status:** Automatisch + manuell, mehrere unabhängige Kolonien, lokal mit Datei-Export/-Import (B), Autosave alle 5 Minuten aktiver Echtzeit, drei gestaffelte Sicherungen je Kolonie (Aktualisierungsintervalle 15/60/180 Minuten aktiver Spielzeit) und Wiederherstellung C sowie **zusätzlicher best-effort Speicherversuch bei Tab-Verbergen/App-Hintergrund (Variante B)** verbindlich beschlossen. Startmenü Variante B (Hauptmenü mit vorausgewählter letzter Kolonie und Ein-Klick-Fortsetzen) beschlossen; **Löschen nach Variante B** (vorher optional Export anbieten, dann ausdrücklich endgültig bestätigen) beschlossen; Namenskonflikte beim Import **Variante B** (neuen Namen vergeben oder bewusst bestehende Kolonie ersetzen) beschlossen; Bei **vollem Browserspeicher Variante B** (Warnung, Export/Verwaltung anbieten, niemals automatische Löschung) beschlossen; **Kompatibilität Variante B** (alte Spielstände möglichst sicher migrieren, alte Version schützen) beschlossen; technische Fehlerfälle, Dateiformat und weitere Funktionen der Kolonieverwaltung bleiben offen. **Keinen Spielcode ändern.**

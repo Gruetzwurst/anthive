@@ -24,8 +24,18 @@
 - **Drei automatische Sicherungskopien pro Kolonie**, zusätzlich zum jeweils aktuellen Spielstand. Dies sind Sicherungen der **einzelnen Kolonie**, keine globale Dreiergrenze für alle Spielstände.
 - Ziel der Sicherungen ist die Wiederherstellung bei Problemen mit dem aktuellen Spielstand. Die verbindliche zeitlich gestaffelte Rotation ist im folgenden Abschnitt festgelegt.
 - Manuelles Speichern und Export/Import bleiben wie zuvor beschlossen.
-- Ob zusätzlich beim Verbergen des Tabs, bei wichtigen Ereignissen oder beim Beenden gespeichert wird, ist **noch offen**. Ein zuverlässiges Speichern exakt beim Schließen des Browserfensters kann technisch nicht garantiert werden.
+- **Zusätzlicher Speicherversuch beim Verlassen der aktiven Ansicht** ist beschlossen (Variante B): siehe eigenen Abschnitt unten. Andere zusätzliche Ereignis-Saves sind damit nicht beschlossen. Ein zuverlässiges Speichern exakt beim Schließen des Browserfensters kann technisch nicht garantiert werden.
 - Alle übrigen offenen technischen Fehler- und Wiederherstellungsdetails vor der Implementierung gemeinsam entscheiden.
+
+## Zusätzlicher Speicherauslöser – Variante B (verbindlich beschlossen am 27.10.2026)
+
+- **Zusätzlich zum regulären Autosave alle fünf Minuten** soll ANTHIVE versuchen, die aktuell aktive Kolonie zu speichern, sobald der Browser-Tab **verborgen/verlassen** wird oder die App **in den Hintergrund** wechselt.
+- Der Speicherversuch ist **best effort**, ausdrücklich **keine Garantie**: Browser, mobile Betriebssysteme und abruptes Schließen/Abstürzen können das vollständige Ausführen verhindern.
+- Nach Möglichkeit beim Wechsel in den Hintergrund einen bereits vorbereiteten konsistenten Simulationssnapshot sichern; keine Zusage, dass asynchrone Speicheroperationen vor Beendigung zuverlässig fertig werden.
+- Ein Hintergrund-Speicherversuch darf **nur die aktive Kolonie** betreffen, nie unabsichtlich andere Kolonien verändern, und darf **die letzten gültigen Spielstände/Backups nicht beschädigen**. Fehlschlag darf nicht als erfolgreiche Sicherung dargestellt werden.
+- Die **15-/60-/180-Minuten-Backup-Rotation** bleibt an aktive Spielzeit gebunden; durch einen Tabwechsel allein werden Backups nicht vorzeitig alle erneuert.
+- Keine weiteren ereignisbezogenen Speicherauslöser, etwa nach Bauabschluss oder Königinnenwechsel, durch diese Entscheidung eingeführt.
+- Spätere Prüfungen: Tabwechsel, App-Hintergrund, mehrfaches schnelles Verbergen, paralleler Fünf-Minuten-Autosave, Browserabbruch, Pause und Koloniewechsel; kein Überschreiben fremder Kolonien und keine doppelte/korrupten Speicheroperationen.
 
 ## Wiederherstellung – Variante C (verbindlich beschlossen am 27.10.2026)
 
@@ -60,11 +70,11 @@
 
 **Spätere Tests:** 5-minütige Autosaves, erste 15-/60-/180-Minuten-Fälligkeit, gestaffelte spätere Erneuerungen, simultane Fälligkeiten (Minute 180, 360), Neustart nach 175 Minuten, Spielpause/Tab ohne aktive Kolonie, Koloniewechsel, mangelnder Speicher, fehlgeschlagene/unterbrochene Schreibvorgänge, manuelles Speichern, datentreue Wiederherstellung und Isolation mehrerer Kolonien.
 
-**Noch nicht beschlossen:** zusätzliche Autosave-Auslöser bei Tab-Verbergen, genaues Verhalten bei Browser-Speichermangel und Konflikten, Format/Integritätsverfahren und UI-Details. Diese dürfen nicht stillschweigend als neue Produktentscheidungen vorweggenommen werden.
+**Noch nicht beschlossen:** weitere besondere Autosave-Auslöser über Tab-Verbergen/App-Hintergrund hinaus, genaues Verhalten bei Browser-Speichermangel und Konflikten, Format/Integritätsverfahren und UI-Details. Diese dürfen nicht stillschweigend als neue Produktentscheidungen vorweggenommen werden.
 
 ## Noch nicht entschieden – ausdrücklich nicht eigenmächtig implementieren
 
-- Zusätzliche Autosave-Auslöser außer dem festen 5-Minuten-Intervall (z. B. Tabwechsel, bestimmte Spielereignisse).
+- Weitere zusätzliche Speicherereignisse außer dem nun beschlossenen Tab-Verbergen/App-Hintergrund (z. B. nach Bauabschluss oder großen Kolonieereignissen).
 - Detailprüfung von Beschädigung/Inkompatibilität sowie Umgang mit fehlendem Speicherplatz bei Wiederherstellungen.
 - Detailverhalten von Export/Import: Dateiformat, Prüfung, Dateinamen, Konfliktbehandlung und Fehlerfall (Grundfunktion bereits beschlossen).
 - Start-/Kolonieauswahl und das Verhalten beim Starten einer neuen Kolonie.
@@ -81,4 +91,4 @@
 - Mehrere Kolonien müssen vollständig getrennt bleiben, auch nach Neuladen des Browsers.
 - Vor Codex-Auftrag offene Regeln mit dem Spieler konkretisieren; dann in kleinen getesteten Paketen implementieren.
 
-**Status:** Automatisch + manuell, mehrere unabhängige Kolonien, lokal mit Datei-Export/-Import (B), Autosave alle 5 Minuten aktiver Echtzeit, drei gestaffelte Sicherungen je Kolonie (Aktualisierungsintervalle 15/60/180 Minuten aktiver Spielzeit) und Wiederherstellung C verbindlich beschlossen. Details zu Fehlerfällen, Import und UI bleiben offen. **Keinen Spielcode ändern.**
+**Status:** Automatisch + manuell, mehrere unabhängige Kolonien, lokal mit Datei-Export/-Import (B), Autosave alle 5 Minuten aktiver Echtzeit, drei gestaffelte Sicherungen je Kolonie (Aktualisierungsintervalle 15/60/180 Minuten aktiver Spielzeit) und Wiederherstellung C sowie **zusätzlicher best-effort Speicherversuch bei Tab-Verbergen/App-Hintergrund (Variante B)** verbindlich beschlossen. Details zu Fehlerfällen, Import und UI bleiben offen. **Keinen Spielcode ändern.**

@@ -22,10 +22,10 @@
 
 - **Autosave alle 5 realen Minuten** (nicht alle 5 Spielminuten). Die automatische Speicherung bezieht sich jeweils auf die aktuell gespielte Kolonie, ohne andere Kolonien zu überschreiben.
 - **Drei automatische Sicherungskopien pro Kolonie**, zusätzlich zum jeweils aktuellen Spielstand. Dies sind Sicherungen der **einzelnen Kolonie**, keine globale Dreiergrenze für alle Spielstände.
-- Ziel der Sicherungen ist die Wiederherstellung bei Problemen mit dem aktuellen Spielstand. **Noch nicht entschieden** ist, wie und wann die drei Kopien aktualisiert bzw. rotiert werden. Insbesondere ist nicht automatisch beschlossen, alle drei bei jedem Fünf-Minuten-Autosave neu zu überschreiben.
+- Ziel der Sicherungen ist die Wiederherstellung bei Problemen mit dem aktuellen Spielstand. Die verbindliche zeitlich gestaffelte Rotation ist im folgenden Abschnitt festgelegt.
 - Manuelles Speichern und Export/Import bleiben wie zuvor beschlossen.
 - Ob zusätzlich beim Verbergen des Tabs, bei wichtigen Ereignissen oder beim Beenden gespeichert wird, ist **noch offen**. Ein zuverlässiges Speichern exakt beim Schließen des Browserfensters kann technisch nicht garantiert werden.
-- Alle noch offenen Wiederherstellungs- und Sicherungsregeln vor der Implementierung gemeinsam entscheiden.
+- Alle übrigen offenen technischen Fehler- und Wiederherstellungsdetails vor der Implementierung gemeinsam entscheiden.
 
 ## Wiederherstellung – Variante C (verbindlich beschlossen am 27.10.2026)
 
@@ -34,12 +34,38 @@
 - **Bewusste Bestätigung vor dem Zurücksetzen:** Vor dem tatsächlichen Wiederherstellen zeigt ANTHIVE klar, dass dadurch Fortschritt seit der gewählten Sicherung verloren gehen könnte. Eine Wiederherstellung darf nicht versehentlich durch bloßes Ansehen der Sicherung ausgelöst werden.
 - **Aktuellen Zustand möglichst schützen:** Wenn der gegenwärtige Spielstand noch lesbar und gültig ist, soll vor der Wiederherstellung möglichst eine separate, klar erkennbare Sicherheitskopie angeboten bzw. angelegt werden; ein beschädigter Stand darf nicht als vertrauenswürdige Kopie ausgegeben werden. Die genaue technische Strategie und ihr Verhalten bei knappem Speicher sind noch offen.
 - **Keine Kolonieverwechslung:** Wiederherstellung ist nur innerhalb der ausgewählten Kolonie vorgesehen und darf andere Kolonien nicht verändern.
-- Die **drei automatischen Sicherungskopien pro Kolonie** bleiben beschlossen. **Welche Zeitpunkte** die Sicherungen repräsentieren, wann sie rotieren und wie lange sie zurückreichen, ist weiterhin **nicht entschieden**.
+- Die **drei automatischen Sicherungskopien pro Kolonie** bleiben beschlossen; Zeitstaffelung und Rotation sind im folgenden Abschnitt definiert.
+
+## Rotation – Variante B: zeitlich gestaffelte Sicherungen (verbindlich beschlossen am 27.10.2026)
+
+**Aktueller Hauptspielstand:** Autosave alle **5 Minuten realer aktiver Spielzeit**. Dazu drei getrennte Backup-Plätze **je Kolonie** mit unterschiedlichen Aktualisierungsrhythmen:
+
+| Sicherung | Erneuern nach jeweils | Zweck |
+| --- | --- | --- |
+| Backup 1 (kurzfristig) | **15 Minuten** aktiver Spielzeit | Jüngere Rückfallversion |
+| Backup 2 (mittelfristig) | **60 Minuten** aktiver Spielzeit | Deutlich seltener überschrieben |
+| Backup 3 (langfristig) | **180 Minuten** aktiver Spielzeit | Ältere Rückfallmöglichkeit |
+
+**Wichtig zur Bedeutung:** Die Werte **15/60/180 Minuten sind Aktualisierungsintervalle der Backup-Plätze**, **nicht** das garantierte Alter einer Sicherung relativ zum aktuellen Stand. Direkt nach dem jeweiligen Erneuern ist diese Kopie neu; kurz vor der nächsten Erneuerung entsprechend älter. Anzeige in der Kolonieverwaltung mit *tatsächlichem Erstellungszeitpunkt*, nicht irreführend als „genau vor 3 Stunden“.
+
+**Zeit- und Rotationsregeln:**
+1. Zeit läuft ausschließlich während **aktiven Spielens dieser Kolonie**. Geschlossener Browser, pausiertes Spiel und Wechsel in eine andere Kolonie erhöhen den Backup-Zähler der ungespielten/pausierten Kolonie nicht. Offline verstrichene Zeit erzeugt keine nachträgliche Sicherungsserie.
+2. Jede Kolonie besitzt ihre eigenen Zeitstände und drei voneinander getrennte Backup-Plätze. Die längeren Intervalle werden über Sitzungen fortgeführt, auch nach Browserneustart; **kein Zurücksetzen des Intervallzählers beim bloßen Neuladen**.
+3. Beim Erreichen eines Backup-Intervalls wird der betreffende Platz mit einem **nach erfolgreicher Speicherung geprüften, vollständigen Snapshot** aktualisiert. Solange kein neuer gültiger Snapshot geschrieben werden konnte, bleibt die vorherige gültige Kopie erhalten; der Vorgang gilt als fehlgeschlagen und wird verständlich gemeldet.
+4. Fällt die Fälligkeit mehrerer Backup-Plätze auf denselben Zeitpunkt (z. B. Minute 180), **dürfen sie nicht alle mit demselben Snapshot überschrieben werden**. Den länger zurückreichenden Platz beim Fälligkeitspunkt priorisieren, andere fällige Plätze frühestens bei späteren erfolgreichen Autosaves nachholen, damit mindestens ein zeitlicher Abstand entsteht. Falls nötig diese Nachholung weiter staffeln. Kein neuer Schreibvorgang darf alle drei Kopien gleichzeitig durch denselben Zustand ersetzen.
+5. Beim **erstmaligen Speichern einer neuen Kolonie** wird ein Hauptspielstand angelegt. Die drei Backups dürfen zunächst noch fehlen; sie werden zu den jeweiligen Intervallzeiten erstmals gefüllt. UI zeigt fehlende Sicherungen als „Noch nicht erstellt“ statt erfundener Versionen.
+6. Manuelles Speichern aktualisiert den Hauptspielstand, **rotiert nicht automatisch alle drei Backup-Plätze**. Datei-Export/Import bleibt eine getrennte Nutzeraktion.
+7. Wiederherstellen einer älteren Kopie soll die Backup-Plätze nicht sofort mit dem wiederhergestellten Zustand überschreiben. Alte gültige Rückfallpunkte nach Möglichkeit schützen und einen manuell bestätigten Restore sicher abwickeln; genaue Schutzkopie-Strategie bei knappem Speicher separat festlegen.
+8. Technische Speicherung möglichst atomar/versioniert und mit Integritätsprüfung ausführen. Beim Überschreiben eines Backup-Platzes nur die **jeweils vorige Version dieses Platzes** ersetzen und erst nach erfolgreicher Validierung freigeben. Keine andere Kolonie verändern.
+
+**Spätere Tests:** 5-minütige Autosaves, erste 15-/60-/180-Minuten-Fälligkeit, gestaffelte spätere Erneuerungen, simultane Fälligkeiten (Minute 180, 360), Neustart nach 175 Minuten, Spielpause/Tab ohne aktive Kolonie, Koloniewechsel, mangelnder Speicher, fehlgeschlagene/unterbrochene Schreibvorgänge, manuelles Speichern, datentreue Wiederherstellung und Isolation mehrerer Kolonien.
+
+**Noch nicht beschlossen:** zusätzliche Autosave-Auslöser bei Tab-Verbergen, genaues Verhalten bei Browser-Speichermangel und Konflikten, Format/Integritätsverfahren und UI-Details. Diese dürfen nicht stillschweigend als neue Produktentscheidungen vorweggenommen werden.
 
 ## Noch nicht entschieden – ausdrücklich nicht eigenmächtig implementieren
 
 - Zusätzliche Autosave-Auslöser außer dem festen 5-Minuten-Intervall (z. B. Tabwechsel, bestimmte Spielereignisse).
-- Rotation und Aktualisierungszeitpunkte der drei Sicherungskopien; Detailprüfung von Beschädigung/Inkompatibilität sowie Umgang mit fehlendem Speicherplatz bei Wiederherstellungen.
+- Detailprüfung von Beschädigung/Inkompatibilität sowie Umgang mit fehlendem Speicherplatz bei Wiederherstellungen.
 - Detailverhalten von Export/Import: Dateiformat, Prüfung, Dateinamen, Konfliktbehandlung und Fehlerfall (Grundfunktion bereits beschlossen).
 - Start-/Kolonieauswahl und das Verhalten beim Starten einer neuen Kolonie.
 - Löschen/Umbenennen von Kolonien und eventuelle Warn- oder Bestätigungsschritte.
@@ -55,4 +81,4 @@
 - Mehrere Kolonien müssen vollständig getrennt bleiben, auch nach Neuladen des Browsers.
 - Vor Codex-Auftrag offene Regeln mit dem Spieler konkretisieren; dann in kleinen getesteten Paketen implementieren.
 
-**Status:** Automatisch + manuell, mehrere unabhängige Kolonien, lokales Speichern mit Datei-Export/-Import (Variante B), Autosave alle 5 realen Minuten, drei automatische Sicherungskopien pro Kolonie und **Wiederherstellung C** (Fehlerauswahl sowie jederzeitiger manueller Zugriff) verbindlich beschlossen. **Rotation und Detailfragen noch offen. Keinen Spielcode ändern.**
+**Status:** Automatisch + manuell, mehrere unabhängige Kolonien, lokal mit Datei-Export/-Import (B), Autosave alle 5 Minuten aktiver Echtzeit, drei gestaffelte Sicherungen je Kolonie (Aktualisierungsintervalle 15/60/180 Minuten aktiver Spielzeit) und Wiederherstellung C verbindlich beschlossen. Details zu Fehlerfällen, Import und UI bleiben offen. **Keinen Spielcode ändern.**

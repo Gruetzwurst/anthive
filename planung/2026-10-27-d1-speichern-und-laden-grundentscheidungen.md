@@ -138,12 +138,25 @@
 - UI-Darstellung, Validierung unzulässiger Eingaben/Zeichen, sinnvolle Maximallänge von Namen und konkrete Gestaltung einer großen Kolonieliste sind noch technische/UX-Details. Ein Namenskonflikt beim **Import** wird weiter gemäß der gesondert beschlossenen Variante B behandelt.
 - **Nur Planung. Kein Spielcode ändern.**
 
+## Sicherheits-Sonderfälle D1 – verbindlich als Paket beschlossen (27.10.2026)
+
+1. **Aktueller Spielstand beschädigt:** ANTHIVE bietet dem Spieler die **gültigen verfügbaren Sicherungskopien** mit tatsächlichen Zeitstempeln zur bewussten Auswahl an. Kein stiller Verlust oder automatisches Zurücksetzen; bestehende Wiederherstellung C gilt.
+2. **Alle Sicherungen beschädigt oder nicht lesbar:** ANTHIVE meldet deutlich, dass **keine gültige lokale Wiederherstellung** verfügbar ist, und bietet die Möglichkeit zum **Import einer extern exportierten Koloniedatei** an. Keine fingierte Wiederherstellung und keine automatische Löschung der unbrauchbaren Dateien.
+3. **Zu wenig Speicherplatz für eine sichere Wiederherstellung:** **Zunächst Export der noch lesbaren aktuellen Kolonie anbieten** und das Platzproblem erläutern. **Keine bestehenden Daten ungefragt überschreiben**; nicht einfach eine der drei Sicherungen als temporären Platz opfern. Eine Wiederherstellung erst beginnen, wenn ihre Datensicherheit gewährleistet ist; ansonsten verständlich abbrechen.
+4. **Browserdaten gelöscht/verloren:** Ohne verbliebene Browserdaten ist keine lokale Wiederherstellung möglich. ANTHIVE bietet **„Neue Kolonie gründen“** oder **„Koloniedatei importieren“** an. Keine Behauptung einer Cloud-Sicherung; extern gespeicherte Exportdateien bleiben unabhängig vom Browser.
+5. **Dieselbe Kolonie in mehreren Browser-Tabs geöffnet:** **Nur ein Tab darf diese Kolonie schreibend spielen/speichern.** Weitere Tabs dürfen nicht konkurrierend Autosaves, manuelle Sicherungen oder Backups in denselben Spielstand schreiben. Für andere Tabs klar anzeigen, dass die Kolonie bereits aktiv ist; sichere Übernahme/Sitzungswiederherstellung ohne gleichzeitige Schreiber technisch prüfen. Verschiedene Kolonien bleiben voneinander unabhängig.
+6. **Importdatei inkompatibel oder zu alt:** Originaldatei und bestehende Kolonien **unverändert lassen**. Nach Versionsprüfung und Versuch einer **unterstützten sicheren Migration** (Update-Kompatibilität B) verständlich erklären, wenn ein Import nicht möglich ist. Kein automatisches Überschreiben oder stilles Leeren.
+
+**Gemeinsame Schutzregeln:** Erfolge und Fehlschläge wahrheitsgemäß kommunizieren; vor irreversiblen Handlungen Bestätigungen einholen; bei Defekten sicher abbrechen, ohne letzte intakte Kopien zu zerstören; nur tatsächlich vorhandene, geprüfte Sicherungen anbieten. Die technische Lösung (z. B. Kolonie-Schreibsperre pro Tab, Transaktionen, Validierung, Versionierung) ist **erst beim späteren freigegebenen Codex-Auftrag** zu implementieren.
+
+**Abnahmeprüfungen für später:** beschädigter Hauptstand bei 1/2/3 gültigen Backups; alle Backups korrupt; fehlende Browserdaten; kein Platz für temporäre Restore-Kopie; zwei Tabs mit gleicher Kolonie; zwei Tabs mit unterschiedlichen Kolonien; Migration einer alten Exportdatei; inkompatibler Import; Abbruch ohne Änderungen an funktionierenden Spielständen.
+
 ## Noch offene D1-Entscheidungen (Inventur nach Variante B)
 
 **Produkt-/UX-Fragen, vor dem Codex-Auftrag entscheiden:**
 1. **Kolonieverwaltung – nur Restdetails:** Konkrete UI, Eingabevalidierung, Namenslänge und Darstellung bei sehr vielen Kolonien; Benennung, Umbenennung, Standardsortierung und angezeigte Felder sind **bereits verbindlich beschlossen**.
 2. **Export-/Import-Details:** Dateinamen, benutzerseitig sichtbare Informationen, Importfehlerhinweise; grundlegende Export-/Importfunktion und Namenskonflikt-Variante B sind bereits verbindlich.
-3. **Rücksicherung in Sonderfällen:** Umgang mit unlesbarem aktuellen Stand, mit zu wenig Platz für die vorgeschlagene Sicherheitskopie vor dem Wiederherstellen und mit inkompatiblen Backups.
+3. **Rücksicherung – nur technische Restdetails:** Die Nutzerregeln für beschädigte Stände, fehlende Speicherreserve und inkompatible Dateien sind im beschlossenen Sonderfallpaket festgelegt. Konkrete Transaktionen, Datenvalidierung und Fehlerdialoge für Codex ausarbeiten.
 4. **Spielstart ohne bestehenden Speicherstand:** automatische Namensvorschläge, Erstanlage und Auswahl; das Hauptmenü mit Schnellstart ist bereits verbindlich.
 
 **Technik-/Abnahmefragen für Codex, keine gesonderten Spielerentscheidungen nötig, solange er die Beschlüsse respektiert:**

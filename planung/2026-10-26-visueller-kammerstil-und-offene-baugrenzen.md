@@ -51,3 +51,18 @@ Tests für Freihand und Vorlagen: alle Maße und Maxima, diagonale sowie seitlic
 - Modulare Einrichtung soll Zugänge, Wege und Ameisen nicht optisch verdecken. Bei freier Kammerform werden geeignete Innen-, Rand- und Eingangskacheln entsprechend berücksichtigt.
 - Noch offen: konkrete Grafikassets, Zwischenstufen/Animationen und Detailregeln der modularen Dekorplatzierung. Sie sind **keine Freigabe**, Änderungen am Spielcode oder Grafiken jetzt vorzunehmen.
 - Spätere Prüfung durch Codex: Einrichtung 0/teilweise/voll, pausiert/blockiert, freie ungewöhnliche Kammerformen, keine Kapazität vor Abschluss, danach korrekte echte Lagerbestände/Belegung; Tests und Build.
+
+
+## Ergänzung vom 27.10.2026 – eindeutige Abstandswarnung in der Bauvorschau
+
+**Verbindlicher Nutzerbeschluss:** Kann eine neue Funktionskammer wegen des Mindestabstands von **zwei Kacheln – seitlich wie diagonal** nicht an einer Position platziert werden, muss das **bereits während der Platzierung** verständlich angezeigt werden.
+
+- Die Vorschau kennzeichnet den Bauplan **deutlich als nicht platzierbar** (z. B. rot), solange der Abstand zu bestehenden, geplanten oder im Bau befindlichen Funktionskammern unterschritten wird.
+- Zusätzlich ist **der betroffene Konfliktbereich / die zu nahe liegende Kammer** visuell zu markieren, sodass der Spieler erkennen kann, **wo** der erforderliche Zwischenraum fehlt – nicht nur ein rotes Gesamtsymbol.
+- Eine kurze deutschsprachige Meldung erklärt die konkrete Ursache, z. B. **„Nicht baubar: Mindestens 2 Kacheln Abstand zu anderen Kammern erforderlich.“**
+- Auch **diagonal** zu nahe Platzierungen müssen zuverlässig angezeigt und blockiert werden.
+- Zwischenliegende Tunnel bzw. offene Kacheln sind erlaubt: Die Warnung hängt **ausschließlich von den tatsächlichen Kammerflächen** ab, nicht davon, ob im Zwischenraum Erde oder ein Gang liegt.
+- Beim Verschieben oder freien Nachzeichnen der Vorschau soll die Rückmeldung aktualisiert werden. Sobald der Abstand stimmt, verschwindet die Warnung; danach ist der Plan hinsichtlich der Abstandsregel bestätigbar.
+- Bei diesem Abstandskonflikt darf kein ungültiger Bauauftrag in die Warteschlange gelangen. Bestehende Bauaufträge und alte Startkammern werden durch die neue Vorschau nicht rückwirkend geändert.
+- **Spätere Abnahmeprüfungen:** seitlicher und diagonaler Abstand bei 0/1/2 dazwischenliegenden Kacheln; gleicher/anderer Kammertyp; Vorlage und freier Modus; geplante/halbfertige/fertige Nachbarkammer; Tunnel zwischen Kammern; Warnung bei Verstoß und Verschwinden nach Korrektur.
+- **Nur Planung:** erst nach C5 und ausdrücklicher Freigabe an Codex zur Umsetzung; keine Code- oder Grafikänderung jetzt.

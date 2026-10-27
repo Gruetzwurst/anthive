@@ -120,3 +120,12 @@ Diese Prüfung basiert auf den in der Unterhaltung erstellten Entscheidungen, de
 - **Eierzuweisung: AUTOMATISCH nach Spieler-Prozentquoten**, nicht mehr manuell pro Ei. Innerhalb derselben Spezialisierung auf mehrere betriebsbereite Brutkammern **möglichst gleichmäßig** verteilen. Wartende Eier bleiben im Königinnenpuffer. Maßgebliche neuere Datei: [`2026-10-22-automatische-eierzuweisung-und-brutkammerverteilung.md`](2026-10-22-automatische-eierzuweisung-und-brutkammerverteilung.md).
 - **Pflege- und Larvenressourcenmangel: verbindliche MINIMUM-Regel**, d. h. der stärkere Engpass bestimmt das Gesamttempo. Erholung beider Ursachen **getrennt**; z. B. weiterhin 50 % Tempo durch Pflegeunterbesetzung, auch wenn Nahrung/Wasser schon wieder vorhanden sind. Maßgebliche Datei: [`2026-10-22-kombination-pflege-und-ressourcenmangel.md`](2026-10-22-kombination-pflege-und-ressourcenmangel.md).
 - **Reihenfolge unverändert:** Diese beiden Regeln gehören erst in den Königin-/Brut-Entwicklungsabschnitt C, nicht in den ersten Ressourcen-Auftrag A1.
+
+## Aktualisierung 27.10.2026 – D1 Speichern/Laden (nur Planung)
+
+**Neu: D1 ist als separate, vollständige Arbeitszerlegung vorbereitet.** Siehe `planung/2026-10-27-D1-CODEX-ARBEITSPAKETE-NUR-PLANUNG.md` sowie verbindliche Beschlüsse in `planung/2026-10-27-d1-speichern-und-laden-grundentscheidungen.md`.
+
+- Reihenfolge **D1.0 Bestandsaufnahme/Schema → D1.1 Persistenz → D1.2 Autosave/Backups → D1.3 Startmenü/Kolonieverwaltung → D1.4 Export/Import/Restore → D1.5 Migration/Robustheit/Tests**.
+- **WICHTIG: Dies ist noch KEINE Codefreigabe.** Erst den echten lokalen/Remote-Entwicklungsstand und C5-Abschluss prüfen, Arbeitspakete nur nach ausdrücklicher Freigabe implementieren. `main` ist kein verlässlicher Beleg für den neuesten Code.
+- Die folgenden später geplanten Module bleiben **separat**: automatische Ruhekammer-Nutzung, Kammergrößen/Vorlagen, modulare Raumgrafiken und Abstands-Bauvorschau. D1-Speicherstruktur dafür erweiterbar halten, aber nicht als Zusatzauftrag implementieren.
+- Die veraltete Überschrift „D – Viel später“ im ursprünglichen Plan bezieht sich auf spätere Gameplay-Themen (Kampf/Forschung/etc.); **D1 Speichern/Laden ist inzwischen gesondert konkret geplant** und nimmt diese Themen nicht vorweg.

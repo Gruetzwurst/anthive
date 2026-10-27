@@ -103,6 +103,18 @@
 - Falls kein Namenskonflikt vorliegt, erfolgt der Import als eigene Kolonie, sofern die Datei gültig ist und der Speicher ausreicht. Exakte Importdialog-Gestaltung, interne Dateiformate und Versionsmigration bleiben gesondert zu planen.
 - **Nur Planungsfestlegung; keine Umsetzung am Code.**
 
+## Voller oder nicht beschreibbarer Browserspeicher – Variante B (verbindlich beschlossen am 27.10.2026)
+
+- Kann ANTHIVE einen Spielstand wegen **Speicherplatzmangels oder verweigertem Speicherzugriff** nicht erfolgreich speichern, zeigt es eine **klare deutschsprachige Warnung**, dass die jüngsten Änderungen möglicherweise **nicht gesichert** wurden. Niemals einen fehlgeschlagenen Speichervorgang als erfolgreich kennzeichnen.
+- Die Benutzeroberfläche bietet **konkrete Lösungen** an: **Kolonie als Datei exportieren**, **Kolonien verwalten** und – nur nach den bereits beschlossenen Sicherheitsabfragen – **nicht mehr benötigte Kolonien löschen**, um Platz zu schaffen. Der Spieler entscheidet selbst.
+- **Keine automatische Löschung** von Kolonien, den drei zugehörigen Backup-Ständen oder anderen Nutzerdaten. Auch bei knappem Speicher dürfen Backups nicht heimlich zugunsten eines aktuellen Autosaves entfernt werden.
+- Bereits vorhandene gültige Hauptspielstände und Backups möglichst unverändert schützen. Einen fehlgeschlagenen Schreibvorgang atomar bzw. mit sicherem Rollback behandeln; die exakte Speichertechnik legt Codex später im Rahmen der Implementierungsfreigabe fest.
+- Ein **Dateiexport** ist nur dann als erfolgreich auszuweisen, wenn das Exportieren technisch geklappt hat; kein Versprechen, dass die exportierte Datei langfristig außerhalb des Browser-Speichers aufbewahrt wurde. Export soll nach Möglichkeit auch dann angeboten werden, wenn das lokale Speichern gerade nicht mehr möglich ist.
+- Nach Freigabe von Speicherplatz einen erneuten Speicher-Versuch ermöglichen; der Spieler soll wissen, ob die Sicherung danach funktioniert hat.
+- **Keine automatische Kolonienbegrenzung** einführen; der verfügbare Speicher bleibt wie beschlossen die praktische Grenze. 
+- Spätere Tests: vollgelaufener Speicher, private/gesperrte Browserspeicherung, fehlgeschlagenes Backup, unterbrochener Schreibvorgang, Export trotz Speicherfehler, mehrere Kolonien und Wiederaufnahme nach Platzfreigabe.
+- **Nur Planung; keine Spielcodeänderung und keine Implementierungsfreigabe.**
+
 ## Noch nicht entschieden – ausdrücklich nicht eigenmächtig implementieren
 
 - Weitere zusätzliche Speicherereignisse außer dem nun beschlossenen Tab-Verbergen/App-Hintergrund (z. B. nach Bauabschluss oder großen Kolonieereignissen).
@@ -111,7 +123,7 @@
 - Detailverhalten beim Gründen einer neuen Kolonie und Darstellung/Sortierung/Lösch- und Umbenennungsregeln der Kolonieverwaltung (das grundlegende Startmenü mit Schnellstart ist beschlossen).
 - Details zur Umbenennung von Kolonien und sonstige UI-Fragen; das Löschen mit optionalem Export und ausdrücklicher Bestätigung ist nun entschieden.
 - Versionierung und Migration von Speicherständen nach Spielupdates.
-- Verhalten bei vollem Speicher, fehlgeschlagenem Speichern und Browser-Datenschutz-/Löschvorgängen.
+- Technische Details bei fehlgeschlagenen Schreibvorgängen und gelöschten Browserdaten; bei **vollem Speicher ist Variante B entschieden** (warnen und Lösungen anbieten, niemals automatisch löschen).
 - Umgang mit bereits laufenden Arbeiten, Transportladungen, gebauten/geplanten Kammern, Ressourcen, Königin, Eiern, Brut, individuellen Ameisen, Arbeitsgruppen und Spieluhr, damit beim Laden keine Duplikate oder Verluste entstehen.
 
 ## Technische Leitplanken und spätere Prüfungen (kein vorweggenommener Designbeschluss)
@@ -122,4 +134,4 @@
 - Mehrere Kolonien müssen vollständig getrennt bleiben, auch nach Neuladen des Browsers.
 - Vor Codex-Auftrag offene Regeln mit dem Spieler konkretisieren; dann in kleinen getesteten Paketen implementieren.
 
-**Status:** Automatisch + manuell, mehrere unabhängige Kolonien, lokal mit Datei-Export/-Import (B), Autosave alle 5 Minuten aktiver Echtzeit, drei gestaffelte Sicherungen je Kolonie (Aktualisierungsintervalle 15/60/180 Minuten aktiver Spielzeit) und Wiederherstellung C sowie **zusätzlicher best-effort Speicherversuch bei Tab-Verbergen/App-Hintergrund (Variante B)** verbindlich beschlossen. Startmenü Variante B (Hauptmenü mit vorausgewählter letzter Kolonie und Ein-Klick-Fortsetzen) beschlossen; **Löschen nach Variante B** (vorher optional Export anbieten, dann ausdrücklich endgültig bestätigen) beschlossen; Namenskonflikte beim Import **Variante B** (neuen Namen vergeben oder bewusst bestehende Kolonie ersetzen) beschlossen; Details zu Fehlerfällen, Dateiformat und weiteren Funktionen der Kolonieverwaltung bleiben offen. **Keinen Spielcode ändern.**
+**Status:** Automatisch + manuell, mehrere unabhängige Kolonien, lokal mit Datei-Export/-Import (B), Autosave alle 5 Minuten aktiver Echtzeit, drei gestaffelte Sicherungen je Kolonie (Aktualisierungsintervalle 15/60/180 Minuten aktiver Spielzeit) und Wiederherstellung C sowie **zusätzlicher best-effort Speicherversuch bei Tab-Verbergen/App-Hintergrund (Variante B)** verbindlich beschlossen. Startmenü Variante B (Hauptmenü mit vorausgewählter letzter Kolonie und Ein-Klick-Fortsetzen) beschlossen; **Löschen nach Variante B** (vorher optional Export anbieten, dann ausdrücklich endgültig bestätigen) beschlossen; Namenskonflikte beim Import **Variante B** (neuen Namen vergeben oder bewusst bestehende Kolonie ersetzen) beschlossen; Bei **vollem Browserspeicher Variante B** (Warnung, Export/Verwaltung anbieten, niemals automatische Löschung) beschlossen; technische Fehlerfälle, Dateiformat und weitere Funktionen der Kolonieverwaltung bleiben offen. **Keinen Spielcode ändern.**

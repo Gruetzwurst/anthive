@@ -127,10 +127,21 @@
 - Spätere Tests: alte gültige Spielstände und Exportdateien migrieren, Zwischenversionen, fehlende/fehlerhafte Versionsangabe, inkompatibler Stand, absichtlich unterbrochene Migration, unveränderte alte Sicherung, Bestandsgleichheit und Isolation der Kolonien.
 - **Dies ist eine Planungsentscheidung, keine Freigabe, Spielcode oder bestehende Speicherstände jetzt zu verändern.**
 
+## Kolonieverwaltung: Namen, Sortierung und Informationen (verbindlich bestätigt am 27.10.2026)
+
+- **Neue Kolonien erhalten einen frei wählbaren Namen** bei der Gründung. Der Name ist reine Anzeige und keine technische Identifikation; jede Kolonie besitzt weiterhin eine separate eindeutige interne ID.
+- **Kolonien können jederzeit umbenannt werden**, ohne dadurch Spielzustand, Backups oder Kolonie-ID zu verändern.
+- **Standardsortierung der Kolonieübersicht: zuletzt gespielt zuerst.** Der Zeitpunkt „zuletzt gespielt“ ist vom letzten erfolgreich gespeicherten Zeitpunkt zu unterscheiden.
+- **Jeder Kolonieeintrag zeigt:** Koloniename, aktuellen Spieltag, Ameisenanzahl, Zeitpunkt der letzten erfolgreichen Speicherung und die verfügbaren Sicherungen (bzw. deren Zahl/Status).
+- Das Hauptmenü mit vorausgewählter letzter Kolonie und Ein-Klick-Fortsetzen bleibt unverändert beschlossen.
+- Die bereits beschlossenen Aktionen zum Laden/Fortsetzen, Export, Import, Sicherungen verwalten/wiederherstellen und geschützten Löschen bleiben verfügbar.
+- UI-Darstellung, Validierung unzulässiger Eingaben/Zeichen, sinnvolle Maximallänge von Namen und konkrete Gestaltung einer großen Kolonieliste sind noch technische/UX-Details. Ein Namenskonflikt beim **Import** wird weiter gemäß der gesondert beschlossenen Variante B behandelt.
+- **Nur Planung. Kein Spielcode ändern.**
+
 ## Noch offene D1-Entscheidungen (Inventur nach Variante B)
 
 **Produkt-/UX-Fragen, vor dem Codex-Auftrag entscheiden:**
-1. **Kolonieverwaltung:** Neue Kolonien benennen, Umbenennen, Standardsortierung, angezeigte Metadaten und Bedienung bei vielen Kolonien (bisherige Vorschläge noch nicht verbindlich).
+1. **Kolonieverwaltung – nur Restdetails:** Konkrete UI, Eingabevalidierung, Namenslänge und Darstellung bei sehr vielen Kolonien; Benennung, Umbenennung, Standardsortierung und angezeigte Felder sind **bereits verbindlich beschlossen**.
 2. **Export-/Import-Details:** Dateinamen, benutzerseitig sichtbare Informationen, Importfehlerhinweise; grundlegende Export-/Importfunktion und Namenskonflikt-Variante B sind bereits verbindlich.
 3. **Rücksicherung in Sonderfällen:** Umgang mit unlesbarem aktuellen Stand, mit zu wenig Platz für die vorgeschlagene Sicherheitskopie vor dem Wiederherstellen und mit inkompatiblen Backups.
 4. **Spielstart ohne bestehenden Speicherstand:** automatische Namensvorschläge, Erstanlage und Auswahl; das Hauptmenü mit Schnellstart ist bereits verbindlich.
@@ -146,8 +157,8 @@
 - Weitere zusätzliche Speicherereignisse außer dem nun beschlossenen Tab-Verbergen/App-Hintergrund (z. B. nach Bauabschluss oder großen Kolonieereignissen).
 - Detailprüfung von Beschädigung/Inkompatibilität sowie Umgang mit fehlendem Speicherplatz bei Wiederherstellungen.
 - Restliche Export-/Importdetails: Dateiformat, Prüfung, Dateinamen, inkompatible Versionen und Fehlerfall; **Namenskonflikt Variante B ist entschieden**.
-- Detailverhalten beim Gründen einer neuen Kolonie und Darstellung/Sortierung/Lösch- und Umbenennungsregeln der Kolonieverwaltung (das grundlegende Startmenü mit Schnellstart ist beschlossen).
-- Details zur Umbenennung von Kolonien und sonstige UI-Fragen; das Löschen mit optionalem Export und ausdrücklicher Bestätigung ist nun entschieden.
+- Nur verbleibende UX-/Validierungsdetails beim Gründen, Darstellen und Umbenennen von Kolonien; freie Namenswahl, jederzeitiges Umbenennen, Standardsortierung und Anzeigen sind beschlossen.
+- Technische Eingaberegeln und konkrete UI; freies Umbenennen und geschütztes Löschen sind entschieden.
 - Konkretes Dateischema und unterstützte Versionsmigrationen technisch ausarbeiten; **grundsätzlich sichere automatische Migration (Variante B) ist beschlossen**.
 - Technische Details bei fehlgeschlagenen Schreibvorgängen und gelöschten Browserdaten; bei **vollem Speicher ist Variante B entschieden** (warnen und Lösungen anbieten, niemals automatisch löschen).
 - Umgang mit bereits laufenden Arbeiten, Transportladungen, gebauten/geplanten Kammern, Ressourcen, Königin, Eiern, Brut, individuellen Ameisen, Arbeitsgruppen und Spieluhr, damit beim Laden keine Duplikate oder Verluste entstehen.
@@ -160,4 +171,4 @@
 - Mehrere Kolonien müssen vollständig getrennt bleiben, auch nach Neuladen des Browsers.
 - Vor Codex-Auftrag offene Regeln mit dem Spieler konkretisieren; dann in kleinen getesteten Paketen implementieren.
 
-**Status:** Automatisch + manuell, mehrere unabhängige Kolonien, lokal mit Datei-Export/-Import (B), Autosave alle 5 Minuten aktiver Echtzeit, drei gestaffelte Sicherungen je Kolonie (Aktualisierungsintervalle 15/60/180 Minuten aktiver Spielzeit) und Wiederherstellung C sowie **zusätzlicher best-effort Speicherversuch bei Tab-Verbergen/App-Hintergrund (Variante B)** verbindlich beschlossen. Startmenü Variante B (Hauptmenü mit vorausgewählter letzter Kolonie und Ein-Klick-Fortsetzen) beschlossen; **Löschen nach Variante B** (vorher optional Export anbieten, dann ausdrücklich endgültig bestätigen) beschlossen; Namenskonflikte beim Import **Variante B** (neuen Namen vergeben oder bewusst bestehende Kolonie ersetzen) beschlossen; Bei **vollem Browserspeicher Variante B** (Warnung, Export/Verwaltung anbieten, niemals automatische Löschung) beschlossen; **Kompatibilität Variante B** (alte Spielstände möglichst sicher migrieren, alte Version schützen) beschlossen; technische Fehlerfälle, Dateiformat und weitere Funktionen der Kolonieverwaltung bleiben offen. **Keinen Spielcode ändern.**
+**Status:** Automatisch + manuell, mehrere unabhängige Kolonien, lokal mit Datei-Export/-Import (B), Autosave alle 5 Minuten aktiver Echtzeit, drei gestaffelte Sicherungen je Kolonie (Aktualisierungsintervalle 15/60/180 Minuten aktiver Spielzeit) und Wiederherstellung C sowie **zusätzlicher best-effort Speicherversuch bei Tab-Verbergen/App-Hintergrund (Variante B)** verbindlich beschlossen. Startmenü Variante B (Hauptmenü mit vorausgewählter letzter Kolonie und Ein-Klick-Fortsetzen) beschlossen; **Löschen nach Variante B** (vorher optional Export anbieten, dann ausdrücklich endgültig bestätigen) beschlossen; Namenskonflikte beim Import **Variante B** (neuen Namen vergeben oder bewusst bestehende Kolonie ersetzen) beschlossen; Bei **vollem Browserspeicher Variante B** (Warnung, Export/Verwaltung anbieten, niemals automatische Löschung) beschlossen; **Kompatibilität Variante B** (alte Spielstände möglichst sicher migrieren, alte Version schützen) beschlossen; technische Fehlerfälle, Dateiformat und verbleibende UI-/Validierungsdetails bleiben offen. **Kolonienamen, Umbenennen, Sortierung und sichtbare Metadaten sind beschlossen.** **Keinen Spielcode ändern.**

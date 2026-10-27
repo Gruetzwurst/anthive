@@ -9,12 +9,20 @@
 3. Jede Kolonie braucht eine eigene Zuordnung, damit ein Autosave nicht versehentlich eine andere Kolonie überschreibt.
 4. Das bisherige Verhalten „Seite neu laden = neue Kolonie“ soll durch das künftige Lade-/Speichersystem abgelöst werden, ohne bestehende Simulationen zu verändern.
 
+## Speicherort – Variante B (verbindlich beschlossen am 27.10.2026)
+
+- **Koloniespielstände zunächst lokal im jeweiligen Browser/Gerät speichern.** Kein Benutzerkonto, keine Cloud-Pflicht und kein zusätzlicher Speicherserver für D1.
+- **Export:** Spieler können eine Kolonie als eigenständige **Datei herunterladen** und so außerhalb des Browser-Speichers sichern oder auf ein anderes Gerät übertragen.
+- **Import:** Eine zuvor exportierte Koloniedatei kann auf demselben oder einem anderen Gerät **eingelesen und als spielbare Kolonie wiederhergestellt** werden.
+- Vor einem Import Inhalt/Version/Integrität prüfen und verständliche Fehlermeldungen anzeigen; keine bestehende andere Kolonie stillschweigend überschreiben.
+- Lokal gespeicherte Daten können durch Löschen von Browserdaten, private Sitzungen, Browserwechsel oder Speicherausfälle verloren gehen. **Exportdateien dienen daher als eigenständige Sicherungsmöglichkeit**, sind aber nicht automatisch eine Cloud-Sicherung.
+- Technische Speicher-API (z. B. IndexedDB), Dateiformat, Exportname, Umgang mit Namenskonflikten, Importe inkompatibler Versionen und Export-/Importoberfläche werden bei der D1-Detailplanung festgelegt; Codex soll keine offenen Produktentscheidungen eigenmächtig treffen.
+
 ## Noch nicht entschieden – ausdrücklich nicht eigenmächtig implementieren
 
-- Speicherort: nur lokal im Browser, optionale Cloud-Anbindung oder spätere Synchronisierung.
 - Automatisches Speicherintervall und welche Ereignisse zusätzlich speichern.
 - Art und Anzahl von Sicherungskopien, Wiederherstellungsstrategie bei beschädigten oder inkompatiblen Spielständen.
-- Export/Import und Übertragbarkeit zwischen Geräten.
+- Detailverhalten von Export/Import: Dateiformat, Prüfung, Dateinamen, Konfliktbehandlung und Fehlerfall (Grundfunktion bereits beschlossen).
 - Start-/Kolonieauswahl und das Verhalten beim Starten einer neuen Kolonie.
 - Löschen/Umbenennen von Kolonien und eventuelle Warn- oder Bestätigungsschritte.
 - Versionierung und Migration von Speicherständen nach Spielupdates.
@@ -29,4 +37,4 @@
 - Mehrere Kolonien müssen vollständig getrennt bleiben, auch nach Neuladen des Browsers.
 - Vor Codex-Auftrag offene Regeln mit dem Spieler konkretisieren; dann in kleinen getesteten Paketen implementieren.
 
-**Status:** Automatisch + manuell sowie mehrere unabhängige Kolonien ohne feste Slotzahl sind verbindlich beschlossen; alle übrigen Details bleiben zur weiteren gemeinsamen Planung offen.
+**Status:** Automatisch + manuell, mehrere unabhängige Kolonien ohne feste Slotzahl **und lokales Speichern mit Datei-Export/-Import (Variante B)** sind verbindlich beschlossen; alle übrigen Details bleiben zur weiteren gemeinsamen Planung offen. **Keinen Spielcode ändern.**

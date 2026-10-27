@@ -72,12 +72,22 @@
 
 **Noch nicht beschlossen:** weitere besondere Autosave-Auslöser über Tab-Verbergen/App-Hintergrund hinaus, genaues Verhalten bei Browser-Speichermangel und Konflikten, Format/Integritätsverfahren und UI-Details. Diese dürfen nicht stillschweigend als neue Produktentscheidungen vorweggenommen werden.
 
+## Startmenü – Variante B (verbindlich beschlossen am 27.10.2026)
+
+- Beim Öffnen von ANTHIVE erscheint **zunächst das Hauptmenü**, nicht automatisch die laufende Spielsimulation.
+- Die **zuletzt gespielte Kolonie** wird im Hauptmenü erkennbar **vorausgewählt**; mit **einem Klick** auf „Letzte Kolonie fortsetzen“ wird ihr aktueller Spielstand geladen.
+- Der Spieler darf alternativ **eine andere gespeicherte Kolonie auswählen**, **eine neue Kolonie gründen** oder **die Kolonieverwaltung öffnen**.
+- Die Vorauswahl ist nur eine Komfortfunktion: Sie darf **keinen Speicherstand automatisch laden, überschreiben oder verändern**, ehe der Spieler eine Aktion auslöst.
+- Wenn keine zuletzt gespielte Kolonie existiert, gelöscht wurde oder ihr Spielstand unbrauchbar ist, darf der Schnellstart nicht irreführend aktiv sein; stattdessen verständliche Auswahl/Neugründung bzw. die bereits beschlossene Wiederherstellungsauswahl anbieten.
+- **Geplanter, noch nicht im Detail beschlossener Entwurf für die Kolonieverwaltung:** Übersicht vieler Kolonien mit Name, zuletzt gespielt, Spieltag, Ameisenzahl und Speicherstatus; Auswahl/Laden; Umbenennen; Export; Import; drei Backups mit Datum und Wiederherstellung; Löschen mit Bestätigung. Konkrete UI, Sortierung und Lösch-/Namenskonfliktregeln noch gemeinsam festlegen.
+- **Ausschließlich Planung**, keine Änderungen am Spielcode, keine Implementierungsfreigabe.
+
 ## Noch nicht entschieden – ausdrücklich nicht eigenmächtig implementieren
 
 - Weitere zusätzliche Speicherereignisse außer dem nun beschlossenen Tab-Verbergen/App-Hintergrund (z. B. nach Bauabschluss oder großen Kolonieereignissen).
 - Detailprüfung von Beschädigung/Inkompatibilität sowie Umgang mit fehlendem Speicherplatz bei Wiederherstellungen.
 - Detailverhalten von Export/Import: Dateiformat, Prüfung, Dateinamen, Konfliktbehandlung und Fehlerfall (Grundfunktion bereits beschlossen).
-- Start-/Kolonieauswahl und das Verhalten beim Starten einer neuen Kolonie.
+- Detailverhalten beim Gründen einer neuen Kolonie und Darstellung/Sortierung/Lösch- und Umbenennungsregeln der Kolonieverwaltung (das grundlegende Startmenü mit Schnellstart ist beschlossen).
 - Löschen/Umbenennen von Kolonien und eventuelle Warn- oder Bestätigungsschritte.
 - Versionierung und Migration von Speicherständen nach Spielupdates.
 - Verhalten bei vollem Speicher, fehlgeschlagenem Speichern und Browser-Datenschutz-/Löschvorgängen.
@@ -91,4 +101,4 @@
 - Mehrere Kolonien müssen vollständig getrennt bleiben, auch nach Neuladen des Browsers.
 - Vor Codex-Auftrag offene Regeln mit dem Spieler konkretisieren; dann in kleinen getesteten Paketen implementieren.
 
-**Status:** Automatisch + manuell, mehrere unabhängige Kolonien, lokal mit Datei-Export/-Import (B), Autosave alle 5 Minuten aktiver Echtzeit, drei gestaffelte Sicherungen je Kolonie (Aktualisierungsintervalle 15/60/180 Minuten aktiver Spielzeit) und Wiederherstellung C sowie **zusätzlicher best-effort Speicherversuch bei Tab-Verbergen/App-Hintergrund (Variante B)** verbindlich beschlossen. Details zu Fehlerfällen, Import und UI bleiben offen. **Keinen Spielcode ändern.**
+**Status:** Automatisch + manuell, mehrere unabhängige Kolonien, lokal mit Datei-Export/-Import (B), Autosave alle 5 Minuten aktiver Echtzeit, drei gestaffelte Sicherungen je Kolonie (Aktualisierungsintervalle 15/60/180 Minuten aktiver Spielzeit) und Wiederherstellung C sowie **zusätzlicher best-effort Speicherversuch bei Tab-Verbergen/App-Hintergrund (Variante B)** verbindlich beschlossen. Startmenü Variante B (Hauptmenü mit vorausgewählter letzter Kolonie und Ein-Klick-Fortsetzen) beschlossen; Details zu Fehlerfällen, Import und Kolonieverwaltung bleiben offen. **Keinen Spielcode ändern.**

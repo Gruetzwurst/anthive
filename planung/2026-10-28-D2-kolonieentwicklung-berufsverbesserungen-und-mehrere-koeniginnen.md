@@ -62,21 +62,27 @@ Bestehende Ausgangswerte aus Code: **5 Einheiten Traglast**, **78 Pixel/s Laufge
 
 Die Quelle hat nur ihren realen Bestand und ihre Regeneration; höhere Traglast erschafft **keine Ressourcen**. Echte Lagergrenzen, Reservierungen, Ladeströme und Verkehrsengstellen bleiben erhalten. Bei Arbeitsfremden weiter 50 % Effizienz, auf der jeweiligen aktuellen Fachleistungsbasis; **kein Verdoppeln der Effizienznachteile** durch parallele Tempo- und Laststrafen. Transport von Abraum/Baumaterial ist vom Nahrung-/Wassersammeln zu unterscheiden; keine unbedachte globale Anwendung der Sammlerwerte.
 
-## 5. Brutpflegerinnen – aktueller Stand und noch offene Balance
+## 5. Brutpflegerinnen – übernommener vorläufiger Balanceentwurf
 
-Der gegenwärtige Code verwendet **10 Bruttiere pro effektiver Brutpflegerin**, 5 Einheiten Traglast bei Brutversorgung, 78 px/s Bewegung; Standardbrut: Ei **1 Tag**, Larve **3 Tage**, Puppe **2 Tage**; Versorgung der Larve je Spieltag **0,5 Nahrung und 0,5 Wasser**. Königin legt derzeit testweise **5 Eier je Spieltag** (sofern Versorgung/Puffer/Kammern es zulassen). Dieser Bestand wurde geprüft.
+Der aktuell implementierte Code (vor D2) verwendet **10 Bruttiere je effektiver Brutpflegerin**, 5 Einheiten Traglast für Brutversorgung und 78 px/s Laufgeschwindigkeit; bisherige Brutentwicklung noch 1/3/2 = 6 Spieltage. **Der neuere D2-Zielwert ist 2/5/3 = 10 Spieltage Gesamtentwicklung** (ausführliche Ergänzung am Dokumentende). Beide Stände nicht verwechseln.
 
-Diskutierter, ausdrücklich **noch nicht endgültig freigegebener** Zielentwurf für Pflegekapazität und Brutversorgungstraglast:
+**Am 28.10.2026 vom Nutzer als vorläufiger D2-Entwurf übernommen** – Pflegekapazität und Traglast automatisch bei den gemeinsamen Kolonie-Meilensteinen erhöhen:
 
-| Erreichte Ameisen | Max. Bruttiere/Pflegerin | Traglast |
+| Höchste erreichte Koloniegröße | Max. gleichzeitig versorgbare Bruttiere je Pflegerin | Traglast bei Brutversorgung |
 | --- | ---: | ---: |
 | Start | 10 | 5 |
-| 50 | 12 | 6 |
-| 150 | 15 | 8 |
-| 250 | 18 | 10 |
-| 500 | 20 | 12 |
+| 50 | 11 | 6 |
+| 150 | 12 | 8 |
+| 250 | 13 | 10 |
+| 500 | **15** | **12** |
 
-Keine künstliche Beschleunigung normaler Brutentwicklung beschlossen; sechs Tage bei voller Versorgung bleiben vorerst bestehen. **C5 und künftige Mehrköniginnen-Tests müssen** prüfen, ob diese Verbesserungen tatsächlich relevant sind, wie effizient Transport/Pflege arbeitet und welche Kapazitäten nötig werden. Nur eine Königin mit 5 Eiern/Tag erzeugt unter idealen Bedingungen etwa 30 Bruttiere gleichzeitig (grobe Überschlagsrechnung), wodurch zu große Pflege-Upgrades nutzlos wirken können. Mehrere Königinnen ändern diesen Engpass.
+- Diese Kurve ersetzt die **älteren unverbindlichen Varianten** 10/12/15/18/20 und 10/11/12/14/16. Ausgangs- und Zielwerte sind noch nicht durch C5/D2-Tests validiert und **keine Codefreigabe**.
+- Brutpflegerinnen übernehmen bereits **Eiertransporte aus Königinnenkammern**, **Nahrungs- und Wasserlieferungen** sowie Brutpflege. Keine künstlichen zusätzlichen Jobs erfinden und keine manuelle Zwangsaufteilung dieser Tätigkeiten verlangen; sinnvolle automatische Aufgabenwahl erhalten.
+- Das früher diskutierte Beispiel von **50 Brutpflegerinnen bei 1.000 Ameisen ist ausdrücklich KEIN verbindliches Minimum**. Der tatsächliche Personalbedarf soll von Brutmenge, verfügbaren Königinnen, realen Wegen, Kammerplatz und Versorgung abhängen. Gut entworfene kompakte Nester mit kürzeren Wegen dürfen weniger Pflegerinnen brauchen als weitläufige.
+- Bei 500 Ameisen wird die letzte hier geplante Berufsverbesserungsstufe erreicht. Bei 1.000 Ameisen kann die vierte Königin hinzukommen, was die Nachfrage nach Brutpflege und Transport erhöht, **ohne weiteren automatischen Pflegebonus**.
+- Echte Eier-/Ressourcentransporte und der Pflegefaktor dürfen nicht dieselbe Arbeitsleistung unbemerkt doppelt verrechnen. Effektive Belegung und Pflege unter Engpässen testen; Krankheits-/Mangelregeln nicht ändern.
+- Kein zusätzlicher Laufgeschwindigkeitsbonus beschlossen: vorerst 78 px/s. Normale Brutentwicklung nicht durch individuelle Pflege-Upgrades beschleunigen; sie wird in D2 unabhängig davon auf den neu bevorzugten **10-Tage-Zielwert** umgestellt, **erst nach ausdrücklicher Implementierungsfreigabe**.
+- **Devil's Advocate / Testpflicht:** Prüfen, ob Pflegekapazität 15 im späten Spiel zu viel oder zu wenig ist, ob die überwiegende Arbeit in realen Transporten steckt und wie die Kurve mit 1–4 Königinnen, 10-Tage-Brutdauer und Quellen-/Lagergrenzen funktioniert.
 
 ## 6. Mehrere Königinnen – verbindliche Entscheidungen
 

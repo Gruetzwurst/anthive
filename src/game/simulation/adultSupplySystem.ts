@@ -1,10 +1,11 @@
+import { REST_CONFIG } from './restSystem.ts';
 import { ResourceSystem } from './resourceSystem.ts';
 import { ADULT_SUPPLY_CONFIG } from './simulationConfig.ts';
 import type { AdultSupplyConfig } from './simulationConfig.ts';
 import { nonNegativeFinite, positiveFinite } from './validation.ts';
 
 type SupplyKind = 'food' | 'water';
-export type AdultPopulation = { activeWorkers: number; restingWorkers: number; queens: number };
+export type AdultPopulation = { activeWorkers: number; restingWorkers: number; restingInChambers?: number; queens: number };
 export type SupplyState = {
   shortageDays: number;
   recoveryProgress: number;
@@ -19,6 +20,16 @@ const fresh = (): InternalState => ({ shortageDays: 0, recoveryProgress: 0,
 
 /** Adult colony demand only. No brood, egg production or global inventory. */
 export class AdultSupplySystem {
+  /** Complete internal state, detached from the live simulation; not a HUD snapshot. */
+  exportState() { return structuredClone({ config: this.config, states: this.states, lossProgress: this.lossProgress, totalLosses: this.totalLosses }); }
+  restoreState(state: ReturnType<AdultSupplySystem['exportState']>): void {
+    const copy = structuredClone(state);
+    this.config = copy.config;
+    this.states = copy.states;
+    this.lossProgress = copy.lossProgress;
+    this.totalLosses = copy.totalLosses;
+  }
+
   private resources: ResourceSystem;
   private config: AdultSupplyConfig;
   private states = { food: fresh(), water: fresh() };
@@ -63,12 +74,15 @@ export class AdultSupplySystem {
       nonNegativeFinite(population[key], key);
       if (!Number.isInteger(population[key])) throw new RangeError(`${key} must be an integer`);
     }
-    const survivors = { ...population };
+    const occupied=population.restingInChambers ?? 0;
+    nonNegativeFinite(occupied,'restingInChambers');
+    if(!Number.isInteger(occupied) || occupied>population.restingWorkers)throw new RangeError('restingInChambers must be a subset of restingWorkers');
+    const survivors = { ...population, restingInChambers: occupied };
     let remainingDays = gameDays, workerLosses = 0;
     // Split exactly at stock depletion, full recovery, risk onset and death.
     // Each interval therefore consumes only for adults alive in that interval.
     while (remainingDays > EPS) {
-      const workerDemand = survivors.activeWorkers + survivors.restingWorkers * this.config.restingConsumptionFactor;
+      const workerDemand = this.workerDemand(survivors);
       let step = remainingDays, atRisk = false;
       for (const kind of ['food', 'water'] as const) {
         const rate = workerDemand * this.config.workerPerDay[kind] + survivors.queens * this.config.queenPerDay[kind];
@@ -94,13 +108,19 @@ export class AdultSupplySystem {
       const activeLosses = Math.min(survivors.activeWorkers, result.workerLosses);
       survivors.activeWorkers -= activeLosses;
       survivors.restingWorkers -= result.workerLosses - activeLosses;
+      survivors.restingInChambers=Math.min(survivors.restingInChambers,survivors.restingWorkers);
       remainingDays = Math.max(0, remainingDays - step);
     }
     return { workerLosses };
   }
 
+  private workerDemand(population: AdultPopulation): number {
+    const occupied=population.restingInChambers ?? 0;
+    return population.activeWorkers+(population.restingWorkers-occupied)*this.config.restingConsumptionFactor+occupied*REST_CONFIG.occupiedConsumptionFactor;
+  }
+
   private advanceInterval(gameDays: number, population: AdultPopulation): { workerLosses: number } {
-    const workerDemand = population.activeWorkers + population.restingWorkers * this.config.restingConsumptionFactor;
+    const workerDemand = this.workerDemand(population);
     let riskDays = 0;
     for (const kind of ['food', 'water'] as const) {
       const rate = workerDemand * this.config.workerPerDay[kind] + population.queens * this.config.queenPerDay[kind];

@@ -16,13 +16,13 @@ function until(e,predicate,n=6000){for(let i=0;i<n&&!predicate();i++)e.advance(.
 function balanced(e){const b=e.materials.balance;assert.ok(Math.abs(b.initial+b.produced-b.ground-b.carried-b.stored-b.consumed-(b.atSites??0))<1e-8,JSON.stringify(b));}
 function supply(e,amount){const id=e.materials.produce(p(0),amount);while(e.materials.getGround().some(p=>p.id===id)){e.materials.pickUp(id,'external',5);e.materials.deposit('external','material');}}
 
-test('wide front uses different reserved tiles; a narrow front never starts a later site',()=>{
+test('wide fronts reserve distinct tiles; surplus builders start the next narrow site',()=>{
  const {e}=fixture();e.addBuilder('b',p(1));e.addOrder([c(3),c(2,2),c(3,2)]);e.addOrder([c(2,4)]);e.advance(1);
  const jobs=e.getBuilders().filter(w=>w.job?.kind==='dig');assert.equal(jobs.length,2);
  assert.equal(new Set(jobs.map(w=>`${w.job.target.column},${w.job.target.row}`)).size,2);
  assert.ok(jobs.every(w=>w.job.target.row!==4));
  const narrow=fixture().e;narrow.addBuilder('b',p(1));narrow.addOrder([c(3),c(4)]);narrow.addOrder([c(2,2)]);narrow.advance(1);
- assert.equal(narrow.getBuilders().filter(w=>w.job?.kind==='dig').length,1);balanced(e);balanced(narrow);
+ assert.equal(narrow.getBuilders().filter(w=>w.job?.kind==='dig').length,2);balanced(e);balanced(narrow);
 });
 
 test('9 real units furnish only 9/24; 15 later units resume and complete exactly once with capacity only at completion',()=>{

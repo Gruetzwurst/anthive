@@ -114,18 +114,27 @@ try:
                 raise RuntimeError('Game did not load: ' + json.dumps(diagnostic))
             for _ in range(120):
                 if page('''
+              const menuRoot=document.querySelector('#colony-menu');
+              if(menuRoot){
+                const form=document.querySelector('#new-colony-form');
+                if(form){form.querySelector('input').value='Browserprüfung';form.requestSubmit();}
+                else document.querySelector('#new-colony')?.click();
+                return false;
+              }
               const url = performance.getEntriesByType('resource').filter(e => e.name.includes('/deps/phaser.js')).at(-1).name;
               const phaser = (await import(url)).default;
               const parents = phaser.Display.Canvas.CanvasPool.pool.map(entry => entry.parent);
               const found = parents.find(parent => parent?.scene?.gathering)?.scene
                 || parents.find(parent => parent?.scene?.getScene)?.scene.getScene('WorldScene');
-              if (!found?.economyHud) return false;
+              if(window.__anthiveErrors?.length)throw Error(window.__anthiveErrors.join(" | "));
+              if (!found?.economyHud || !found.sys.isActive()) return false;
               window.__anthiveTestScene = found;
               return true;
             '''):
                     return True
                 time.sleep(0.1)
-            raise RuntimeError('HUD did not finish scene creation')
+            diagnostic=command('WebDriver:ExecuteScript', {'script':'return {errors:window.__anthiveErrors,body:document.body.innerText.slice(0,1200)};','args':[]})
+            raise RuntimeError('HUD did not finish scene creation: '+json.dumps(diagnostic))
 
         def click(x, y, move=None, touch=False):
             bounds = command('WebDriver:ExecuteScript', {'script': "const r = document.querySelector('#game canvas').getBoundingClientRect(); return {x:r.x,y:r.y,w:r.width,h:r.height};", 'args': []})['value']
@@ -165,6 +174,12 @@ try:
             path.write_bytes(base64.b64decode(result['value']))
             print(path)
 
+        def finish_focused():
+            global browser
+            command('Marionette:Quit', {'flags': ['eForceQuit']})
+            browser.wait(timeout=10)
+            browser = None
+
         def check_layout():
             return page('''
               scene.updateEconomyHud();
@@ -181,7 +196,453 @@ try:
         command('WebDriver:SetTimeouts', {'script': 60000})
         command('WebDriver:SetWindowRect', {'width': 1280, 'height': 800})
         command('WebDriver:Navigate', {'url': f'http://127.0.0.1:{vite_port}/'})
-        hook()
+        if '--menu-only' not in sys.argv and '--import-ui-only' not in sys.argv:
+            hook()
+        if '--menu-only' in sys.argv:
+            def menu_ready():
+                for _ in range(160):
+                    if command('WebDriver:ExecuteScript', {'script':'return document.querySelector("#colony-menu")?.dataset.ready==="true";', 'args':[]})['value']:
+                        return
+                    time.sleep(.1)
+                raise RuntimeError('Main menu did not appear')
+            menu_ready()
+            assert page('return !document.querySelector("#continue-colony") || document.querySelector("#continue-colony").disabled;')
+            native_click('#new-colony')
+            page('document.querySelector("#colony-name").value="Alpha";document.querySelector("#new-colony-form").requestSubmit();return true;')
+            hook()
+            saved=page("""
+              await scene.persistenceReady;scene.gathering.clock.setPaused(true);
+              scene.gathering.resources.depositInStore('water-store',{resource:'water',amount:7});
+              scene.excavation.setDiggingGrade(2);scene.diggingGrade=2;scene.updateUpgradeLabel();
+              await scene.persistence.manual();
+              const s=scene.saveSession;
+              const expected={id:s.id,count:s.simulation.getWorkers().length,water:s.simulation.resources.getStore('water-store').amount};
+              sessionStorage.setItem('anthive-menu-expected',JSON.stringify(expected));return expected;
+            """)
+            click(120,19)
+            menu_ready()
+            command('WebDriver:Refresh', {})
+            menu_ready()
+            assert page('return !document.querySelector("#continue-colony").disabled && document.querySelector("#colony-menu").textContent.includes("Alpha");')
+            native_click('#continue-colony')
+            hook()
+            resumed=page("""
+              await scene.persistenceReady;
+              const e=JSON.parse(sessionStorage.getItem('anthive-menu-expected'));
+              if(scene.saveSession.id!==e.id||scene.gathering.getWorkers().length!==e.count||scene.gathering.resources.getStore('water-store').amount!==e.water)throw Error('resume changed colony');
+              if(scene.diggingGrade!==2||!scene.upgradeButton.text.endsWith('2'))throw Error('loaded digging grade label incorrect');
+              return {id:scene.saveSession.id,count:scene.gathering.getWorkers().length};
+            """)
+            click(120,19)
+            menu_ready()
+            native_click('#manage-colonies')
+            screenshot('anthive-d1-colony-menu.png')
+            def wait_dom(script):
+                for _ in range(120):
+                    if command('WebDriver:ExecuteScript', {'script':script,'args':[]})['value']:
+                        return
+                    time.sleep(.1)
+                raise RuntimeError('Menu condition failed: '+script)
+            alpha=saved['id']
+            row=f'[data-colony-id="{alpha}"]'
+            native_click(row+' .colony-actions button:nth-child(2)')
+            page('document.querySelector("#rename-colony-form input").value="Alpha Neu";document.querySelector("#rename-colony-form").requestSubmit();return true;')
+            wait_dom('return document.querySelector(".colony-choice strong")?.textContent==="Alpha Neu";')
+            native_click('#colony-menu .colony-menu-content > button')
+            native_click('#new-colony')
+            page('window.__anthiveErrors=[];window.addEventListener("error",e=>window.__anthiveErrors.push(e.message));document.querySelector("#colony-name").value="Beta";document.querySelector("#new-colony-form").requestSubmit();return true;')
+            hook()
+            beta=page('await scene.persistenceReady;scene.gathering.clock.setPaused(true);return scene.saveSession.id;')
+            assert beta!=alpha
+            click(120,19)
+            menu_ready()
+            native_click('#manage-colonies')
+            assert page('return [...document.querySelectorAll(".colony-choice strong")].map(x=>x.textContent);')==['Beta','Alpha Neu']
+            screenshot('anthive-d1-colonies-desktop.png')
+            native_click(row+' .colony-actions button:nth-child(5)')
+            assert page('return document.querySelector("#delete-colony-panel").dataset.stage;')=='offer'
+            native_click('#delete-colony-panel button:last-child')
+            assert page('return document.querySelectorAll(".colony-row").length;')==2
+            native_click(row+' .colony-actions button:nth-child(5)')
+            page('window.__anchorClick=HTMLAnchorElement.prototype.click;HTMLAnchorElement.prototype.click=function(){window.__exportName=this.download;window.__exportPayload=fetch(this.href).then(r=>r.text());};return true;')
+            native_click('#delete-colony-panel button:first-of-type')
+            wait_dom('return document.querySelector("#delete-colony-panel").dataset.stage==="confirm";')
+            assert page("""
+              HTMLAnchorElement.prototype.click=window.__anchorClick;
+              const {parseColony}=await import('/src/game/persistence/colonySession.ts');
+              const save=parseColony(await window.__exportPayload);
+              return save.name==='Alpha Neu'&&save.id==="""+json.dumps(alpha)+"""&&window.__exportName.endsWith('.anthive.json');
+            """)
+            native_click('#delete-colony-panel button:last-child')
+            assert page('return document.querySelectorAll(".colony-row").length;')==2
+            native_click(row+' .colony-actions button:nth-child(5)')
+            page('window.__originalObjectURL=URL.createObjectURL;URL.createObjectURL=()=>{throw Error("Exporttest fehlgeschlagen");};return true;')
+            native_click('#delete-colony-panel button:first-of-type')
+            wait_dom('return document.querySelector(".colony-menu-status").textContent.includes("Exporttest");')
+            assert page('return document.querySelector("#delete-colony-panel").dataset.stage;')=='offer'
+            page('URL.createObjectURL=window.__originalObjectURL;return true;')
+            native_click('#delete-colony-panel button:last-child')
+            native_click(row+' .colony-actions button:nth-child(5)')
+            native_click('#delete-colony-panel button:nth-of-type(2)')
+            assert page('return document.querySelector("#delete-colony-panel").dataset.stage;')=='confirm'
+            native_click('#delete-colony-panel button:last-child')
+            assert page('return document.querySelectorAll(".colony-row").length;')==2
+            native_click(row+' .colony-actions button:nth-child(5)')
+            native_click('#delete-colony-panel button:nth-of-type(2)')
+            native_click('#delete-colony-panel button:first-of-type')
+            wait_dom('return document.querySelectorAll(".colony-row").length===1;')
+            assert page('return document.querySelector(".colony-choice strong").textContent;')=='Beta'
+            command('WebDriver:SetWindowRect', {'width':800,'height':500})
+            screenshot('anthive-d1-colonies-small.png')
+            # Corrupt the remaining main save. Menu must offer no silent restart.
+            page("""
+              const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('anthive-colonies-v1');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
+              const id="""+json.dumps(beta)+""";
+              await new Promise((resolve,reject)=>{const tx=db.transaction('colonies','readwrite'),store=tx.objectStore('colonies'),r=store.get(id);r.onsuccess=()=>{const row=r.result;row.payload='broken';store.put(row);};tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);});db.close();return true;
+            """)
+            command('WebDriver:Refresh', {})
+            menu_ready()
+            assert page('return document.querySelector("#continue-colony").disabled && document.querySelector(".colony-menu-status").textContent.includes("nicht nutzbar");')
+            native_click('#manage-colonies')
+            native_click('.colony-row .colony-actions button:nth-child(5)')
+            native_click('#delete-colony-panel button:nth-of-type(2)')
+            native_click('#delete-colony-panel button:first-of-type')
+            wait_dom('return !document.querySelector(".colony-row");')
+            native_click('#colony-menu .colony-menu-content > button')
+            assert page('return document.querySelector("#continue-colony").disabled;')
+            print('D1 menu:',saved,resumed,{'rename':True,'twoColonies':True,'deleteCancel':True,'exportFailure':True,'confirmedDelete':True,'corruptSave':True})
+            finish_focused()
+            raise SystemExit(0)
+        if '--import-ui-only' in sys.argv:
+            def wait_ui(script):
+                for _ in range(150):
+                    if command('WebDriver:ExecuteScript', {'script':script,'args':[]})['value']:
+                        return
+                    time.sleep(.1)
+                raise RuntimeError('Import UI condition failed: '+script)
+            wait_ui('return document.querySelector("#colony-menu")?.dataset.ready==="true";')
+            page("""
+              const {ColonyRepository}=await import('/src/game/persistence/colonyRepository.ts');
+              const {createColonySession,serializeColony}=await import('/src/game/persistence/colonySession.ts');
+              const repo=new ColonyRepository();
+              const a=createColonySession({id:'ui-target',name:'Alpha'});a.simulation.advance(10);a.persistenceTiming.activeSeconds=900;await repo.save(a,{backupSlot:1});
+              sessionStorage.setItem('anthive-ui-import',serializeColony(await repo.readBackup(a.id,1)));
+              a.simulation.advance(20);a.persistenceTiming.activeSeconds=1200;await repo.save(a);await repo.markPlayed(a.id);
+              const b=createColonySession({id:'ui-other',name:'Beta'});b.simulation.advance(70);await repo.save(b,{backupSlot:2});
+              await repo.close();return true;
+            """)
+            command('WebDriver:Refresh', {})
+            wait_ui('return document.querySelector("#colony-menu")?.dataset.ready==="true";')
+            native_click('#import-colony')
+            page("""
+              const input=document.querySelector('#colony-import-file'),dt=new DataTransfer();dt.items.add(new File(['{broken'],'kaputt.json',{type:'application/json'}));input.files=dt.files;input.dispatchEvent(new Event('change',{bubbles:true}));return true;
+            """)
+            wait_ui('return document.querySelector(".colony-menu-status").classList.contains("error");')
+            assert not page('return !!document.querySelector("#import-colony-form");')
+            native_click('#import-file-panel button:last-child')
+            def upload():
+                native_click('#import-colony')
+                page("""
+                  const input=document.querySelector('#colony-import-file'),dt=new DataTransfer();dt.items.add(new File([sessionStorage.getItem('anthive-ui-import')],'Alpha.anthive.json',{type:'application/json'}));input.files=dt.files;input.dispatchEvent(new Event('change',{bubbles:true}));return true;
+                """)
+                wait_ui('return !!document.querySelector("#import-colony-form");')
+            upload()
+            assert page('return document.querySelector("[name=importMode][value=new]").checked && document.querySelector("#import-colony-form [name=name]").value==="Alpha (Import)";')
+            page('document.querySelector("#import-colony-form").requestSubmit();return true;')
+            wait_ui('return document.querySelectorAll(".colony-row").length===3;')
+            target='[data-colony-id="ui-target"]'
+            native_click(target+' .colony-actions button:nth-child(4)')
+            wait_ui('return !!document.querySelector("#colony-backups");')
+            native_click('[data-backup-slot="1"] button:first-of-type')
+            wait_ui('return !!document.querySelector("#restore-colony-panel");')
+            assert page("const {ColonyRepository}=await import('/src/game/persistence/colonyRepository.ts');const r=new ColonyRepository();const s=await r.load('ui-target');await r.close();return s.simulation.clock.exportState().elapsedSeconds===30;")
+            native_click('#restore-colony-panel button:last-child')
+            wait_ui('return !!document.querySelector("#colony-backups");')
+            native_click('[data-backup-slot="1"] button:first-of-type')
+            wait_ui('return !!document.querySelector("#restore-colony-panel");')
+            native_click('#restore-colony-panel button:first-of-type')
+            wait_ui('return document.querySelectorAll(".colony-row").length===3;')
+            assert page("const {ColonyRepository}=await import('/src/game/persistence/colonyRepository.ts');const r=new ColonyRepository();const s=await r.load('ui-target'),copies=await r.listRecoveryCopies('ui-target');await r.close();return s.simulation.clock.exportState().elapsedSeconds===10&&copies.length===1;")
+            native_click(target+' .colony-actions button:nth-child(4)')
+            wait_ui('return !!document.querySelector("[data-recovery-id]");')
+            native_click('[data-recovery-id] button:first-of-type')
+            wait_ui('return !!document.querySelector("#restore-colony-panel");')
+            native_click('#restore-colony-panel button:first-of-type')
+            wait_ui('return document.querySelectorAll(".colony-row").length===3;')
+            native_click('#colony-menu .colony-menu-content > button')
+            upload()
+            native_click('[name=importMode][value=replace]')
+            page('const f=document.querySelector("#import-colony-form");f.elements.target.value="ui-other";f.requestSubmit();return true;')
+            wait_ui('return !!document.querySelector("#replace-colony-panel");')
+            native_click('#replace-colony-panel button:last-child')
+            assert page('return document.querySelector("[name=importMode][value=new]").checked;')
+            native_click('[name=importMode][value=replace]')
+            page('const f=document.querySelector("#import-colony-form");f.elements.target.value="ui-other";f.requestSubmit();return true;')
+            wait_ui('return !!document.querySelector("#replace-colony-panel");')
+            page("window.__idbAdd=IDBObjectStore.prototype.add;IDBObjectStore.prototype.add=function(...args){const r=window.__idbAdd.apply(this,args);if(this.name==='recoveryCopies')this.transaction.abort();return r;};return true;")
+            native_click('#replace-colony-panel button:nth-of-type(2)')
+            wait_ui('return !!document.querySelector("[data-storage-actions]");')
+            assert page("IDBObjectStore.prototype.add=window.__idbAdd;const {ColonyRepository}=await import('/src/game/persistence/colonyRepository.ts');const r=new ColonyRepository();const s=await r.load('ui-other');await r.close();return s.name==='Beta'&&s.simulation.clock.exportState().elapsedSeconds===70;")
+            native_click('#replace-colony-panel button:nth-of-type(2)')
+            wait_ui('return document.querySelectorAll(".colony-row").length===3;')
+            assert page("const {ColonyRepository}=await import('/src/game/persistence/colonyRepository.ts');const r=new ColonyRepository();const s=await r.load('ui-other'),copies=await r.listRecoveryCopies('ui-other'),backups=await r.listBackups('ui-other');await r.close();return s.name==='Alpha'&&s.simulation.clock.exportState().elapsedSeconds===10&&copies.length===1&&backups.length===0;")
+            native_click('[data-colony-id="ui-other"] .colony-actions button:nth-child(4)')
+            wait_ui('return !!document.querySelector("[data-recovery-id]");')
+            screenshot('anthive-d1-restore-copies.png')
+            print('D1 import UI:',{'invalidFile':True,'newImport':True,'nameConflict':True,'restoreCancel':True,'restore':True,'protectionRestore':True,'replaceCancel':True,'copyFailure':True,'explicitReplace':True})
+            finish_focused()
+            raise SystemExit(0)
+        if '--save-failure-only' in sys.argv:
+            result=page("""
+              await scene.persistenceReady;scene.gathering.clock.setPaused(true);
+              scene.gathering.resources.depositInStore('water-store',{resource:'water',amount:7});
+              const put=IDBObjectStore.prototype.put;
+              IDBObjectStore.prototype.put=function(...args){const r=put.apply(this,args);if(this.name==='metadata')this.transaction.abort();return r;};
+              try{await scene.persistence.manual();}catch{}finally{IDBObjectStore.prototype.put=put;}
+              if(!document.querySelector('#save-error-dialog')?.open)throw Error('current unsaved state has no export action');
+              window.__anchorClick=HTMLAnchorElement.prototype.click;HTMLAnchorElement.prototype.click=function(){window.__emergencyPayload=fetch(this.href).then(r=>r.text());};
+              return true;
+            """)
+            native_click('#save-error-dialog [data-action="export-current"]')
+            exported=page("""
+              HTMLAnchorElement.prototype.click=window.__anchorClick;
+              const {parseColony}=await import('/src/game/persistence/colonySession.ts');
+              const {ColonyRepository}=await import('/src/game/persistence/colonyRepository.ts');
+              const save=parseColony(await window.__emergencyPayload),repo=new ColonyRepository();
+              const before=await repo.load(scene.saveSession.id);await repo.close();
+              if(save.state.resources.stores.get('water-store').amount!==scene.gathering.resources.getStore('water-store').amount||before.simulation.resources.getStore('water-store').amount===save.state.resources.stores.get('water-store').amount)throw Error('emergency export did not include unsaved progress');
+              return {currentExported:true,oldMainPreserved:true};
+            """)
+            native_click('#save-error-dialog [data-action="retry-save"]')
+            for _ in range(100):
+                if page('return !document.querySelector("#save-error-dialog").open;'):
+                    break
+                time.sleep(.1)
+            else:
+                raise RuntimeError('Save retry did not succeed')
+            print('D1 save failure:',exported,{'retry':True})
+            finish_focused()
+            raise SystemExit(0)
+        if '--migration-only' in sys.argv:
+            result=page("""
+              const {ColonyRepository}=await import('/src/game/persistence/colonyRepository.ts');
+              const {createColonySession,captureColony}=await import('/src/game/persistence/colonySession.ts');
+              const a=createColonySession({id:'legacy',name:'Alter Stand'});a.simulation.advance(130);
+              const old=captureColony(a);old.schemaVersion=1;delete old.encoding;old.revision=1;
+              const payload=JSON.stringify(old,(_k,v)=>v instanceof Map?{$map:[...v]}:v instanceof Set?{$set:[...v]}:v);
+              const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(payload)),checksum=[...new Uint8Array(bytes)].map(n=>n.toString(16).padStart(2,'0')).join('');
+              const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('anthive-migration-test',1);r.onupgradeneeded=()=>r.result.createObjectStore('colonies',{keyPath:'id'});r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
+              const savedAt=new Date().toISOString();
+              await new Promise((resolve,reject)=>{const tx=db.transaction('colonies','readwrite');tx.objectStore('colonies').put({id:'legacy',name:'Alter Stand',revision:1,savedAt,gameDay:0,antCount:10,payload,checksum,backups:{1:{slot:1,payload,checksum,revision:1,savedAt}}});tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);});db.close();
+              const repo=new ColonyRepository('anthive-migration-test'),loaded=await repo.load('legacy');
+              if(captureColony(loaded).schemaVersion!==2||(await repo.readRow('legacy')).payload!==payload)throw Error('load changed original');
+              const add=IDBObjectStore.prototype.add;IDBObjectStore.prototype.add=function(...args){const r=add.apply(this,args);if(this.name==='recoveryCopies')this.transaction.abort();return r;};
+              let failed=false;try{await repo.save(loaded);}catch{failed=true;}finally{IDBObjectStore.prototype.add=add;}
+              if(!failed||(await repo.readRow('legacy')).payload!==payload||(await repo.listRecoveryCopies('legacy')).length)throw Error('failed migration replaced original');
+              await repo.save(loaded);const copies=await repo.listRecoveryCopies('legacy'),row=await repo.readRow('legacy');
+              if(JSON.parse(row.payload).schemaVersion!==2||copies.length!==1||copies[0].reason!=='migration'||row.backups[1].payload!==payload)throw Error('migration publication/protection');
+              const check=await repo.readRecoveryCopy('legacy',copies[0].id);
+              if(check.schemaVersion!==2||check.state.clock.elapsedSeconds!==old.state.clock.elapsedSeconds)throw Error('old protection unreadable');
+              const row2=await repo.readRow('legacy'),future=JSON.parse(row2.payload);future.encoding='future-codec';
+              const futurePayload=JSON.stringify(future),futureBytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(futurePayload));
+              const futureHash=[...new Uint8Array(futureBytes)].map(n=>n.toString(16).padStart(2,'0')).join('');
+              const raw=await new Promise((resolve,reject)=>{const r=indexedDB.open('anthive-migration-test');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
+              await new Promise((resolve,reject)=>{const tx=raw.transaction('colonies','readwrite');tx.objectStore('colonies').put({...row2,payload:futurePayload,checksum:futureHash});tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);});raw.close();
+              let futureRefused=false;try{await repo.save(loaded);}catch{futureRefused=true;}
+              if(!futureRefused||(await repo.readRow('legacy')).payload!==futurePayload)throw Error('future codec overwritten');
+              let futureRestoreRefused=false;try{await repo.restoreBackup('legacy',1,loaded.revision,()=>true);}catch{futureRestoreRefused=true;}
+              if(!futureRestoreRefused||(await repo.readRow('legacy')).payload!==futurePayload)throw Error('restore overwrote unsupported original');
+              await repo.close();return {readOnlyMigration:true,abortPreserved:true,originalProtected:true,backupUnchanged:true,futureRefused:true};
+            """)
+            print('D1 migration:',result)
+            finish_focused()
+            raise SystemExit(0)
+        if '--transfer-only' in sys.argv:
+            result=page("""
+              const {ColonyRepository}=await import('/src/game/persistence/colonyRepository.ts');
+              const {createColonySession,captureColony,serializeColony}=await import('/src/game/persistence/colonySession.ts');
+              const repo=new ColonyRepository('anthive-transfer-test');
+              const a=createColonySession({id:'alpha',name:'Alpha'});a.simulation.advance(60);a.persistenceTiming.activeSeconds=900;
+              await repo.save(a,{backupSlot:1});const old=await repo.readBackup('alpha',1);
+              a.simulation.advance(20);a.name='Heute';a.persistenceTiming.activeSeconds=1200;await repo.save(a);
+              const beforeSlots=JSON.stringify(await repo.listBackups('alpha'));
+              const b=createColonySession({id:'beta',name:'Beta'});await repo.save(b,{backupSlot:2});
+              const damaged=createColonySession({id:'damaged',name:'Defekt'});await repo.save(damaged,{backupSlot:3});damaged.simulation.advance(1);await repo.save(damaged);
+              await repo.restoreBackup('alpha',1,2,()=>true);
+              let current=await repo.load('alpha');
+              if(current.name!=='Heute'||current.revision!==3||current.simulation.clock.exportState().elapsedSeconds!==old.state.clock.elapsedSeconds||current.persistenceTiming.activeSeconds!==1200)throw Error('restore identity/timer/state');
+              if(JSON.stringify(await repo.listBackups('alpha'))!==beforeSlots)throw Error('restore rotated backups');
+              let copies=await repo.listRecoveryCopies('alpha');if(copies.length!==1||(await repo.readRecoveryCopy('alpha',copies[0].id)).state.clock.elapsedSeconds<=old.state.clock.elapsedSeconds)throw Error('protection copy');
+              const protectedBefore=serializeColony(captureColony(current)),add=IDBObjectStore.prototype.add;
+              IDBObjectStore.prototype.add=function(...args){const r=add.apply(this,args);if(this.name==='recoveryCopies')this.transaction.abort();return r;};
+              let failed=false;try{await repo.restoreBackup('alpha',1,3,()=>true);}catch{failed=true;}finally{IDBObjectStore.prototype.add=add;}
+              if(!failed||serializeColony(captureColony(await repo.load('alpha')))!==protectedBefore||(await repo.listRecoveryCopies('alpha')).length!==1)throw Error('copy failure changed main');
+              await repo.restoreRecoveryCopy('alpha',copies[0].id,3,()=>true);
+              if((await repo.listRecoveryCopies('alpha')).length!==2||(await repo.load('alpha')).simulation.clock.exportState().elapsedSeconds<=old.state.clock.elapsedSeconds)throw Error('protection restore');
+              const imported=await repo.importNew(old,'Importiert');if(imported.id==='alpha'||imported.persistenceTiming.activeSeconds!==0||imported.simulation.clock.exportState().elapsedSeconds!==old.state.clock.elapsedSeconds)throw Error('new import identity');
+              await repo.replaceImported('beta',old,1,()=>true);
+              if((await repo.load('beta')).name!=='Alpha'||(await repo.listBackups('beta')).length||(await repo.listRecoveryCopies('beta')).length!==1)throw Error('replacement');
+              let stale=false;try{await repo.restoreBackup('alpha',1,2,()=>true);}catch{stale=true;}if(!stale)throw Error('stale restore accepted');
+              let cross=false;try{await repo.readRecoveryCopy('beta',copies[0].id);}catch{cross=true;}if(!cross)throw Error('foreign protection accepted');
+              const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('anthive-transfer-test');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
+              await new Promise((resolve,reject)=>{const tx=db.transaction('colonies','readwrite'),store=tx.objectStore('colonies'),r=store.get('alpha');r.onsuccess=()=>{const row=r.result;row.payload='broken';store.put(row);};const other=store.get('damaged');other.onsuccess=()=>{const row=other.result;row.payload='broken';store.put(row);};tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);});db.close();
+              let refusedCorrupt=false;try{await repo.replaceImported('damaged',old,2,()=>true);}catch{refusedCorrupt=true;}
+              if(!refusedCorrupt||(await repo.listBackups('damaged')).length!==1)throw Error('replacement of corrupt main destroyed valid backups');
+              await repo.restoreBackup('alpha',1,4,()=>true);
+              if((await repo.load('alpha')).revision!==5||(await repo.listRecoveryCopies('alpha')).length!==2||JSON.stringify(await repo.listBackups('alpha'))!==beforeSlots)throw Error('corrupt main restore');
+              let invalid=false;try{await repo.replaceImported('beta',{schemaVersion:99},2,()=>true);}catch{invalid=true;}if(!invalid||(await repo.load('beta')).revision!==2)throw Error('invalid replacement');
+              await repo.remove('beta',2,()=>true);if((await repo.listRecoveryCopies('beta')).length||(await repo.listRecoveryCopies('alpha')).length!==2)throw Error('recovery delete isolation');
+              const fresh=new ColonyRepository('anthive-transfer-fresh');
+              const importedFresh=await fresh.importNew(old,'Frisch'),loadedFresh=await fresh.load(importedFresh.id);
+              const expected=structuredClone(old);expected.id=importedFresh.id;expected.name='Frisch';expected.revision=1;expected.persistenceTiming=importedFresh.persistenceTiming;
+              if((await fresh.list()).length!==1||serializeColony(captureColony(loadedFresh))!==serializeColony(expected))throw Error('fresh database file transfer changed state');
+              await fresh.close();
+              await repo.close();return {newImport:true,freshDatabase:true,restore:true,copyFailureAtomic:true,protectionRestore:true,replace:true,stale:true,corruptMain:true,isolation:true};
+            """)
+            print('D1 transfer:',result)
+            finish_focused()
+            raise SystemExit(0)
+        if '--catalog-only' in sys.argv:
+            result=page("""
+              const {createColonySession,captureColony,serializeColony}=await import('/src/game/persistence/colonySession.ts');
+              const {ColonyRepository}=await import('/src/game/persistence/colonyRepository.ts');
+              const session=createColonySession({id:'legacy',name:'Alter Stand'}),snapshot=captureColony(session);snapshot.revision=1;
+              const payload=serializeColony(snapshot),hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(payload));
+              const checksum=[...new Uint8Array(hash)].map(n=>n.toString(16).padStart(2,'0')).join('');
+              const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('anthive-catalog-migration',1);r.onupgradeneeded=()=>r.result.createObjectStore('colonies',{keyPath:'id'});r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
+              await new Promise((resolve,reject)=>{const tx=db.transaction('colonies','readwrite');tx.objectStore('colonies').put({id:'legacy',name:'Alter Stand',revision:1,savedAt:new Date().toISOString(),gameDay:0,antCount:10,payload,checksum});tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);});db.close();
+              const repo=new ColonyRepository('anthive-catalog-migration');
+              if((await repo.list()).length!==1)throw Error('legacy metadata migration');
+              const a=await repo.load('legacy');await repo.save(a,{backupSlot:1});await repo.markPlayed('legacy');
+              const b=createColonySession({id:'other',name:'Andere'});await repo.save(b);await repo.markPlayed('other');
+              await repo.rename('legacy','Umbenannt',()=>true);
+              const rows=await repo.list(),renamed=rows.find(r=>r.id==='legacy');
+              if(rows[0].id!=='other'||renamed.name!=='Umbenannt'||(await repo.load('legacy')).name!=='Umbenannt')throw Error('rename identity/order');
+              const put=IDBObjectStore.prototype.put;
+              IDBObjectStore.prototype.put=function(...args){const r=put.apply(this,args);if(this.name==='metadata')this.transaction.abort();return r;};
+              let aborted=false;try{await repo.rename('other','Darf nicht bleiben',()=>true);}catch{aborted=true;}finally{IDBObjectStore.prototype.put=put;}
+              if(!aborted||(await repo.load('other')).name!=='Andere'||(await repo.list()).find(r=>r.id==='other').name!=='Andere')throw Error('metadata atomicity');
+              let stale=false;try{await repo.remove('legacy',renamed.revision-1,()=>true);}catch{stale=true;}
+              if(!stale||(await repo.listBackups('legacy')).length!==1)throw Error('stale delete');
+              await repo.remove('legacy',renamed.revision,()=>true);
+              if((await repo.list()).length!==1||(await repo.listBackups('legacy')).length!==0||(await repo.lastPlayedId())!=='other')throw Error('delete isolation');
+              await repo.remove('other',(await repo.list())[0].revision,()=>true);
+              if((await repo.list()).length||await repo.lastPlayedId()!==null)throw Error('deleted last selection');
+              await repo.close();return {migration:true,rename:true,metadataAtomic:true,staleDelete:true,isolation:true};
+            """)
+            print('D1 catalog:',result)
+            finish_focused()
+            raise SystemExit(0)
+        if '--autosave-only' in sys.argv:
+            result = page("""
+              const {createColonySession}=await import('/src/game/persistence/colonySession.ts');
+              const {ColonyRepository}=await import('/src/game/persistence/colonyRepository.ts');
+              const {PersistenceController}=await import('/src/game/persistence/persistenceController.ts');
+              const {BrowserColonyWriteLock}=await import('/src/game/persistence/colonyWriteLock.ts');
+              const repo=new ColonyRepository('anthive-d1-autosave');
+              const s=createColonySession({id:'timed',name:'Zeitprüfung'});
+              const lock=new BrowserColonyWriteLock(),c=new PersistenceController(s,repo,lock,()=>{});
+              await c.start();const other=new BrowserColonyWriteLock();
+              if(await other.acquire('timed'))throw Error('second writer acquired lock');
+              for(const minute of [5,10,15,175,180,185,190]){s.simulation.advance(1);c.tick(minute*60000,false);await c.flush();}
+              const slots=await repo.listBackups('timed');
+              if(slots.length!==3||new Set(slots.map(x=>x.revision)).size!==3)throw Error('backups not staggered');
+              const times=[];for(const slot of [1,2,3])times.push((await repo.readBackup('timed',slot)).persistenceTiming.activeSeconds);
+              if(JSON.stringify(times)!==JSON.stringify([190*60,185*60,180*60]))throw Error('wrong backup schedule '+times);
+              await c.manual();if(JSON.stringify(slots)!==JSON.stringify(await repo.listBackups('timed')))throw Error('manual rotated backups');
+              let refused=false;try{await repo.save(s,{backupSlot:1,canWrite:()=>false});}catch{refused=true;}
+              if(!refused||JSON.stringify(slots)!==JSON.stringify(await repo.listBackups('timed')))throw Error('lost lock changed backups');
+              await c.close();const replacement=new BrowserColonyWriteLock();if(!await replacement.acquire('timed'))throw Error('lock not released');replacement.release();
+              const saved=await repo.load('timed');if(saved.persistenceTiming.activeSeconds!==190*60)throw Error('timers lost');
+              sessionStorage.setItem('anthive-autosave-times',JSON.stringify(times));
+              await repo.close();
+              await scene.persistence.manual();
+              if(scene.saveSession.revision<1)throw Error('HUD model not saved');
+              window.__d1CrossLock=new BrowserColonyWriteLock();if(!await window.__d1CrossLock.acquire('cross-tab'))throw Error('cross-tab lock setup');
+              return {backups:times,sceneSaved:true,exclusive:true};
+            """)
+            command('WebDriver:Refresh', {})
+            hook()
+            check = page("""
+              const {ColonyRepository}=await import('/src/game/persistence/colonyRepository.ts');
+              const repo=new ColonyRepository('anthive-d1-autosave');
+              const s=await repo.load('timed');if(s.persistenceTiming.activeSeconds!==11400)throw Error('reload timer reset');
+              if((await repo.listBackups('timed')).length!==3)throw Error('reload backups lost');
+              await repo.close();return {reload:true,activeSeconds:s.persistenceTiming.activeSeconds};
+            """)
+            original = command('WebDriver:GetWindowHandle', {})['value']
+            opened = command('WebDriver:NewWindow', {'type':'tab'})
+            other = opened.get('value', opened)['handle']
+            command('WebDriver:SwitchToWindow', {'handle':other})
+            command('WebDriver:Navigate', {'url':f'http://127.0.0.1:{vite_port}/'})
+            hook()
+            # The original page was reloaded above, so acquire its new cross-tab lock first.
+            command('WebDriver:SwitchToWindow', {'handle':original})
+            page("""
+              const {BrowserColonyWriteLock}=await import('/src/game/persistence/colonyWriteLock.ts');
+              window.__d1CrossLock=new BrowserColonyWriteLock();await window.__d1CrossLock.acquire('cross-tab');return true;
+            """)
+            command('WebDriver:SwitchToWindow', {'handle':other})
+            cross = page("""
+              const {BrowserColonyWriteLock}=await import('/src/game/persistence/colonyWriteLock.ts');
+              const lock=new BrowserColonyWriteLock();const acquired=await lock.acquire('cross-tab');await lock.release();
+              if(acquired)throw Error('second tab acquired write lock');return {secondTabReadOnly:true};
+            """)
+            command('WebDriver:CloseWindow', {})
+            command('WebDriver:SwitchToWindow', {'handle':original})
+            page('await window.__d1CrossLock.release();return true;')
+            click(48,19)
+            assert page('await scene.persistence.flush();return scene.saveSession.revision>=1;')
+            print('D1 autosave:',result,check,cross)
+            finish_focused()
+            raise SystemExit(0)
+        if '--persistence-only' in sys.argv:
+            first = page("""
+              const {createColonySession,captureColony,serializeColony}=await import('/src/game/persistence/colonySession.ts');
+              const {ColonyRepository}=await import('/src/game/persistence/colonyRepository.ts');
+              const repo=new ColonyRepository('anthive-d1-browser');
+              const a=createColonySession({id:'alpha',name:'Alpha'}), b=createColonySession({id:'beta',name:'Beta'});
+              a.simulation.advance(181.37);await repo.save(a);await repo.save(b);
+              const stale=await repo.load('alpha');a.simulation.advance(1);await repo.save(a);
+              let conflict=false;try{await repo.save(stale);}catch{conflict=true;}
+              if(!conflict)throw Error('stale writer accepted');
+              const before=serializeColony(captureColony(await repo.load('alpha')));
+              const put=IDBObjectStore.prototype.put;
+              IDBObjectStore.prototype.put=function(...args){const r=put.apply(this,args);this.transaction.abort();return r;};
+              let aborted=false;try{await repo.save(a);}catch{aborted=true;}finally{IDBObjectStore.prototype.put=put;}
+              if(!aborted || before!==serializeColony(captureColony(await repo.load('alpha'))))throw Error('abort replaced main save');
+              sessionStorage.setItem('anthive-d1-before',before);
+              if((await repo.list()).length!==2)throw Error('colony isolation');
+              const {startingWorld}=await import('/src/game/world/worldGenerator.ts');
+              scene.gathering.clock.setPaused(true);
+              const live={id:'live',name:'Aktuelle Szene',revision:0,world:scene.saveSession.world,simulation:scene.gathering,excavation:scene.excavation,persistenceTiming:scene.saveSession.persistenceTiming};
+              await repo.save(live);
+              if(serializeColony(captureColony(await repo.load('live')))!==serializeColony(captureColony(live)))throw Error('live scene roundtrip');
+              scene.gathering.clock.setPaused(false);
+              const raw=await new Promise((resolve,reject)=>{const r=indexedDB.open('anthive-d1-browser');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
+              await new Promise((resolve,reject)=>{const tx=raw.transaction('colonies','readwrite'),store=tx.objectStore('colonies'),r=store.get('beta');r.onsuccess=()=>{const row=r.result;row.payload=row.payload.replace('Beta','Xeta');store.put(row);};tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);});
+              let corrupt=false;try{await repo.load('beta');}catch{corrupt=true;}
+              raw.close();if(!corrupt)throw Error('corrupt payload accepted');
+              // A broken foreign colony must not prevent loading Alpha.
+
+              await repo.close();return {conflict,aborted,count:2};
+            """)
+            command('WebDriver:Refresh', {})
+            hook()
+            second = page("""
+              const {captureColony,serializeColony}=await import('/src/game/persistence/colonySession.ts');
+              const {ColonyRepository}=await import('/src/game/persistence/colonyRepository.ts');
+              const repo=new ColonyRepository('anthive-d1-browser');
+              const a=await repo.load('alpha');
+              if(serializeColony(captureColony(a))!==sessionStorage.getItem('anthive-d1-before'))throw Error('reload changed state');
+              if((await repo.list()).length!==3)throw Error('foreign colony lost');
+              const before=a.simulation.clock.totalGameDays;a.simulation.advance(1);
+              if(a.simulation.clock.totalGameDays<=before)throw Error('restored model does not run');
+              await repo.close();return {reload:true,continued:true,ants:a.simulation.getWorkers().length};
+            """)
+            print('D1 persistence:', first, second)
+            finish_focused()
+            raise SystemExit(0)
         assert page('return !!document.querySelector("#construction-panel");'), 'B3 construction controls missing'
         # B3: real controls, combined rectangle/brush, explicit confirmation,
         # remote planning, pause/resume, map details and a later connecting tunnel.
@@ -194,7 +655,7 @@ try:
 
         def draw_cells(start, end, tool, touch=False):
             page("const el=document.querySelector('[name=draftTool]'); el.value=" + json.dumps(tool) + "; el.dispatchEvent(new Event('change',{bubbles:true})); return true;")
-            coordinates=page("const cells="+json.dumps([start,end])+"; return cells.map(([column,row])=>[(column+.5)*24-scene.cameras.main.scrollX,(row+.5)*24-scene.cameras.main.scrollY]);")
+            coordinates=page("const cells="+json.dumps([start,end])+"; const camera=scene.cameras.main; let points=cells.map(([column,row])=>[(column+.5)*24-camera.scrollX,(row+.5)*24-camera.scrollY]); const ys=points.map(p=>p[1]); if(Math.max(...ys)-Math.min(...ys)<=120){if(Math.min(...ys)<150)camera.scrollY-=150-Math.min(...ys);else if(Math.max(...ys)>270)camera.scrollY+=Math.max(...ys)-270;camera.preRender();} return cells.map(([column,row])=>[(column+.5)*24-camera.scrollX,(row+.5)*24-camera.scrollY]);")
             click(*coordinates[0], move=coordinates[1], touch=touch)
 
         def pointer_path(points, touch=False):
@@ -221,6 +682,310 @@ try:
             native_click('[data-action="cancel-order"]')
             native_click('[data-action="close-construction"]')
             print('PASS: B3 real touch rectangle, confirmation, scrollable details and cancellation')
+
+        if '--food-network-only' in sys.argv:
+            result=page("""
+              const s=scene.gathering,e=scene.excavation,w=e.world;
+              const food=s.resources.listSources().filter(r=>r.resource==='food');
+              if(food.length!==12||food.reduce((sum,r)=>sum+r.regenerationPerDay,0)!==720)throw Error('Food network missing');
+              const reachable=food.filter(source=>s.navigation.sourceAccessPoints(source).some(point=>s.navigation.findPath(w.landmarks.nestChamberCenter,point)));
+              const available=reachable.reduce((sum,r)=>sum+r.regenerationPerDay,0);
+              if(available<=401)throw Error('Insufficient initially reachable network');
+              if([scene.foodStockLabel,scene.waterStockLabel,scene.materialStockLabel].some(label=>label.depth<7))throw Error('Starting store labels hidden below room surfaces');
+              const brood=scene.children.list.filter(o=>typeof o.text==='string'&&o.text.startsWith('BRUTKAMMER'));
+              if(brood.length!==4||brood.some(label=>label.depth<7))throw Error('Starting brood labels hidden');
+              s.moveWorkers('gathering','gathering','building',2);
+              for(let i=0;i<2000&&e.getBuilders().length<4;i++)s.advance(.1);
+              if(e.getBuilders().length!==4)throw Error('Actual builder reassignment failed');
+              const room=w.chamberFootprints[0],top=Math.min(...room.map(c=>c.row));
+              const targets=room.filter(c=>c.row===top).map(c=>({column:c.column,row:c.row-1})).filter(c=>e.validateOrder([c],'tunnel').valid&&w.tiles[c.row][c.column].state!=='open').slice(0,4);
+              if(targets.length!==4)throw Error('Four front fixture missing');
+              const ids=targets.map(c=>e.addOrder([c],'tunnel'));s.advance(.1);
+              const jobs=e.getBuilders().map(b=>b.job).filter(j=>j&&ids.includes(j.orderId));
+              if(new Set(jobs.map(j=>j.orderId)).size!==4)throw Error('Idle builders did not start four independent orders');
+              scene.update(0,0);scene.updateConstruction();scene.economyHud.setCollapsed(true);scene.setWorldZoom(.5);scene.cameras.main.centerOn(160*24,28*24);
+              return {foodSources:food.length,reachableFoodSources:reachable.length,reachableRegeneration:available,parallelOrders:jobs.length};
+            """)
+            print(json.dumps(result));screenshot('anthive-food-network-start-labels.png')
+            print('PASS: live food deposits and reachable supply, start room labels, four actual parallel construction orders')
+            finish_focused();raise SystemExit(0)
+
+        if '--room-edges-only' in sys.argv:
+            page("""
+              scene.updateConstruction();
+              const source=scene.gathering.resources.getSource('surface-food-source');
+              if(source.capacity!==1000||source.regenerationPerDay!==60)throw Error('Playable food balance not active');
+              const {getTileArtInstruction,getTilemapAtlasFrame}=await import('/src/game/world/worldTileArtLayout.ts');
+              const w=scene.excavation.world,keys=new Set(scene.startingFurnishings.flatMap(room=>room.cells.map(c=>`${c.column},${c.row}`)));
+              const layer=scene.children.list.find(o=>o.name==='anthive-world-tile-art');
+              for(const room of scene.startingFurnishings)for(const c of room.cells)for(const [dx,dy] of [[-1,0],[1,0],[0,-1],[0,1]]){
+                const x=c.column+dx,y=c.row+dy;
+                const expected=getTilemapAtlasFrame(getTileArtInstruction(w.tiles,x,y,keys));
+                if((layer.getTileAt(x,y)?.index??-1)!==expected)throw Error('Room edge retains old curved gap');
+              }
+              scene.economyHud.setCollapsed(true);scene.setWorldZoom(.5);scene.cameras.main.centerOn(160*24,28*24);return true;
+            """)
+            screenshot('anthive-muted-flush-rooms.png')
+            print('PASS: actual start-room tile edges meet muted room surfaces without old tunnel lips')
+            if '--post-c5-only' not in sys.argv:
+                finish_focused()
+                raise SystemExit(0)
+            page('scene.economyHud.setCollapsed(false);scene.setWorldZoom(1);return true;')
+
+        if '--planning-colors-only' in sys.argv:
+            page("scene.gathering.clock.setPaused(true);scene.cameras.main.centerOn(190*24,40*24);return true;")
+            def long_draw(tool, touch=False):
+                start_plan('tunnel',touch=touch)
+                page("const tool=document.querySelector('[name=draftTool]');tool.value="+json.dumps(tool)+";tool.dispatchEvent(new Event('change'));return true;")
+                bounds=command('WebDriver:ExecuteScript', {'script':"const r=document.querySelector('#game canvas').getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height};",'args':[]})['value']
+                def point(x,y):
+                    return {'type':'pointerMove','duration':150,'origin':'viewport','x':round(bounds['x']+x*bounds['w']/640),'y':round(bounds['y']+y*bounds['h']/360)}
+                before=page('return scene.cameras.main.scrollX;')
+                actions=[point(150,220),{'type':'pointerDown','button':0},point(635,220),{'type':'pause','duration':1800},{'type':'pointerUp','button':0}]
+                command('WebDriver:PerformActions',{'actions':[{'type':'pointer','id':'long-plan','parameters':{'pointerType':'touch' if touch else 'mouse'},'actions':actions}]})
+                command('WebDriver:ReleaseActions',{})
+                result=page("return {scroll:scene.cameras.main.scrollX,cells:scene.draftCells.length,rows:new Set(scene.draftCells.map(c=>c.row)).size,valid:scene.excavation.validateOrder(scene.draftCells,'tunnel').valid};")
+                assert result['scroll']>before+100,result
+                assert result['cells']>27 and result['rows']==1 and result['valid'],result
+                screenshot('anthive-long-'+tool+'.png')
+                native_click('[data-action=discard-plan]')
+                print(json.dumps(result))
+            long_draw('brush')
+            long_draw('rectangle',touch=True)
+            page("scene.cameras.main.centerOn(160*24,28*24);scene.setWorldZoom(.5);scene.updateConstruction();return true;")
+            screenshot('anthive-colored-start-rooms.png')
+            assert page("return scene.startingFurnishings.length===8 && scene.startingFurnishings.every(r=>r.installedByCell.length===r.cells.length);")
+            print('PASS: continuous mouse brush and touch rectangle beyond viewport; themed existing rooms')
+            if '--post-c5-only' not in sys.argv:
+                finish_focused()
+                raise SystemExit(0)
+            page('scene.setWorldZoom(1);return true;')
+
+        if '--hud-art-only' in sys.argv:
+            page("""
+              const layer=scene.children.list.find(o=>o.name==='anthive-world-tile-art');
+              const tileset=layer.tileset[0];
+              if(tileset.tileMargin!==2||tileset.tileSpacing!==4)throw Error('Missing texture frame gutters');
+              const canvas=scene.textures.get('anthive-world-tile-art-atlas').getSourceImage(),ctx=canvas.getContext('2d');
+              const columns=canvas.width/28;
+              for(let frame=0;frame<137;frame++){
+                const x=(frame%columns)*28+2,y=Math.floor(frame/columns)*28+2;
+                const pixel=(px,py)=>Array.from(ctx.getImageData(px,py,1,1).data).join(',');
+                for(let i=0;i<24;i++)for(const offset of [1,2]){
+                  if(pixel(x+i,y)!==pixel(x+i,y-offset)||pixel(x+i,y+23)!==pixel(x+i,y+23+offset))throw Error('Vertical edge extrusion mismatch');
+                  if(pixel(x,y+i)!==pixel(x-offset,y+i)||pixel(x+23,y+i)!==pixel(x+23+offset,y+i))throw Error('Horizontal edge extrusion mismatch');
+                }
+              }
+              return true;
+            """)
+            click(616,20)
+            assert page("return scene.economyHud.collapsed&&!scene.economyHud.food.visible&&scene.economyHud.background.height===28;")
+            before=page("return scene.cameras.main.scrollX;")
+            click(200,70,move=(240,70))
+            assert page("return scene.cameras.main.scrollX;") != before
+            click(510,20);assert page("return document.querySelector('#construction-panel').open;")
+            native_click('[data-action=close-construction]')
+            for level in [.5,.25,2]:
+                page('scene.setWorldZoom('+str(level)+');return true;')
+                screenshot('anthive-hud-atlas-'+str(level)+'.png')
+            click(616,20)
+            assert page("return !scene.economyHud.collapsed&&scene.economyHud.food.visible&&scene.economyHud.background.height===104;")
+            command('WebDriver:SetWindowRect', {'width':844,'height':480});time.sleep(.3)
+            click(616,20,touch=True)
+            assert page("return scene.economyHud.collapsed;")
+            screenshot('anthive-hud-mobile-collapsed.png')
+            print('PASS: all atlas gutters, fixed zoom levels, collapse/expand, map interaction in freed area and touch')
+            finish_focused()
+            raise SystemExit(0)
+
+        if '--pond-shore-only' in sys.argv:
+            result=page("""
+              const s=scene.gathering,w=scene.excavation.world;s.clock.setPaused(true);
+              const pond=w.decorations.find(d=>d.kind==='pond');
+              const {createPondProfile}=await import('/src/game/world/pondProfile.ts');
+              const profile=createPondProfile(pond.position.x,24,pond.scale??1,c=>w.tiles.findIndex(row=>row[c]?.terrain!=='air'));
+              const right=profile.columns.at(-1).x+profile.columns.at(-1).width;
+              const column=Math.floor(right/24),row=Math.floor(profile.waterY/24),store=w.landmarks.waterStoreCenter;
+              const storeColumn=Math.floor(store.x/24),storeRow=Math.floor(store.y/24);
+              for(let c=column;c<=storeColumn;c++){w.tiles[row][c].state='open';scene.renderExcavatedTiles({column:c,row});}
+              for(let r=Math.min(row,storeRow);r<=Math.max(row,storeRow);r++){w.tiles[r][storeColumn].state='open';scene.renderExcavatedTiles({column:storeColumn,row:r});}
+              s.traffic.invalidateTopology();s.gathering.setPriority('water');
+              const testId=s.gathering.getCollectors().find(a=>!a.load).id;s.gathering.retireCollector(testId);s.gathering.addCollector(testId,store);s.clock.setPaused(false);
+              let carrier;
+              for(let i=0;i<10000&&!carrier;i++){s.advance(.05);carrier=s.gathering.getCollectors().find(a=>a.id===testId&&a.sourceId===pond.id&&a.phase==='pickup'&&a.position.x>=right);}
+              if(!carrier || carrier.position.x-right>1 || carrier.position.y<profile.waterY || carrier.position.y>profile.waterY+24)throw Error('No actual shoreline pickup');
+              scene.update(0,0);scene.cameras.main.centerOn(right,profile.waterY+24);
+              window.__shoreCarrier=carrier.id;return {position:carrier.position,waterY:profile.waterY,right};
+            """)
+            print(json.dumps(result));screenshot('anthive-pond-shore-pickup.png')
+            page("""
+              const s=scene.gathering,before=s.resources.getStore('water-store').amount;
+              for(let i=0;i<10000&&s.resources.getStore('water-store').amount<=before;i++)s.advance(.05);
+              if(s.resources.getStore('water-store').amount<=before)throw Error('Actual water delivery missing');
+              return true;
+            """)
+            print('PASS: actual visible-shore pickup via new tunnel and real water-store delivery')
+            finish_focused()
+            raise SystemExit(0)
+
+        if '--zoom-exits-only' in sys.argv:
+            before=page("return scene.economyHud.header.getBounds();")
+            click(524,293)
+            assert page("return Math.abs(scene.cameras.main.zoom-.5)<.001 && scene.hudCamera.zoom===1;")
+            assert page("return scene.economyHud.header.getBounds();") == before
+            # World planning must still resolve pointer cells under zoom.
+            page("scene.cameras.main.centerOn(200*24,34*24);return true;")
+            start_plan('tunnel')
+            point=page("const c=scene.cameras.main;c.preRender();return [((200+.5)*24-c.worldView.x)*c.zoom,((34+.5)*24-c.worldView.y)*c.zoom];")
+            click(*point)
+            assert page("return scene.draftCells.length===1 && scene.draftCells[0].column===200 && scene.draftCells[0].row===34;")
+            native_click('[data-action=discard-plan]')
+            # Wheel zoom retains the ground under the cursor and leaves HUD alone.
+            point_before=page("return scene.cameras.main.getWorldPoint(320,210);")
+            page("scene.input.emit('wheel',{x:320,y:210},[],0,100);return true;")
+            assert page("const p=scene.cameras.main.getWorldPoint(320,210),a="+json.dumps(point_before)+";return Math.abs(p.x-a.x)*scene.cameras.main.zoom<=1&&Math.abs(p.y-a.y)*scene.cameras.main.zoom<=1;")
+            result=page("""
+              const e=scene.excavation,s=scene.gathering;
+              const {surfaceRow}=await import('/src/game/world/worldGenerator.ts');
+              const column=157,top=surfaceRow(column),bottom=e.world.tiles.findIndex((row,i)=>i>top&&row[column].state==='open'),cells=[];
+              if(bottom<0)throw Error('Exit fixture has no underground origin');
+              for(let row=bottom;row>=top;row--)cells.push({column,row});
+              const id=e.addOrder(cells,'tunnel');
+              for(let i=0;i<15000&&e.getConstructionOrders().find(o=>o.id===id).status!=='completed';i++)s.advance(.1);
+              if(e.getConstructionOrders().find(o=>o.id===id).status!=='completed')throw Error('Surface exit not completed');
+              if(!s.navigation.findPath({x:(column+.5)*24,y:(bottom+.5)*24},{x:(column+.5)*24,y:(top-.5)*24}))throw Error('Exit not walkable');
+              for(const c of e.drainChangedCells())scene.renderExcavatedTiles(c);
+              scene.cameras.main.centerOn(column*24,(top+2)*24);scene.updateConstruction();
+              return {zoom:scene.cameras.main.zoom,surfaceOpen:e.world.tiles[top][column].state};
+            """)
+            print(json.dumps(result))
+            screenshot('anthive-zoom-surface-exit.png')
+            click(566,293)
+            assert page("return scene.cameras.main.zoom===1;")
+            command('WebDriver:SetWindowRect', {'width':844,'height':480});time.sleep(.3)
+            click(524,293,touch=True)
+            assert page("return scene.cameras.main.zoom===.5 && scene.foodStockLabel.scaleX===1 && scene.materialStockLabel.x===scene.excavation.world.landmarks.buildingMaterialStoreCenter.x && scene.materialStockLabel.y===scene.excavation.world.landmarks.buildingMaterialStoreCenter.y;")
+            screenshot('anthive-zoom-mobile.png')
+            print('PASS: mouse/touch zoom, fixed HUD, cursor anchoring, zoomed tile selection and real surface exit')
+            finish_focused()
+            raise SystemExit(0)
+
+        if '--playable-only' in sys.argv:
+            result=page("""
+              const s=scene.gathering;s.clock.setPaused(true);
+              const workers=s.getWorkers();if(workers.length!==10 || workers.filter(w=>w.specialization==='care').length!==1)throw Error('Missing additional starting nurse');
+              for(const resource of ['food','water'])s.resources.depositInStore(`${resource}-store`,{resource,amount:540});
+              s.clock.setPaused(false);s.advance(119);if(s.queen.snapshot.laidEggs!==0)throw Error('Egg laid too early');
+              s.advance(1.1);if(s.queen.snapshot.laidEggs!==1)throw Error('Two minute egg missing');
+              for(let i=0;i<1500&&!s.queen.snapshot.eggs[0].arrived;i++)s.advance(.1);
+              if(!s.queen.snapshot.eggs[0].arrived)throw Error('Starting nurse did not deliver egg');
+              s.advance(359);if(s.queen.snapshot.eggs[0].stage==='adult')throw Error('Premature birth');
+              s.advance(2);if(s.queen.snapshot.eggs[0].stage!=='adult')throw Error('Six minute development missing');
+              scene.update(0,0);scene.updateEconomyHud();
+              if(!document.querySelector('[data-role=queen-summary]').textContent.includes('Pflegekapazität'))throw Error('Capacity explanation missing');
+              return {workers:s.getWorkers().length,laid:s.queen.snapshot.laidEggs,born:s.queen.snapshot.bornCount,careCapacity:s.queen.snapshot.careCapacity};
+            """)
+            print(json.dumps(result))
+            page("""
+              const e=scene.excavation,s=scene.gathering;
+              const {lineSelection,rectangleSelection}=await import('/src/game/simulation/constructionPlanning.ts');
+              const cells=rectangleSelection({column:200,row:34},{column:203,row:36});
+              const builder=e.getBuilders()[0],home={column:Math.floor(builder.position.x/24),row:Math.floor(builder.position.y/24)};
+              for(const c of [...lineSelection(home,cells[0]),...cells]){e.world.tiles[c.row][c.column].state='open';scene.renderExcavatedTiles(c);}
+              s.traffic.invalidateTopology();const id=e.addOrder(cells,'food');
+              for(let i=0;i<12000&&!e.getConstructionOrders().find(o=>o.id===id).operational;i++)s.advance(.1);
+              if(!e.getConstructionOrders().find(o=>o.id===id).operational)throw Error('Room not complete');
+              scene.updateConstruction();
+              if(!scene.constructionLabels.get(id).text.startsWith('NAHRUNGSLAGER') || scene.constructionLabels.get(id).style.backgroundColor!==scene.foodStockLabel.style.backgroundColor)throw Error('Finished map label is not room name');
+              const store=e.chambers.getChambers().find(r=>r.id===id).storeId;s.resources.depositInStore(store,{resource:'food',amount:12});scene.updateConstruction();if(!scene.constructionLabels.get(id).text.includes('12.0 / 120'))throw Error('Individual live stock label missing');
+              const button=document.querySelector(`[data-order-id="${id}"]`);if(button.textContent!=='Nahrungslager')throw Error('Finished list label is not room name');
+              if(!scene.materialStockLabel.text.includes('BAUSTOFFLAGER:') || scene.materialStockLabel.style.backgroundColor!==scene.foodStockLabel.style.backgroundColor)throw Error('Material store label missing');
+              scene.cameras.main.centerOn(202*24,35*24);return true;
+            """)
+            screenshot('anthive-playable-room-label.png')
+            print('PASS: native starting nurse, 2-minute eggs, 6-minute brood, care explanation and finished room labels')
+            finish_focused()
+            raise SystemExit(0)
+
+        if '--post-c5-only' in sys.argv:
+            page("scene.gathering.clock.setPaused(true); scene.cameras.main.centerOn(204*24,35*24); return true;")
+            def template(kind, size, anchor, touch=False):
+                click(510, 20, touch=touch)
+                page("const type=document.querySelector('[name=chamberType]');type.value="+json.dumps(kind)+";type.dispatchEvent(new Event('change'));const size=document.querySelector('[name=chamberSize]');size.value="+json.dumps(size)+";return true;")
+                native_click('[data-action=draw-plan]')
+                point=page("const [x,y]="+json.dumps(anchor)+";return [(x+.5)*24-scene.cameras.main.scrollX,(y+.5)*24-scene.cameras.main.scrollY];")
+                click(*point, touch=touch)
+            template('food','small',[200,34])
+            assert page("return scene.draftCells.length===16 && scene.excavation.getConstructionOrders().length===0 && !document.querySelector('[data-action=confirm-plan]').disabled;")
+            screenshot('anthive-post-c5-template.png')
+            native_click('[data-action=confirm-plan]')
+            assert page("return scene.excavation.getConstructionOrders().at(-1).total===16;")
+            native_click('[data-action=close-construction]')
+            template('water','small',[205,34])
+            assert page("return document.querySelector('[data-action=confirm-plan]').disabled && document.querySelector('[data-role=draft-status]').textContent.includes('2 Kacheln Abstand');")
+            screenshot('anthive-post-c5-distance-warning.png')
+            native_click('[data-action=discard-plan]')
+            template('water','small',[206,34],touch=True)
+            assert page("return scene.input.manager.activePointer.wasTouch && !document.querySelector('[data-action=confirm-plan]').disabled;")
+            native_click('[data-action=confirm-plan]')
+            native_click('[data-action=cancel-order]')
+            native_click('[data-action=close-construction]')
+            # A dedicated real build fixture: open a connected tunnel and room,
+            # then transport and install real material with existing builders.
+            page("""
+              const e=scene.excavation,s=scene.gathering;
+              s.clock.setPaused(false);e.cancelOrder(1);
+              const home={column:Math.floor(s.getWorkers().find(w=>w.id==='builder-0').position.x/24),row:Math.floor(s.getWorkers().find(w=>w.id==='builder-0').position.y/24)};
+              const {lineSelection,rectangleSelection}=await import('/src/game/simulation/constructionPlanning.ts');
+              const cells=rectangleSelection({column:200,row:34},{column:203,row:37});
+              for(const c of [...lineSelection(home,cells[0]),...cells]) {scene.excavation.world.tiles[c.row][c.column].state='open';scene.renderExcavatedTiles(c);}
+              s.traffic.invalidateTopology();
+              window.__postRoom=e.addOrder(cells,'rest');
+              const pile=e.materials.produce(scene.gathering.getWorkers().find(w=>w.id==='builder-0').position,64);
+              for(let i=0;i<10000 && e.getConstructionOrders().at(-1).materialUsed<3;i++)s.advance(.1);
+              const o=e.getConstructionOrders().at(-1);scene.updateConstruction();
+              if(o.materialUsed<3 || o.materialUsed>=o.materialRequired)throw Error('Partial real furnishing missing');
+              if(o.installedByCell.reduce((n,c)=>n+c.amount,0)!==o.materialUsed)throw Error('Installed-cell balance');
+              e.pauseOrder(o.id);s.advance(20);const before=JSON.stringify(e.getConstructionOrders().at(-1).installedByCell);s.advance(20);scene.updateConstruction();
+              if(JSON.stringify(e.getConstructionOrders().at(-1).installedByCell)!==before)throw Error('Paused furnishings advanced');
+              scene.cameras.main.centerOn(202*24,36*24);return true;
+            """)
+            screenshot('anthive-post-c5-partial-furnishing.png')
+            page("""
+              const e=scene.excavation,s=scene.gathering;e.resumeOrder(window.__postRoom);
+              for(let i=0;i<10000 && !e.getConstructionOrders().at(-1).operational;i++)s.advance(.1);
+              const o=e.getConstructionOrders().at(-1);if(!o.operational || o.capacity!==32)throw Error('Rest room not completed');
+              for(let i=0;i<2000&&!s.getWorkers().some(w=>w.rest?.occupied);i++)s.advance(.1);
+              if(!s.getWorkers().some(w=>w.rest?.occupied))throw Error('No actual occupied resting place');
+              scene.update(0,0);scene.updateConstruction();return s.getWorkers().filter(w=>w.rest).map(w=>({id:w.id,rest:w.rest,position:w.position}));
+            """)
+            screenshot('anthive-post-c5-furnished-rest.png')
+            command('WebDriver:SetWindowRect', {'width':844,'height':480})
+            time.sleep(.3)
+            template('food','small',[206,34],touch=True)
+            assert page("return scene.draftCells.length===16 && !document.querySelector('[data-action=confirm-plan]').disabled;")
+            screenshot('anthive-post-c5-mobile-template.png')
+            native_click('[data-action=discard-plan]')
+            page("""
+              const e=scene.excavation,s=scene.gathering;
+              const {lineSelection,rectangleSelection}=await import('/src/game/simulation/constructionPlanning.ts');
+              const cells=rectangleSelection({column:206,row:34},{column:209,row:37});
+              for(const c of [...lineSelection({column:203,row:34},cells[0]),...cells]){e.world.tiles[c.row][c.column].state='open';scene.renderExcavatedTiles(c);}
+              s.traffic.invalidateTopology();const id=e.addOrder(cells,'food');
+              for(let i=0;i<15000&&!e.getConstructionOrders().find(o=>o.id===id).operational;i++)s.advance(.1);
+              const room=e.chambers.getChambers().find(r=>r.id===id);if(!room?.operational)throw Error('Store completion missing');
+              s.resources.depositInStore(room.storeId,{resource:'food',amount:16});
+              scene.update(0,0);scene.updateConstruction();
+              const {chamberFurnishingLayout}=await import('/src/game/world/chamberFurnishingLayout.ts');
+              const order=e.getConstructionOrders().find(o=>o.id===id);
+              const marks=chamberFurnishingLayout({...order,stock:s.resources.getStore(room.storeId)},24);
+              if(!marks.every(m=>m.stockFraction>0 && m.stockFraction<=.1))throw Error('Rendered inventory is not actual stock');
+              scene.cameras.main.centerOn(205*24,36*24);return true;
+            """)
+            screenshot('anthive-post-c5-actual-stock.png')
+            print('PASS: post-C5 native templates, spacing warning, touch, actual partial furnishing, pause, completion and occupied rest room')
+            finish_focused()
+            raise SystemExit(0)
 
         if '--visible-brood-only' in sys.argv:
             page("scene.gathering.resources.depositInStore('food-store',{resource:'food',amount:540});scene.gathering.resources.depositInStore('water-store',{resource:'water',amount:540});scene.cameras.main.centerOn(160*24,24*24);return true;")
@@ -572,7 +1337,7 @@ try:
         print(json.dumps({'b3':page("""
           for(let i=0;i<2400 && scene.excavation.getConstructionOrders()[0].excavated<1;i++)scene.update(0,100);
           const plans=scene.excavation.getConstructionOrders();
-          if(plans[0].excavated<1 || plans[1].status!=='completed')throw Error('B3 actual tunnel did not unlock earlier chamber');
+          if(plans[0].excavated<1 || plans[1].status!=='completed')throw Error('B3 actual tunnel did not unlock earlier chamber '+JSON.stringify({plans,workers:scene.excavation.getBuilders(),clock:scene.gathering.clock.exportState(),leaving:scene.leaving}));
           if(scene.gathering.resources.getStoreTotals('food').capacity!==540)throw Error('Unfurnished chamber granted capacity');
           scene.updateEconomyHud();return plans.map(o=>({id:o.id,type:o.type,status:o.status,excavated:o.excavated}));
         """)}))

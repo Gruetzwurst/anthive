@@ -11,12 +11,13 @@ export function createGatheringSimulation(
   world: StartingWorld,
   config: SimulationConfig = SIMULATION_CONFIG,
   gatheringConfig: GatheringConfig = GATHERING_CONFIG,
+  initializeWorkers = true,
 ) {
   const simulation = createResourceSimulation(world, config);
   const traffic = new TunnelTrafficSystem(world);
   const navigation = new CollectorNavigation(world, traffic);
   const gathering = new GatheringSystem(simulation.resources, navigation, gatheringConfig);
-  for (let index = 0; index < GATHERING_PREVIEW_COUNT; index++) {
+  for (let index = 0; initializeWorkers && index < GATHERING_PREVIEW_COUNT; index++) {
     gathering.addCollector(`collector-${index}`, {
       x: world.landmarks.nestChamberCenter.x + (index - 3) * 3,
       y: world.landmarks.nestChamberCenter.y + (index % 2) * 3,

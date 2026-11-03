@@ -66,10 +66,10 @@ for(const phase of ['digging','loading','deliver'])test(`cancel during ${phase} 
  assert.equal(resources.listStores().length,1);assert.equal(e.getBuilders()[0].readyToLeave,true);invariant(e);
 });
 
-test('a reserved current tile does not start a later simultaneous site; lowering grade saves partial progress',()=>{
+test('a reserved current tile permits later simultaneous work; lowering grade saves partial progress',()=>{
  const {e,world}=fixture();world.tiles[3][3].terrain='stone';e.setDiggingGrade(3);
  const first=e.addOrder([c(3)]);e.addOrder([c(2,2)]);e.addBuilder('b',p(1));e.advance(2);
- assert.equal(e.getBuilders().filter(w=>w.job?.kind==='dig').length,1);
+ assert.equal(e.getBuilders().filter(w=>w.job?.kind==='dig').length,2);
  e.setDiggingGrade(0);e.advance(1);
  assert.ok(e.getConstructionOrders().find(o=>o.id===first).partialDigSeconds>1.9);
  e.pauseOrder(2);e.setDiggingGrade(3);

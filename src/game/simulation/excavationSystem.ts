@@ -1,4 +1,5 @@
 import type { StartingWorld, WorldCellCoordinate, WorldPoint, WorldTile } from '../world/worldTypes.ts';
+import { CollectorNavigation } from '../world/collectorNavigation.ts';
 import { terrainDefinitions } from '../world/terrainDefinitions.ts';
 import { diggingGradeAt } from '../world/worldGenerator.ts';
 import { cardinalNeighbors, cellKey, findGridPath } from '../world/gridPathfinding.ts';
@@ -9,7 +10,7 @@ import { ChamberSystem } from './chamberSystem.ts';
 import type { TunnelTrafficSystem } from './tunnelTrafficSystem.ts';
 import type { ExcavationConfig } from './simulationConfig.ts';
 import { nonNegativeFinite, positiveFinite } from './validation.ts';
-import { PLAN_TYPES, PLAN_LABELS, mergeSelection, isConnectedSelection, constructionMaterialEstimate } from './constructionPlanning.ts';
+import { PLAN_TYPES, PLAN_LABELS, mergeSelection, isConnectedSelection, constructionMaterialEstimate, maximumChamberArea, chamberDistanceConflicts } from './constructionPlanning.ts';
 import type { PlanType } from './constructionPlanning.ts';
 
 type Cell = WorldCellCoordinate;
@@ -17,6 +18,7 @@ export type ConstructionStatus = 'planned' | 'digging' | 'blocked' | 'paused' | 
 export type ConstructionBlockReason = 'unreachable' | 'hardness' | 'material';
 export type ConstructionOrderSnapshot = {
   capacity: number; operational: boolean;
+  installedByCell: Array<Cell & {amount: number}>;
   id: number; type: PlanType; cells: Cell[]; index: number; paused: boolean; status: ConstructionStatus;
   blockReason: ConstructionBlockReason | null; excavated: number; total: number; partialDigSeconds: number; materialRequired: number; materialUsed: number; materialAtSite: number; materialInTransit: number;
 };
@@ -41,9 +43,29 @@ export function requiredDiggingGrade(cell: Cell, tile: WorldTile): number {
 
 /** Existing cardinal digging/haul workflow, separated from Phaser for B2 tests. */
 export class ExcavationSystem {
+  /** Complete internal state, detached from the live simulation; not a HUD snapshot. */
+  exportState() { return structuredClone({ config: this.config, minimumAreas: this.minimumAreas, builders: this.builders, orders: this.orders, reservations: this.reservations, changed: this.changed, chamberAccessDirty: this.chamberAccessDirty, grade: this.grade, nextOrderId: this.nextOrderId, notices: this.notices, completedChambers: this.completedChambers }); }
+  restoreState(state: ReturnType<ExcavationSystem['exportState']>): void {
+    const copy = structuredClone(state);
+    this.config = copy.config;
+    this.minimumAreas = copy.minimumAreas;
+    this.builders = copy.builders;
+    this.orders = copy.orders;
+    this.reservations = copy.reservations;
+    this.changed = copy.changed;
+    this.chamberAccessDirty = copy.chamberAccessDirty;
+    this.grade = copy.grade;
+    this.nextOrderId = copy.nextOrderId;
+    this.notices = copy.notices;
+    this.completedChambers = copy.completedChambers;
+    for (const builder of this.builders.values()) if (builder.job?.order) builder.job.order = this.orders.find(order => order.id === builder.job!.order!.id)!;
+    this.pathCache.clear();
+  }
+
   readonly materials: BuildingMaterialSystem;
   readonly chambers: ChamberSystem;
   private world: StartingWorld;
+  private surfaceNavigation: CollectorNavigation;
   private resources: ResourceSystem;
   private config: ExcavationConfig;
   private minimumAreas: Readonly<Record<PlanType, number>>;
@@ -64,7 +86,7 @@ export class ExcavationSystem {
     positiveFinite(CONSTRUCTION_CONFIG.furnishingSecondsPerUnit, 'furnishingSecondsPerUnit');
     for (const key of ['speed', 'carryCapacity', 'interactionSeconds', 'maxStepSeconds'] as const) positiveFinite(config[key], key);
     for (const rule of Object.values(config.terrain)) { positiveFinite(rule.seconds, 'dig seconds'); nonNegativeFinite(rule.yield, 'material yield'); }
-    this.world = world; this.resources = resources;
+    this.world = world; this.surfaceNavigation = new CollectorNavigation(world); this.resources = resources;
     this.config = { ...config, terrain: Object.fromEntries(Object.entries(config.terrain).map(([kind, rule]) => [kind, { ...rule }])) as ExcavationConfig['terrain'] };
     this.materials = new BuildingMaterialSystem(resources, config.carryCapacity);
     this.minimumAreas = { ...minimumAreas };
@@ -87,6 +109,12 @@ export class ExcavationSystem {
     if (!id.trim() || this.builders.has(id)) throw new Error('Builder needs a unique non-empty ID');
     if (!this.open(this.cell(position))) throw new Error('Builder must start in an open tunnel');
     this.builders.set(id, { id, position: { ...position }, job: null, status: 'Bereit' });
+  }
+  repositionIdleWorker(id: string, position: WorldPoint): boolean {
+    const worker = this.builders.get(id);
+    if (!worker || worker.job || this.materials.getCarried(id) > 0 || !this.open(this.cell(position))) return false;
+    worker.position = {...position};
+    return true;
   }
   removeBuilder(id: string): void {
     const worker = this.builders.get(id);
@@ -116,6 +144,7 @@ export class ExcavationSystem {
         capacity: rooms.get(order.id)?.capacity ?? 0, operational: rooms.get(order.id)?.operational ?? false,
         paused: order.paused, status: order.status, blockReason: order.blockReason, excavated, total: order.cells.length,
         partialDigSeconds: [...order.progress.values()].reduce((sum, value) => sum + value, 0),
+        installedByCell: order.cells.flatMap(cell => { const amount = order.installed.get(cellKey(cell)) ?? 0; return amount > 0 ? [{...cell, amount}] : []; }),
         materialRequired: order.required, materialUsed: order.used, materialAtSite: this.materials.getAtSite(order.id),
         materialInTransit: this.inTransit(order) };
     });
@@ -149,17 +178,33 @@ export class ExcavationSystem {
     this.refreshOrders();
   }
   drainChangedCells(): Cell[] { const changed = this.changed; this.changed = []; return changed; }
-  addOrder(cells: Cell[], type: PlanType = 'tunnel'): number {
+  validateOrder(cells: Cell[], type: PlanType = 'tunnel'): {valid: boolean; message: string; conflicts: Cell[]} {
+    const fail = (message: string, conflicts: Cell[] = []) => ({valid: false, message, conflicts});
     if (!PLAN_TYPES.includes(type) || !cells.length || cells.some(cell => !Number.isInteger(cell.column) || !Number.isInteger(cell.row)
-      || !this.tile(cell) || !terrainDefinitions[this.tile(cell)!.terrain].diggable || this.tile(cell)!.state === 'rubble')) throw new RangeError('Nur gültige unterirdische Kacheln markieren');
+      || !this.tile(cell) || this.surfaceNavigation.intersectsWater(cell)
+      || !(terrainDefinitions[this.tile(cell)!.terrain].diggable || (type === 'tunnel' && this.tile(cell)!.terrain === 'surface'))
+      || this.tile(cell)!.state === 'rubble'))
+      return fail(type === 'tunnel' ? 'Nicht baubar: Tunnel nur im Boden bis zur Oberfläche planen, nicht in Luft oder Wasser.' : 'Kammern nur unterirdisch außerhalb von Wasser planen');
     const selected = mergeSelection(cells);
-    if (!isConnectedSelection(selected)) throw new RangeError('Ein Bauplan muss über gemeinsame Kanten zusammenhängen');
-    if (selected.length < this.minimumAreas[type]) throw new RangeError(`${PLAN_LABELS[type]} benötigt mindestens ${this.minimumAreas[type]} zusammenhängende Kacheln`);
+    if (!isConnectedSelection(selected)) return fail('Ein Bauplan muss über gemeinsame Kanten zusammenhängen');
+    if (selected.length < this.minimumAreas[type]) return fail(`${PLAN_LABELS[type]} benötigt mindestens ${this.minimumAreas[type]} zusammenhängende Kacheln`);
+    if (selected.length > maximumChamberArea(type)) return fail(`${PLAN_LABELS[type]} darf höchstens ${maximumChamberArea(type)} Kacheln umfassen`);
     if (type !== 'tunnel') {
       const keys = new Set(selected.map(cellKey));
-      if (this.world.chamberFootprints?.some(room => room.some(cell => keys.has(cellKey(cell))))) throw new RangeError('Hier besteht bereits eine Kammer');
-      if (this.orders.some(order => !order.cancelled && order.type !== 'tunnel' && order.cells.some(cell => keys.has(cellKey(cell))))) throw new RangeError('Hier ist bereits eine Kammer geplant');
+      const footprints = [...this.world.chamberFootprints ?? [], ...this.orders.filter(order => !order.cancelled && order.type !== 'tunnel').map(order => order.cells)];
+      if (this.world.chamberFootprints?.some(room => room.some(cell => keys.has(cellKey(cell)))))
+        return fail('Hier besteht bereits eine Kammer', chamberDistanceConflicts(selected, footprints));
+      if (this.orders.some(order => !order.cancelled && order.type !== 'tunnel' && order.cells.some(cell => keys.has(cellKey(cell)))))
+        return fail('Hier ist bereits eine Kammer geplant', chamberDistanceConflicts(selected, footprints));
+      const conflicts = chamberDistanceConflicts(selected, footprints);
+      if (conflicts.length) return fail('Nicht baubar: Mindestens 2 Kacheln Abstand zu anderen Kammern erforderlich.', conflicts);
     }
+    return {valid: true, message: '', conflicts: []};
+  }
+  addOrder(cells: Cell[], type: PlanType = 'tunnel'): number {
+    const validation = this.validateOrder(cells, type);
+    if (!validation.valid) throw new RangeError(validation.message);
+    const selected = mergeSelection(cells);
     const id = this.nextOrderId++;
     this.orders.push({ id, type, cells: selected, paused: false, cancelled: false, progress: new Map(),
       status: 'planned', blockReason: null, notifiedProblem: null,
@@ -232,9 +277,10 @@ export class ExcavationSystem {
     return { x: (cell.column + .5) * this.world.dimensions.tileSize, y: (cell.row + .5) * this.world.dimensions.tileSize };
   }
   private tile(cell: Cell): WorldTile | undefined { return this.world.tiles[cell.row]?.[cell.column]; }
-  private open(cell: Cell): boolean { return this.tile(cell)?.state === 'open'; }
+  private open(cell: Cell): boolean { const tile = this.tile(cell); return tile?.state === 'open' || (tile?.terrain === 'air' && this.surfaceNavigation.isWalkable(this.center(cell))); }
   private rule(tile: WorldTile) {
-    if (tile.terrain === 'air' || tile.terrain === 'surface' || !terrainDefinitions[tile.terrain].diggable) return null;
+    if (tile.terrain === 'surface') return this.config.terrain.topsoil;
+    if (tile.terrain === 'air' || !terrainDefinitions[tile.terrain].diggable) return null;
     return this.config.terrain[tile.terrain];
   }
   private diggable(cell: Cell): boolean {
@@ -262,8 +308,7 @@ export class ExcavationSystem {
     if (worker.job && ['dig', 'furnish'].includes(worker.job.kind) && worker.job.target) this.reservations.delete(cellKey(worker.job.target));
     worker.job = null;
   }
-  private findDig(worker: Builder): Job | null {
-    const order = this.primaryOrder();
+  private findDig(worker: Builder, order: Order | null = this.primaryOrder()): Job | null {
     if (!order || this.allDug(order)) return null;
     for (const target of this.availableTargets(order)) {
       if (this.reservations.has(cellKey(target))) continue;
@@ -288,8 +333,7 @@ export class ExcavationSystem {
         return { store, amount, path, cost: path && routes[0] ? length(worker.position, path) + length(store.position, routes[0]) : Infinity };
       }).filter(choice => Number.isFinite(choice.cost)).sort((a, b) => a.cost - b.cost || a.store.id.localeCompare(b.store.id))[0];
   }
-  private findFurnishing(worker: Builder): Job | null {
-    const order = this.primaryOrder();
+  private findFurnishing(worker: Builder, order: Order | null = this.primaryOrder()): Job | null {
     if (!order || !this.allDug(order) || order.type === 'tunnel') return null;
     const reservedUnits = [...this.builders.values()].filter(other => other.job?.kind === 'furnish' && other.job.order === order).length;
     if (this.materials.getAtSite(order.id) - reservedUnits >= 1) {
@@ -333,11 +377,21 @@ export class ExcavationSystem {
     return choice ? { kind: 'deliver', phase: 'walking', path: choice.path, pathIndex: 0,
       storeId: choice.store.id, progress: 0, duration: this.config.interactionSeconds } : null;
   }
+  private nextConstructionJob(worker: Builder): Job | null {
+    for(const order of this.orders){
+      if(order.cancelled||order.paused||this.isFinished(order))continue;
+      const job=this.allDug(order)
+        ? this.materials.getCarried(worker.id)<=EPS ? this.findFurnishing(worker,order) : null
+        : this.findDig(worker,order);
+      if(job)return job;
+    }
+    return null;
+  }
   private hasDigWork(canStart: (id: string) => boolean): boolean {
     return [...this.builders.values()].some(worker => {
       const job = worker.job;
       if (job?.kind === 'dig' && job.target && this.diggable(job.target) && requiredDiggingGrade(job.target, this.tile(job.target)!) <= this.grade) return true;
-      return canStart(worker.id) && this.findDig(worker) !== null;
+      return canStart(worker.id) && this.orders.some(order=>!order.cancelled&&!order.paused&&!this.isFinished(order)&&this.findDig(worker,order)!==null);
     });
   }
   private assign(worker: Builder, canStart: (id: string) => boolean): boolean {
@@ -355,10 +409,9 @@ export class ExcavationSystem {
     if (carried > EPS && primary && this.allDug(primary)) worker.job = this.delivery(worker);
     if (!worker.job && carried >= this.config.carryCapacity - EPS) worker.job = this.delivery(worker);
     if (!worker.job && canStart(worker.id)) {
-      worker.job = this.findDig(worker);
+      worker.job = this.nextConstructionJob(worker);
       if (worker.job?.target) this.reservations.add(cellKey(worker.job.target));
     }
-    if (!worker.job && carried <= EPS && canStart(worker.id)) worker.job = this.findFurnishing(worker);
     if (!worker.job && canStart(worker.id) && !this.hasDigWork(canStart)) {
       for (const pile of this.materials.getGround()) {
         worker.job = this.pickup(worker, pile.id);

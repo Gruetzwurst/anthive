@@ -1,9 +1,15 @@
+import {ColonyRepository} from '../persistence/colonyRepository';
+import {PersistenceController} from '../persistence/persistenceController';
+import {BrowserColonyWriteLock} from '../persistence/colonyWriteLock';
+import {SaveErrorDialog} from '../ui/SaveErrorDialog';
+import {downloadColonyFile} from '../ui/colonyDownload';
+import {createColonySession,captureColony} from '../persistence/colonySession';
+import type {ColonySession} from '../persistence/colonySession';
 import Phaser from 'phaser';
 import {
   buildingMaterialStoreCenter,
   waterStoreCenter,
   broodChamberCenters,
-  BROOD_CHAMBER_SIZE,
   foodStoreCenter,
   diggingGradeAt,
   isOpenTile,
@@ -26,26 +32,34 @@ import {
   drawWorldTileArt,
   preloadWorldTileArt,
   updateWorldTileArt,
+  setSmoothRoomArt,
 } from '../world/worldTileArtRenderer';
 import type { TerrainKind } from '../world/worldTypes';
-import { startingWorld } from '../world/worldGenerator';
+import {activateWorld} from '../world/worldMap';
 import { ExcavationSystem, requiredDiggingGrade } from '../simulation/excavationSystem';
 import { createWorkforceSimulation } from '../simulation/workforceSimulation';
 import { WorkforcePanel } from '../ui/WorkforcePanel';
 import { ConstructionPanel, constructionStatusLabel } from '../ui/ConstructionPanel';
 import type { DrawingTool } from '../ui/ConstructionPanel';
-import { lineSelection, rectangleSelection, mergeSelection } from '../simulation/constructionPlanning';
-import type { PlanType } from '../simulation/constructionPlanning';
-import { CONSTRUCTION_CONFIG } from '../simulation/simulationConfig';
+import { lineSelection, rectangleSelection, mergeSelection, squareTemplate, constructionMaterialEstimate, PLAN_LABELS } from '../simulation/constructionPlanning';
+import type { PlanType, TemplateSize } from '../simulation/constructionPlanning';
+import { CONSTRUCTION_CONFIG, PLAYABLE_COLONY_CONFIG } from '../simulation/simulationConfig';
 import { cellKey } from '../world/gridPathfinding';
 import { EconomyHud, isEconomyHudPoint } from '../ui/EconomyHud';
 import { buildEconomyOverview } from '../ui/economyOverview';
+import { closestWorldZoom, nextWorldZoom, planningEdgePan } from '../world/worldZoom';
+import { chamberCapacity } from '../simulation/chamberSystem';
+import {startingFurnishingOrders} from '../world/chamberFurnishingLayout';
+import type {FurnishingVisualOrder} from '../world/chamberFurnishingLayout';
+import { ChamberFurnishingRenderer } from '../world/ChamberFurnishingRenderer';
 import { BroodRenderer } from '../world/BroodRenderer';
 
 const COLORS = {
   ...TERRAIN_PALETTE,
   text: '#f4efd9',
 };
+
+const ROOM_LABEL_STYLE = {color: COLORS.text, backgroundColor: '', fontFamily: 'system-ui, sans-serif', fontSize: '9px', fontStyle: 'bold', align: 'center', padding: {x: 0, y: 0}};
 
 const LAYER_COLORS: Partial<Record<TerrainKind, number>> = {
   topsoil: COLORS.topsoil,
@@ -55,6 +69,12 @@ const LAYER_COLORS: Partial<Record<TerrainKind, number>> = {
 
 type DigCell = { column: number; row: number };
 export class WorldScene extends Phaser.Scene {
+  private persistence?: PersistenceController;
+  private persistenceReady?: Promise<void>;
+  private saveErrorPanel?:SaveErrorDialog;
+  private storageErrorReported=false;
+  private leaving=false;
+  private saveSession?: ColonySession;
   private dragMode: 'none' | 'camera' | 'dig' = 'none';
   private lastPointerX = 0;
   private lastPointerY = 0;
@@ -65,6 +85,12 @@ export class WorldScene extends Phaser.Scene {
   private constructionPanel!: ConstructionPanel;
   private broodRenderer!:BroodRenderer;
   private broodRefreshMs=100;
+  private startingFurnishings: FurnishingVisualOrder[] = [];
+  private furnishingRenderer!: ChamberFurnishingRenderer;
+  private templateSize: TemplateSize = 'free';
+  private hudCamera!: Phaser.Cameras.Scene2D.Camera;
+  private zoomLabel!: Phaser.GameObjects.Text;
+  private panFrameTime = 0;
   private planning = false;
   private drawingTool: DrawingTool = 'brush';
   private planType: PlanType = 'tunnel';
@@ -82,6 +108,7 @@ export class WorldScene extends Phaser.Scene {
   private renderedDroppedLoads = new Set<string>();
   private foodMarkers?: Phaser.GameObjects.Graphics;
   private foodStockLabel?: Phaser.GameObjects.Text;
+  private materialStockLabel?: Phaser.GameObjects.Text;
   private waterStockLabel?: Phaser.GameObjects.Text;
   private excavationGraphics!: Phaser.GameObjects.Graphics;
   private digPreviewGraphics!: Phaser.GameObjects.Graphics;
@@ -100,43 +127,38 @@ export class WorldScene extends Phaser.Scene {
     super('WorldScene');
   }
 
+  init(data:{session?:ColonySession}={}):void {
+    this.saveSession=data.session??createColonySession({id:crypto.randomUUID(),name:'Neue Kolonie'});
+    this.ants=[];this.builderWorkers=[];this.materialPiles=new Map();this.constructionLabels=new Map();
+    this.sourceReachability=new Map();this.renderedDroppedLoads=new Set();this.draftCells=[];this.previewCells=[];this.dugCells=[];
+    this.constructionSignature='';this.constructionNotice='';this.constructionNoticeSeconds=0;this.overviewRefreshSeconds=0;
+    this.foodMarkers=undefined;this.foodStockLabel=undefined;this.waterStockLabel=undefined;this.materialStockLabel=undefined;
+    this.dragMode='none';this.planning=false;this.dragMoved=false;this.digStart=null;this.lastBrushCell=null;
+    this.panFrameTime=0;this.broodRefreshMs=100;this.leaving=false;this.persistence=undefined;this.storageErrorReported=false;
+  }
+
   preload(): void {
     preloadWorldTileArt(this);
   }
 
   create(): void {
-    this.gathering = createWorkforceSimulation(startingWorld, (resources, traffic) => {
-      resources.depositInStore('building-material-store', { resource: 'buildingMaterial', amount: CONSTRUCTION_CONFIG.startingMaterial });
-      this.excavation = new ExcavationSystem(startingWorld, resources);
-      this.excavation.setTraffic(traffic);
-      const home = this.cellAt(nestChamberCenter.x, nestChamberCenter.y)!;
-      for (let index = 0; index < 2; index++) this.excavation.addBuilder(`builder-${index}`, {
-        x: (home.column + 0.35 + index * 0.3) * TILE_SIZE, y: (home.row + 0.5) * TILE_SIZE,
-      });
-      return {
-        workers: () => this.excavation.getBuilders(),
-        addWorker: (id, position) => this.excavation.addBuilder(id, position),
-        removeWorker: id => this.excavation.removeBuilder(id),
-        retireWorker: id => this.excavation.removeBuilder(id),
-        broodChambers: () => this.excavation.chambers.getChambers().filter(room => room.type.startsWith('brood-')).map(room => ({
-          id: `built-${room.id}`, specialization: room.type.slice(6) as 'gathering' | 'building' | 'care' | 'combat', capacity: room.capacity, operational: room.operational,
-          position: {x: (room.cells[0].column + .5) * TILE_SIZE, y: (room.cells[0].row + .5) * TILE_SIZE},
-        })),
-        advanceWorkers: (seconds, factor) => this.excavation.advance(seconds, factor,
-          id => this.gathering.workforce.getWorker(id).assignment === 'building',
-          id => this.gathering.workforce.efficiency(id, 'building')),
-      };
-    });
+    const session=this.saveSession!;
+    this.gathering=session.simulation;this.excavation=session.excavation;
+    this.diggingGrade=this.excavation.exportState().grade;
+    activateWorld(session.world);
     this.drawWorld();
     this.excavationGraphics = this.add.graphics().setDepth(2);
     this.digPreviewGraphics = this.add.graphics().setDepth(4);
     this.constructionGraphics = this.add.graphics().setDepth(3);
+    this.furnishingRenderer = new ChamberFurnishingRenderer(this, TILE_SIZE, (column,row) => worldMap[row]?.[column]?.state === 'open');
+    this.startingFurnishings = startingFurnishingOrders(this.saveSession!.world);
     this.drawFoodMarkers();
     this.buildingMaterialPileGraphics = this.add.graphics().setDepth(4);
     this.drawBuildingMaterialPile();
     this.drawLabels();
     this.broodRenderer=new BroodRenderer(this,queenChamberCenter);
     this.createDigControls();
+    this.updateUpgradeLabel();
     this.createAnts();
     this.syncBuilderVisuals();
     this.workforcePanel = new WorkforcePanel(
@@ -148,27 +170,34 @@ export class WorldScene extends Phaser.Scene {
       {snapshot: () => this.gathering.queen.snapshot, setQuotas: quotas => this.gathering.queen.setQuotas(quotas), supply:()=>this.gathering.broodSupply.getRooms()},
     );
     this.constructionPanel = new ConstructionPanel(document.querySelector('#game')!, {
-      start: type => this.startDraft(type),
-      tool: tool => { this.drawingTool = tool; },
+      start: (type, size) => this.startDraft(type, size),
+      tool: tool => { this.drawingTool = tool; this.previewCells = []; this.renderDigPreview(); },
       confirm: () => this.confirmDraft(), discard: () => this.discardDraft(),
       pause: id => { this.excavation.pauseOrder(id); this.updateConstruction(); },
       resume: id => { this.excavation.resumeOrder(id); this.updateConstruction(); },
       cancel: id => { this.excavation.cancelOrder(id); this.updateConstruction(); },
     });
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => { this.workforcePanel.destroy(); this.constructionPanel.destroy();this.broodRenderer.destroy(); });
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => { this.workforcePanel.destroy(); this.constructionPanel.destroy();this.broodRenderer.destroy();this.furnishingRenderer.destroy(); });
     this.economyHud = new EconomyHud(this, priority => {
       this.gathering.gathering.setPriority(priority);
       this.updateEconomyHud();
-    }, () => this.workforcePanel.open(), () => this.constructionPanel.open());
+    }, () => this.workforcePanel.open(), () => this.constructionPanel.open(), () => {void this.persistence?.manual().catch(error=>this.saveErrorPanel?.show(String(error)));}, () => {void this.returnToMenu();});
+    this.installPersistence();
     this.refreshSourceReachability();
     this.updateEconomyHud();
     this.frameWorld();
+    this.createZoomControls();
+    this.separateHudCamera();
     this.enableCameraDrag();
     this.renderBrood(0);
   }
 
   update(_time: number, delta: number): void {
-    this.gathering.advance(delta / 1000);
+    const now=performance.now();
+    this.panWhileDrawing(this.panFrameTime ? Math.min((now-this.panFrameTime)/1000,.25) : 0);
+    this.panFrameTime=now;
+    if(!this.leaving)this.gathering.advance(delta / 1000);
+    this.persistence?.tick(now,this.gathering.clock.exportState().paused);
     const changedCells = this.excavation.drainChangedCells();
     for (const cell of changedCells) { this.dugCells.push(cell); this.renderExcavatedTiles(cell); }
     if (changedCells.length) this.refreshSourceReachability();
@@ -199,9 +228,11 @@ export class WorldScene extends Phaser.Scene {
     });
     this.ants = this.ants.filter(ant => visibleWorkers.has(ant.id));
     this.foodStockLabel?.setText(`NAHRUNG: ${this.gathering.resources.getStore('food-store').amount.toFixed(1)}`);
+    this.materialStockLabel?.setText(`BAUSTOFFLAGER: ${this.gathering.resources.getStore('building-material-store').amount.toFixed(1)}`);
     this.waterStockLabel?.setText(`WASSER: ${this.gathering.resources.getStore('water-store').amount.toFixed(1)}`);
     this.drawFoodMarkers();
     this.drawBuildingMaterialPile();
+    this.refreshMapText();
     this.overviewRefreshSeconds -= delta / 1000;
     if (this.overviewRefreshSeconds <= 0) {
       this.overviewRefreshSeconds = 0.25;
@@ -215,6 +246,50 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
+  private installPersistence():void {
+    const repository=new ColonyRepository();
+    const lock=new BrowserColonyWriteLock();
+    this.saveErrorPanel=new SaveErrorDialog(document.querySelector('#game')!,{
+      exportCurrent:()=>downloadColonyFile(captureColony(this.saveSession!)),
+      retry:async()=>{await this.persistenceReady;await this.persistence!.manual();},
+      manage:()=>{if(window.confirm('Nicht gesicherter Fortschritt bleibt nur in dieser laufenden Ansicht. Ohne weiteres Speichern zur Kolonienverwaltung zurückkehren?')){this.saveErrorPanel?.close();void this.returnToMenu(true);}},
+    });
+    const controller=new PersistenceController(this.saveSession!,repository,lock,status=>{
+      this.economyHud.setSaveStatus(status.kind,status.message);
+      if(status.kind==='saved'){this.storageErrorReported=false;this.saveErrorPanel?.close();}
+      if(status.kind==='error'&&!this.storageErrorReported){this.storageErrorReported=true;this.saveErrorPanel?.show(status.message);}
+    });
+    this.persistence=controller;controller.resetTime(performance.now());
+    this.persistenceReady=controller.start().then(async()=>{
+      if(lock.held)await repository.markPlayed(this.saveSession!.id,()=>lock.held);
+      controller.resetTime(performance.now());
+    }).catch(error=>this.economyHud.setSaveStatus('error',String(error)));
+    const visibility=()=>{controller.setVisible(!document.hidden);if(document.hidden)void controller.background().catch(()=>{});};
+    document.addEventListener('visibilitychange',visibility);
+    const saveKey=(event:KeyboardEvent)=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='s'){event.preventDefault();void controller.manual().catch(error=>this.saveErrorPanel?.show(String(error)));}};
+    window.addEventListener('keydown',saveKey);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN,()=>{
+      document.removeEventListener('visibilitychange',visibility);window.removeEventListener('keydown',saveKey);
+      this.saveErrorPanel?.destroy();
+      void controller.close().finally(()=>repository.close()).catch(()=>{});
+      if(this.persistence===controller)this.persistence=undefined;
+    });
+  }
+
+  private async returnToMenu(discardConfirmed=false):Promise<void>{
+    if(this.leaving)return;this.leaving=true;
+    const wasPaused=this.gathering.clock.exportState().paused;
+    this.persistence?.setVisible(false);
+    try{if(!discardConfirmed){await this.persistenceReady;await this.persistence?.manual();}}
+    catch(error){
+      this.gathering.clock.setPaused(wasPaused);this.persistence?.setVisible(!document.hidden);this.leaving=false;
+      this.saveErrorPanel?.show(String(error));return;
+    }
+    // Pause only the departing view; saved games resume their original pause state.
+    this.gathering.clock.setPaused(wasPaused);
+    await this.persistence?.close();this.scene.start('MainMenuScene');
+  }
+
   private refreshSourceReachability(): void {
     this.sourceReachability.clear();
     for (const source of this.gathering.resources.listSources()) {
@@ -226,7 +301,7 @@ export class WorldScene extends Phaser.Scene {
   private renderBrood(delta:number):void {
     this.broodRefreshMs+=delta;if(this.broodRefreshMs<100)return;
     const elapsed=this.broodRefreshMs;this.broodRefreshMs=0;
-    const rooms=new Map((startingWorld.broodChambers??[]).map(room=>[room.id,room.cells]));
+    const rooms=new Map((this.saveSession!.world.broodChambers??[]).map(room=>[room.id,room.cells]));
     for(const order of this.excavation.getConstructionOrders())if(order.type.startsWith('brood-'))rooms.set(`built-${order.id}`,order.cells);
     this.broodRenderer.update(elapsed,this.gathering.queen.snapshot,rooms,this.gathering.broodSupply.getRooms(),TILE_SIZE,this.gathering.clock.secondsPerGameDay);
   }
@@ -310,41 +385,19 @@ export class WorldScene extends Phaser.Scene {
     drawWorldTileArt(this, worldMap, TILE_SIZE);
 
     const landmarkGraphics = this.add.graphics().setDepth(1);
-    const chamberLeft = nestChamberCenter.x - 5.5 * TILE_SIZE;
-    const chamberWidth = 11 * TILE_SIZE;
-    landmarkGraphics.fillStyle(0x6a503b, 1);
-    landmarkGraphics.fillRect(chamberLeft, nestChamberCenter.y + 1.5 * TILE_SIZE, chamberWidth, 4);
-
-    const storeLeft = foodStoreCenter.x - 4.5 * TILE_SIZE;
-    const storeFloor = nestChamberCenter.y + 3 * TILE_SIZE;
-    landmarkGraphics.fillStyle(0x6a503b, 1);
-    landmarkGraphics.fillRect(storeLeft, storeFloor, 9 * TILE_SIZE, 4);
-
-    const materialStoreLeft = buildingMaterialStoreCenter.x - 4 * TILE_SIZE;
-    const materialStoreFloor = buildingMaterialStoreCenter.y + 2.5 * TILE_SIZE;
-    landmarkGraphics.fillStyle(0x6a503b, 1);
-    landmarkGraphics.fillRect(materialStoreLeft, materialStoreFloor, 8 * TILE_SIZE, 4);
-    landmarkGraphics.fillRect(waterStoreCenter.x - 4.5 * TILE_SIZE, waterStoreCenter.y + 2.5 * TILE_SIZE, 9 * TILE_SIZE, 4);
-
-    Object.values(broodChamberCenters).forEach((center) => {
-      const chamberLeft = center.x - BROOD_CHAMBER_SIZE.width * TILE_SIZE / 2;
-      const chamberFloor = center.y + (BROOD_CHAMBER_SIZE.height / 2 - 0.5) * TILE_SIZE;
-      landmarkGraphics.fillStyle(0x6a503b, 1);
-      landmarkGraphics.fillRect(chamberLeft, chamberFloor, BROOD_CHAMBER_SIZE.width * TILE_SIZE, 4);
-    });
-
     drawWorldDecorations(landmarkGraphics, worldDecorations, TILE_SIZE);
   }
 
   private drawFoodMarkers(): void {
     const graphics = this.foodMarkers ??= this.add.graphics().setDepth(2);
     graphics.clear();
-    const source = this.gathering.resources.getSource('surface-food-source');
-    if (source.kind === 'unlimited' || source.amount > 0) {
-      graphics.fillStyle(0xe3aa4e, 1);
-      graphics.fillEllipse(surfaceFoodSource.x - 8, surfaceFoodSource.y + 1, 7, 5);
-      graphics.fillEllipse(surfaceFoodSource.x + 1, surfaceFoodSource.y - 1, 8, 6);
-      graphics.fillEllipse(surfaceFoodSource.x + 10, surfaceFoodSource.y + 1, 6, 5);
+    for(const source of this.gathering.resources.listSources().filter(source=>source.resource==='food')) {
+      const {x,y}=source.position;
+      graphics.lineStyle(1,0x8a956a,.7).strokeEllipse(x,y+3,28,9);
+      if(source.kind==='unlimited'||source.amount>0){
+        graphics.fillStyle(0xe3aa4e,1);
+        graphics.fillEllipse(x-8,y+1,7,5);graphics.fillEllipse(x+1,y-1,8,6);graphics.fillEllipse(x+10,y+1,6,5);
+      }
     }
 
     if (this.gathering.resources.getStore('food-store').amount > 0) {
@@ -391,13 +444,13 @@ export class WorldScene extends Phaser.Scene {
   private drawLabels(): void {
     this.add
       .text(queenChamberCenter.x, queenChamberCenter.y-28, 'KÖNIGINNENKAMMER', {
-        color: '#c8d1cd',
+        ...ROOM_LABEL_STYLE,
         fontFamily: 'system-ui, sans-serif',
-        fontSize: '8px',
+        fontSize: '9px',
         fontStyle: 'bold',
       })
-      .setOrigin(0.5)
-      .setAlpha(0.65);
+      .setOrigin(0.5).setDepth(7)
+      .setAlpha(1);
 
     const broodLabels: Array<[keyof typeof broodChamberCenters, string]> = [
       ['gathering', 'BRUTKAMMER\nSAMMELN'],
@@ -409,14 +462,14 @@ export class WorldScene extends Phaser.Scene {
       const center = broodChamberCenters[kind];
       this.add
         .text(center.x, center.y, label, {
-          color: '#c8d1cd',
+          ...ROOM_LABEL_STYLE,
           fontFamily: 'system-ui, sans-serif',
-          fontSize: '7px',
+          fontSize: '9px',
           fontStyle: 'bold',
           align: 'center',
         })
-        .setOrigin(0.5)
-        .setAlpha(0.85);
+        .setOrigin(0.5).setDepth(7)
+        .setAlpha(1);
     });
 
     this.add
@@ -426,32 +479,32 @@ export class WorldScene extends Phaser.Scene {
         fontSize: '9px',
         fontStyle: 'bold',
       })
-      .setOrigin(0.5)
+      .setOrigin(0.5).setDepth(7)
       .setAlpha(0.9);
 
     this.foodStockLabel = this.add
       .text(foodStoreCenter.x, foodStoreCenter.y - 22, 'NAHRUNG: 0.0', {
-        color: COLORS.text,
+        ...ROOM_LABEL_STYLE,
         fontFamily: 'system-ui, sans-serif',
         fontSize: '9px',
         fontStyle: 'bold',
       })
-      .setOrigin(0.5)
-      .setAlpha(0.9);
+      .setOrigin(0.5).setDepth(7)
+      .setAlpha(1);
 
     this.waterStockLabel = this.add.text(waterStoreCenter.x, waterStoreCenter.y - 22, 'WASSER: 0.0', {
-      color: COLORS.text, fontFamily: 'system-ui, sans-serif', fontSize: '9px', fontStyle: 'bold',
-    }).setOrigin(0.5).setAlpha(0.9);
+      ...ROOM_LABEL_STYLE, fontFamily: 'system-ui, sans-serif', fontSize: '9px', fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(7).setAlpha(1);
 
-    this.add
-      .text(buildingMaterialStoreCenter.x + 3 * TILE_SIZE, buildingMaterialStoreCenter.y - 22, 'BAUSTOFFLAGER', {
-        color: COLORS.text,
+    this.materialStockLabel = this.add
+      .text(buildingMaterialStoreCenter.x, buildingMaterialStoreCenter.y, 'BAUSTOFFLAGER: 0.0', {
+        ...ROOM_LABEL_STYLE,
         fontFamily: 'system-ui, sans-serif',
         fontSize: '9px',
         fontStyle: 'bold',
       })
-      .setOrigin(0.5)
-      .setAlpha(0.9);
+      .setOrigin(0.5).setDepth(7)
+      .setAlpha(1);
 
     this.add
       .text(stoneOutcropCenter.x, stoneOutcropCenter.y - 5 * TILE_SIZE, 'STEIN', {
@@ -460,7 +513,7 @@ export class WorldScene extends Phaser.Scene {
         fontSize: '10px',
         fontStyle: 'bold',
       })
-      .setOrigin(0.5)
+      .setOrigin(0.5).setDepth(7)
       .setAlpha(0.9);
 
     const centerColumn = Math.floor(nestChamberCenter.x / TILE_SIZE);
@@ -500,7 +553,7 @@ export class WorldScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(10).setWordWrapWidth(600);
 
-    this.add.text(18, 337, 'Karte ziehen: verschieben · Bauen: Pinsel / Rechteck', {
+    this.add.text(18, 337, 'Karte ziehen · Beim Zeichnen am Kartenrand halten: weiterrollen', {
       color: COLORS.text, fontFamily: 'system-ui, sans-serif', fontSize: '9px',
     }).setScrollFactor(0).setDepth(10);
 
@@ -570,6 +623,61 @@ export class WorldScene extends Phaser.Scene {
     camera.setScroll(routeCenterX - camera.width / 2, initialCameraY);
   }
 
+  private refreshMapText(): void {
+    for (const object of this.children.list) {
+      if (!(object instanceof Phaser.GameObjects.Text) || object.scrollFactorX === 0) continue;
+      // Keep the original world font size; the camera scales room text naturally.
+      object.setScale(1).setVisible(true);
+    }
+  }
+
+  private separateHudCamera(): void {
+    const worldCamera = this.cameras.main;
+    this.hudCamera = this.cameras.add(0, 0, 640, 360, false, 'hud');
+    const classify = (object: Phaser.GameObjects.GameObject) => {
+      const fixed = object as Phaser.GameObjects.GameObject & {scrollFactorX?: number; scrollFactorY?: number};
+      if (fixed.scrollFactorX === 0 && fixed.scrollFactorY === 0) worldCamera.ignore(object);
+      else this.hudCamera.ignore(object);
+    };
+    this.children.list.forEach(classify);
+    this.events.on(Phaser.Scenes.Events.ADDED_TO_SCENE, classify);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.events.off(Phaser.Scenes.Events.ADDED_TO_SCENE, classify));
+  }
+  private setWorldZoom(value: number, x = 320, y = 210): void {
+    const camera = this.cameras.main;
+    const before = camera.getWorldPoint(x, y);
+    camera.setZoom(closestWorldZoom(value));
+    camera.preRender();
+    const after = camera.getWorldPoint(x, y);
+    camera.scrollX = camera.clampX(camera.scrollX + before.x - after.x);
+    camera.scrollY = camera.clampY(camera.scrollY + before.y - after.y);
+    camera.scrollX = Math.round(camera.scrollX * camera.zoom) / camera.zoom;
+    camera.scrollY = Math.round(camera.scrollY * camera.zoom) / camera.zoom;
+    camera.preRender();
+    this.zoomLabel.setText(`${Math.round(camera.zoom * 100)} %`);
+    this.refreshMapText();
+    this.renderDigPreview();
+  }
+  private createZoomControls(): void {
+    this.zoomLabel = this.add.text(566, 293, '100 %', {color: COLORS.text, fontFamily: 'system-ui, sans-serif', fontSize: '10px', backgroundColor: '#25231e'})
+      .setOrigin(.5).setScrollFactor(0).setDepth(22);
+    for (const [x, text, zoom] of [[524, '−', -1], [609, '+', 1]] as const) {
+      const button = this.add.text(x, 293, text, {color: COLORS.text, backgroundColor: '#39352e', fontFamily: 'system-ui, sans-serif', fontSize: '16px', padding: {x: 8, y: 1}})
+        .setOrigin(.5).setScrollFactor(0).setDepth(22).setInteractive({useHandCursor: true});
+      button.on(Phaser.Input.Events.POINTER_DOWN, (_pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
+        event.stopPropagation(); this.setWorldZoom(nextWorldZoom(this.cameras.main.zoom, zoom));
+      });
+    }
+    this.zoomLabel.setInteractive({useHandCursor: true}).on(Phaser.Input.Events.POINTER_DOWN,
+      (_pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {event.stopPropagation();this.setWorldZoom(1);});
+    const wheel = (pointer: Phaser.Input.Pointer, _objects: Phaser.GameObjects.GameObject[], _dx: number, dy: number) => {
+      if (pointer.y > (this.economyHud.collapsed ? 34 : 110) && pointer.y < 310 && !this.constructionPanel.isOpen && !this.workforcePanel.isOpen)
+        this.setWorldZoom(nextWorldZoom(this.cameras.main.zoom, dy > 0 ? -1 : 1), pointer.x, pointer.y);
+    };
+    this.input.on(Phaser.Input.Events.POINTER_WHEEL, wheel);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.input.off(Phaser.Input.Events.POINTER_WHEEL, wheel));
+  }
+
   private enableCameraDrag(): void {
     this.input.setDefaultCursor('grab');
     this.input.on(Phaser.Input.Events.POINTER_DOWN, this.startDrag, this);
@@ -584,10 +692,11 @@ export class WorldScene extends Phaser.Scene {
     });
   }
 
-  private startDraft(type: PlanType): void {
-    this.planType = type; this.planning = true; this.drawingTool = 'brush';
+  private startDraft(type: PlanType, size: TemplateSize = 'free'): void {
+    this.templateSize = type === 'tunnel' ? 'free' : size;
+    this.planType = type; this.planning = true; this.drawingTool = this.templateSize === 'free' ? 'brush' : 'template';
     this.draftCells = []; this.previewCells = []; this.dragMode = 'none';
-    this.renderDigPreview(); this.constructionPanel.showDraft(type);
+    this.constructionPanel.showDraft(type, this.templateSize); this.renderDigPreview();
   }
   private confirmDraft(): void {
     const id = this.excavation.addOrder(this.draftCells, this.planType);
@@ -599,20 +708,43 @@ export class WorldScene extends Phaser.Scene {
   }
   private startDrag(pointer: Phaser.Input.Pointer): void {
     if (!pointer.isDown || pointer.event?.target !== this.game.canvas || this.workforcePanel.isOpen || this.constructionPanel.isOpen
-      || isEconomyHudPoint(pointer.x, pointer.y) || pointer.y >= 310) return;
+      || isEconomyHudPoint(pointer.x, pointer.y, this.economyHud.collapsed) || pointer.y >= 310) return;
     const cell = this.pointerCell(pointer);
     this.dragMoved = false;
     this.dragOrigin = { x: pointer.x, y: pointer.y };
     if (this.planning && this.drawingTool !== 'pan' && cell) {
-      this.dragMode = 'dig'; this.digStart = cell; this.lastBrushCell = cell; this.previewCells = [cell];
+      this.dragMode = 'dig'; this.digStart = cell; this.lastBrushCell = cell;
+      this.previewCells = this.drawingTool === 'template' && this.templateSize !== 'free' ? squareTemplate(this.planType, this.templateSize, cell) : [cell];
       this.renderDigPreview(); this.input.setDefaultCursor('crosshair'); return;
     }
     this.dragMode = 'camera'; this.lastPointerX = pointer.x; this.lastPointerY = pointer.y;
     this.input.setDefaultCursor('grabbing');
   }
+  private panWhileDrawing(seconds: number): void {
+    const pointer=this.input.activePointer;
+    if(!this.planning || this.dragMode!=='dig' || !pointer.isDown || this.drawingTool==='pan'
+      || this.constructionPanel.isOpen || this.workforcePanel.isOpen)return;
+    const velocity=planningEdgePan(pointer.x,pointer.y,this.economyHud.collapsed?34:110);
+    if(!velocity.x && !velocity.y)return;
+    const camera=this.cameras.main,step=Math.min(seconds,.25)/camera.zoom;
+    camera.scrollX=camera.clampX(camera.scrollX+velocity.x*step);
+    camera.scrollY=camera.clampY(camera.scrollY+velocity.y*step);
+    camera.scrollX=Math.round(camera.scrollX*camera.zoom)/camera.zoom;
+    camera.scrollY=Math.round(camera.scrollY*camera.zoom)/camera.zoom;
+    camera.preRender();
+    this.moveCamera(pointer);
+  }
+
   private moveCamera(pointer: Phaser.Input.Pointer): void {
+    if (this.planning && this.drawingTool === 'template' && this.templateSize !== 'free'
+      && this.dragMode !== 'camera' && !this.constructionPanel.isOpen && !this.workforcePanel.isOpen
+      && pointer.y > (this.economyHud.collapsed ? 34 : 110) && pointer.y < 310 && (!this.draftCells.length || pointer.isDown)) {
+      const cell = this.pointerCell(pointer);
+      if (cell) { this.previewCells = squareTemplate(this.planType, this.templateSize, cell); this.renderDigPreview(); }
+      return;
+    }
     if (this.dragMode === 'dig' && this.digStart && pointer.isDown) {
-      if (isEconomyHudPoint(pointer.x, pointer.y) || pointer.y >= 310) return;
+      if (isEconomyHudPoint(pointer.x, pointer.y, this.economyHud.collapsed) || pointer.y >= 310) return;
       const endpoint = this.pointerCell(pointer);
       if (endpoint) {
         this.previewCells = this.drawingTool === 'rectangle' ? rectangleSelection(this.digStart, endpoint)
@@ -626,14 +758,16 @@ export class WorldScene extends Phaser.Scene {
     const dx = this.lastPointerX - pointer.x, dy = this.lastPointerY - pointer.y;
     if (Math.hypot(pointer.x - this.dragOrigin.x, pointer.y - this.dragOrigin.y) > 3) this.dragMoved = true;
     const camera = this.cameras.main;
-    camera.scrollX = Phaser.Math.Clamp(camera.scrollX + dx, 0, Math.max(0, worldSize.width - camera.width));
-    camera.scrollY = Phaser.Math.Clamp(camera.scrollY + dy, 0, Math.max(0, worldSize.height - camera.height));
+    camera.scrollX = Phaser.Math.Clamp(camera.scrollX + dx / camera.zoom, (camera.width / camera.zoom - camera.width) / 2, worldSize.width - (camera.width / camera.zoom + camera.width) / 2);
+    camera.scrollY = Phaser.Math.Clamp(camera.scrollY + dy / camera.zoom, (camera.height / camera.zoom - camera.height) / 2, worldSize.height - (camera.height / camera.zoom + camera.height) / 2);
+    camera.scrollX = Math.round(camera.scrollX * camera.zoom) / camera.zoom;
+    camera.scrollY = Math.round(camera.scrollY * camera.zoom) / camera.zoom;
     this.lastPointerX = pointer.x; this.lastPointerY = pointer.y;
   }
   private stopDrag(pointer: Phaser.Input.Pointer): void {
-    const insideMap = pointer.x >= 0 && pointer.x < 640 && pointer.y > 110 && pointer.y < 310;
+    const insideMap = pointer.x >= 0 && pointer.x < 640 && pointer.y > (this.economyHud.collapsed ? 34 : 110) && pointer.y < 310;
     if (this.dragMode === 'dig' && insideMap) {
-      this.draftCells = mergeSelection(this.draftCells, this.previewCells);
+      this.draftCells = this.drawingTool === 'template' ? this.previewCells.map(cell => ({...cell})) : mergeSelection(this.draftCells, this.previewCells);
       this.constructionPanel.updateDraft(this.draftCells.length);
     } else if (this.dragMode === 'camera' && !this.dragMoved && !this.planning && insideMap) {
       const cell = this.pointerCell(pointer);
@@ -663,11 +797,19 @@ export class WorldScene extends Phaser.Scene {
 
   private renderDigPreview(): void {
     this.digPreviewGraphics.clear();
-    const cells = mergeSelection(this.draftCells, this.previewCells);
+    const cells = this.drawingTool === 'template' && this.previewCells.length ? this.previewCells : mergeSelection(this.draftCells, this.previewCells);
+    const validation = this.excavation.validateOrder(cells, this.planType);
+    if (this.planning) {
+      const unit = this.planType.startsWith('brood-') ? 'Brutplätze' : this.planType === 'rest' ? 'Ruheplätze' : 'Einheiten';
+      const summary = `${cells.length} Kacheln · ${chamberCapacity(this.planType, cells.length)} ${unit} · ${constructionMaterialEstimate(this.planType, cells.length)} Baumaterial`;
+      this.constructionPanel.updateDraft(cells.length, validation.valid ? summary : validation.message, validation.valid && this.draftCells.length > 0);
+    }
+    this.digPreviewGraphics.lineStyle(2, 0xf27260, 1);
+    for (const conflict of validation.conflicts) this.digPreviewGraphics.strokeRect(conflict.column*TILE_SIZE+1, conflict.row*TILE_SIZE+1,TILE_SIZE-2,TILE_SIZE-2);
     cells.forEach(({ column, row }, index) => {
-      const cell = worldMap[row][column];
-      const invalid = !terrainDefinitions[cell.terrain].diggable;
-      const blockedByHardness = isDiggableTile(cell)
+      const cell = worldMap[row]?.[column];
+      const invalid = !validation.valid || !cell;
+      const blockedByHardness = !!cell && isDiggableTile(cell)
         && this.requiredGrade({ column, row }) > this.diggingGrade;
       this.digPreviewGraphics.fillStyle(blockedByHardness || invalid ? 0xd86654 : 0xf0c66d, 0.45);
       this.digPreviewGraphics.fillRect(
@@ -702,7 +844,13 @@ export class WorldScene extends Phaser.Scene {
   private updateConstruction(): void {
     const orders = this.excavation.getConstructionOrders();
     this.constructionPanel.update(orders);
-    const signature = orders.map(order => `${order.id}:${order.status}:${order.blockReason}:${order.excavated}`).join('|');
+    const storeIds = new Map(this.excavation.chambers.getChambers().filter(room => room.storeId).map(room => [room.id, room.storeId!]));
+    setSmoothRoomArt(this,worldMap,worldMap.flatMap((tiles,row)=>tiles.flatMap((tile,column)=>tile.state==='open'?[{column,row}]:[])));
+    this.furnishingRenderer.update([...this.startingFurnishings.map(room=>({...room,stock:room.storeId?this.gathering.resources.getStore(room.storeId):undefined})), ...orders.filter(order => order.status !== 'cancelled').map(order => ({...order,
+      stock: storeIds.has(order.id) ? this.gathering.resources.getStore(storeIds.get(order.id)!) : undefined,
+    }))]);
+    if (this.planning) this.renderDigPreview();
+    const signature = orders.map(order => `${order.id}:${order.status}:${order.blockReason}:${order.excavated}:${order.materialUsed}:${storeIds.has(order.id) ? this.gathering.resources.getStore(storeIds.get(order.id)!).amount : ''}`).join('|');
     if (signature === this.constructionSignature) return;
     this.constructionSignature = signature; this.constructionGraphics.clear();
     const visible = new Set<number>();
@@ -711,7 +859,7 @@ export class WorldScene extends Phaser.Scene {
       visible.add(order.id);
       const color = order.operational ? 0x8ebc83 : order.status === 'blocked' ? 0xd86654 : order.paused ? 0xb99d65
         : order.status === 'awaitingFurnishing' ? 0x80ccd4 : 0xf0c66d;
-      this.constructionGraphics.fillStyle(color, .12).lineStyle(1, color, .8);
+      this.constructionGraphics.fillStyle(color, order.status === 'furnished' ? 0 : .08).lineStyle(1, color, order.status === 'furnished' ? 0 : .55);
       for (const cell of order.cells) {
         this.constructionGraphics.fillRect(cell.column * TILE_SIZE + 1, cell.row * TILE_SIZE + 1, TILE_SIZE - 2, TILE_SIZE - 2);
         this.constructionGraphics.strokeRect(cell.column * TILE_SIZE + 1, cell.row * TILE_SIZE + 1, TILE_SIZE - 2, TILE_SIZE - 2);
@@ -723,13 +871,20 @@ export class WorldScene extends Phaser.Scene {
           color: COLORS.text, backgroundColor: '#25231e', fontFamily: 'system-ui, sans-serif', fontSize: '8px', padding: { x: 3, y: 2 },
         }).setOrigin(.5, 1).setDepth(7); this.constructionLabels.set(order.id, label);
       }
-      label.setText(`#${order.id} ${constructionStatusLabel(order)}`);
+      if (order.status === 'furnished') {
+        const storeId = storeIds.get(order.id);
+        const stock = storeId ? this.gathering.resources.getStore(storeId) : undefined;
+        const centerX = (Math.min(...order.cells.map(cell => cell.column)) + Math.max(...order.cells.map(cell => cell.column)) + 1) * TILE_SIZE / 2;
+        const centerY = (Math.min(...order.cells.map(cell => cell.row)) + Math.max(...order.cells.map(cell => cell.row)) + 1) * TILE_SIZE / 2;
+        label.setStyle(ROOM_LABEL_STYLE).setPadding(0).setPosition(centerX, centerY - 22).setOrigin(.5).setText(PLAN_LABELS[order.type].toLocaleUpperCase('de-DE') + (stock ? `\n${stock.amount.toFixed(1)} / ${stock.capacity}` : ''));
+      } else label.setText(`#${order.id} ${constructionStatusLabel(order)}`);
     }
     for (const [id, label] of this.constructionLabels) if (!visible.has(id)) { label.destroy(); this.constructionLabels.delete(id); }
   }
 
   private syncBuilderVisuals(): void {
-    const workers = new Map(this.excavation.getBuilders().map(worker => [worker.id, worker]));
+    const snapshots = new Map(this.gathering.getWorkers().map(worker => [worker.id, worker]));
+    const workers = new Map(this.excavation.getBuilders().map(worker => [worker.id, {...worker, position: snapshots.get(worker.id)?.position ?? worker.position}]));
     for (const worker of workers.values()) {
       if (!this.builderWorkers.some(visual => visual.id === worker.id)) this.createBuilderWorker(worker.id, worker.position);
     }

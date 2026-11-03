@@ -3,7 +3,7 @@ import type { ResourceAmount } from './resourceTypes.ts';
 import { AdultSupplySystem } from './adultSupplySystem.ts';
 import { createGatheringSimulation } from './gatheringSimulation.ts';
 import { ADULT_SUPPLY_CONFIG, SIMULATION_CONFIG } from './simulationConfig.ts';
-import type { AdultSupplyConfig, SimulationConfig } from './simulationConfig.ts';
+import type { AdultSupplyConfig, SimulationConfig, QueenConfig, BroodConfig } from './simulationConfig.ts';
 import { CHAMBER_CONFIG } from './simulationConfig.ts';
 import { QueenSystem } from './queenSystem.ts';
 import type { BroodRoom, BirthEvent } from './queenSystem.ts';
@@ -16,6 +16,7 @@ export type ColonyWorkerAdapter = {
   retireOtherWorker: (id: string) => void;
   advanceOtherWorkers: (realSeconds: number, workFactor: number) => void;
   broodChambers?: () => BroodRoom[];
+  restingInChambers?: () => number;
   effectiveNurses?: () => number;
   birthWorker?: (birth: BirthEvent) => void;
 };
@@ -30,10 +31,11 @@ export function createColonySimulation(
   workers: ColonyWorkerAdapter = noOtherWorkers,
   config: SimulationConfig = SIMULATION_CONFIG,
   supplyConfig: AdultSupplyConfig = ADULT_SUPPLY_CONFIG,
+  lifecycle: {queenConfig?: QueenConfig; broodConfig?: BroodConfig; restoring?:boolean} = {},
 ) {
-  const simulation = createGatheringSimulation(world, config);
+  const simulation = createGatheringSimulation(world, config, undefined, !lifecycle.restoring);
   const supply = new AdultSupplySystem(simulation.resources, supplyConfig);
-  const queen = new QueenSystem();
+  const queen = new QueenSystem(lifecycle.queenConfig, lifecycle.broodConfig);
   const broodSupply = new BroodSupplySystem(simulation.resources,simulation.navigation);
   let topology = -1, startingRooms: BroodRoom[] = [];
   const broodRooms = (includeAdditional = true): BroodRoom[] => {
@@ -56,11 +58,16 @@ export function createColonySimulation(
     return [...startingRooms, ...(includeAdditional ? workers.broodChambers?.() ?? [] : [])];
   };
   // Dynamic builder adapters are initialized by the caller after construction.
-  queen.advance(0, supply.snapshot.eggFactor, broodRooms(false));
+  if (!lifecycle.restoring) queen.advance(0, supply.snapshot.eggFactor, broodRooms(false));
   broodSupply.syncRooms(queen.getLarvalRooms());
   const droppedLoads: DroppedResourceLoad[] = [];
   return {
     ...simulation, supply, queen, broodSupply,
+    exportColonyState: () => structuredClone({droppedLoads}),
+    restoreColonyState(state: {droppedLoads: DroppedResourceLoad[]}) {
+      droppedLoads.splice(0, droppedLoads.length, ...structuredClone(state.droppedLoads));
+      topology = -1;
+    },
     getDroppedLoads: () => [...droppedLoads,...broodSupply.getDroppedLoads()].map(drop => ({ ...drop, position: { ...drop.position }, load: { ...drop.load } })),
     advance(realSeconds: number) {
       return simulation.advance(realSeconds, {
@@ -77,6 +84,7 @@ export function createColonySimulation(
           const result = supply.advance(gameDays, {
             activeWorkers: collectors.length + other.length - resting,
             restingWorkers: resting,
+            restingInChambers: workers.restingInChambers?.() ?? 0,
             queens: 1, // The existing queen is counted separately from workers.
           });
           queen.advance(gameDays, eggFactor, broodRooms(), (workers.effectiveNurses?.() ?? 0) * factor,

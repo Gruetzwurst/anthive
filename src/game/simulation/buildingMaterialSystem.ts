@@ -6,6 +6,20 @@ export type MaterialPile = { id: string; position: WorldPoint; amount: number };
 
 /** Material at physical sites and on carriers; stocks remain in A1 stores. */
 export class BuildingMaterialSystem {
+  /** Complete internal state, detached from the live simulation; not a HUD snapshot. */
+  exportState() { return structuredClone({ capacity: this.capacity, piles: this.piles, carriers: this.carriers, sites: this.sites, nextId: this.nextId, initial: this.initial, produced: this.produced, consumed: this.consumed }); }
+  restoreState(state: ReturnType<BuildingMaterialSystem['exportState']>): void {
+    const copy = structuredClone(state);
+    this.capacity = copy.capacity;
+    this.piles = copy.piles;
+    this.carriers = copy.carriers;
+    this.sites = copy.sites;
+    this.nextId = copy.nextId;
+    this.initial = copy.initial;
+    this.produced = copy.produced;
+    this.consumed = copy.consumed;
+  }
+
   private resources: ResourceSystem;
   private capacity: number;
   private piles = new Map<string, MaterialPile>();

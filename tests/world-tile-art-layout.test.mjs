@@ -146,3 +146,11 @@ test('the full in-game art map covers all existing layers and start-nest branche
     assert.ok(frame === -1 || (frame >= 0 && frame < TILEMAP_ART_ATLAS_FRAME_COUNT));
   }));
 });
+
+test('furnished room walls meet solid terrain directly without the old tunnel-colored lip',()=>{
+ const tiles=Array.from({length:3},()=>Array.from({length:3},()=>solid('topsoil')));tiles[1][1]=open;
+ assert.ok(getTileArtInstruction(tiles,0,1).wall);
+ const smooth=getTileArtInstruction(tiles,0,1,new Set(['1,1']));
+ assert.equal(smooth.wall,null);assert.equal(smooth.corner,null);assert.ok(smooth.groundFrame>=0);
+ assert.ok(getTileArtInstruction(tiles,0,1,new Set()).wall,'ordinary tunnels keep their original edges');
+});

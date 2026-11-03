@@ -16,6 +16,14 @@ function validAssignment(value: WorkAssignment): void {
 
 /** Durable identity/specialization and player assignments, not a job scheduler. */
 export class WorkforceSystem {
+  /** Complete internal state, detached from the live simulation; not a HUD snapshot. */
+  exportState() { return structuredClone({ workers: this.workers, foreignEfficiency: this.foreignEfficiency }); }
+  restoreState(state: ReturnType<WorkforceSystem['exportState']>): void {
+    const copy = structuredClone(state);
+    this.workers = copy.workers;
+    this.foreignEfficiency = copy.foreignEfficiency;
+  }
+
   private workers = new Map<string, WorkforceWorker>();
   private foreignEfficiency: number;
 

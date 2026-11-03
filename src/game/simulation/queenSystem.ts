@@ -17,6 +17,25 @@ const EPS = 1e-9;
 
 /** Queen, individual brood stages and atomic allocation share one event timeline. */
 export class QueenSystem {
+  /** Complete internal state, detached from the live simulation; not a HUD snapshot. */
+  exportState() { return structuredClone({ config: this.config, quotas: this.quotas, credits: this.credits, rooms: this.rooms, eggs: this.eggs, buffer: this.buffer, progress: this.progress, eggFactor: this.eggFactor, broodConfig: this.broodConfig, births: this.births, effectiveNurses: this.effectiveNurses, queenOrigin: this.queenOrigin }); }
+  restoreState(state: ReturnType<QueenSystem['exportState']>): void {
+    const copy = structuredClone(state);
+    this.config = copy.config;
+    this.quotas = copy.quotas;
+    this.credits = copy.credits;
+    this.rooms = copy.rooms;
+    this.eggs = copy.eggs;
+    this.buffer = copy.buffer;
+    this.progress = copy.progress;
+    this.eggFactor = copy.eggFactor;
+    this.broodConfig = copy.broodConfig;
+    this.births = copy.births;
+    this.effectiveNurses = copy.effectiveNurses;
+    this.queenOrigin = copy.queenOrigin;
+    this.buffer = copy.buffer.map(egg => this.eggs.find(item => item.id === egg.id)!);
+  }
+
   private config: QueenConfig;
   private quotas: EggQuotas;
   private credits: EggQuotas = {gathering: 0, building: 0, care: 0, combat: 0};

@@ -1,8 +1,10 @@
+import { RestSystem } from './restSystem.ts';
+import type { RestChamber, RestSnapshot } from './restSystem.ts';
 import type { StartingWorld, WorldPoint } from '../world/worldTypes.ts';
 import { createColonySimulation } from './colonySimulation.ts';
 import { WorkforceSystem } from './workforceSystem.ts';
 import type { Specialization, WorkAssignment, WorkforceWorker } from './workforceSystem.ts';
-import type { SimulationConfig, AdultSupplyConfig } from './simulationConfig.ts';
+import type { SimulationConfig, AdultSupplyConfig, QueenConfig, BroodConfig } from './simulationConfig.ts';
 import type { ResourceSystem } from './resourceSystem.ts';
 import type { TunnelTrafficSystem } from './tunnelTrafficSystem.ts';
 import type { BroodRoom } from './queenSystem.ts';
@@ -16,12 +18,15 @@ export type WorkforceBuilderAdapter = {
   retireWorker: (id: string) => void;
   advanceWorkers: (realSeconds: number, workFactor: number) => void;
   broodChambers?: () => BroodRoom[];
+  restChambers?: () => RestChamber[];
+  repositionWorker?: (id: string, position: WorldPoint) => boolean;
 };
 type EngineState = { engine: 'gathering' | 'building' | 'care' | 'parked'; position: WorldPoint };
 export type WorkforceSnapshot = WorkforceWorker & {
   position: WorldPoint;
   actualWork: WorkAssignment;
   resting: boolean;
+  rest?: RestSnapshot;
   pending: boolean;
   load?: ResourceAmount | null;
   eggId?:string|null;
@@ -34,9 +39,10 @@ export function createWorkforceSimulation(
   builderSource: WorkforceBuilderAdapter | ((resources: ResourceSystem, traffic: TunnelTrafficSystem) => WorkforceBuilderAdapter),
   config?: SimulationConfig,
   supplyConfig?: AdultSupplyConfig,
-  options: {eggTransport:boolean} = {eggTransport:true},
+  options: {eggTransport:boolean; startingCareWorkers?:number; queenConfig?:QueenConfig; broodConfig?:BroodConfig; restoring?:boolean} = {eggTransport:true},
 ) {
   let builders: WorkforceBuilderAdapter;
+  let rest: RestSystem;
   const workforce = new WorkforceSystem();
   const states = new Map<string, EngineState>();
   const home = world.landmarks.nestChamberCenter;
@@ -49,28 +55,31 @@ export function createWorkforceSimulation(
       reconcile();
     },
     broodChambers: () => builders?.broodChambers?.() ?? [],
+    restingInChambers: () => getWorkers().filter(worker => worker.resting && worker.rest?.occupied).length,
     otherWorkers: () => {
       const activeBuilders = new Map(builders.workers().map(worker => [worker.id, worker]));
       const nurses = new Map(simulation.broodSupply.getNurses().map(worker=>[worker.id,worker]));
       const careActive = simulation.queen.hasDevelopingBrood;
       return workforce.getWorkers().filter(worker => states.get(worker.id)?.engine !== 'gathering').map(worker => ({
-        id: worker.id, resting: states.get(worker.id)?.engine === 'care' && (careActive || nurses.get(worker.id)?.active) ? false : activeBuilders.get(worker.id)?.resting ?? true,
+        id: worker.id, resting: rest?.get(worker.id) ? true : states.get(worker.id)?.engine === 'care' && (careActive || nurses.get(worker.id)?.active) ? false : activeBuilders.get(worker.id)?.resting ?? true,
         position: nurses.get(worker.id)?.position ?? activeBuilders.get(worker.id)?.position ?? states.get(worker.id)!.position,
       }));
     },
     retireOtherWorker: id => {
       if (states.get(id)?.engine === 'building') builders.retireWorker(id);
       if (states.get(id)?.engine === 'care') simulation.broodSupply.removeNurse(id);
-      workforce.removeWorker(id); states.delete(id);
+      rest?.release(id);workforce.removeWorker(id); states.delete(id);
     },
     advanceOtherWorkers: (seconds, factor) => {
       builders.advanceWorkers(seconds, factor);
       reconcile();
       simulation.broodSupply.advanceWorkers(seconds,factor,id=>workforce.efficiency(id,'care'));
       reconcile();
+      advanceRest(seconds);
     },
-  }, config, supplyConfig);
+  }, config, supplyConfig, options);
   builders = typeof builderSource === 'function' ? builderSource(simulation.resources, simulation.traffic) : builderSource;
+  rest = new RestSystem(simulation.navigation,world.dimensions.tileSize);
   if(options.eggTransport){simulation.queen.requireEggTransport(world.landmarks.queenChamberCenter);simulation.broodSupply.setEggTransport(simulation.queen);}
   for (const collector of simulation.gathering.getCollectors()) {
     workforce.addWorker(collector.id, 'gathering');
@@ -81,6 +90,15 @@ export function createWorkforceSimulation(
     states.set(builder.id, { engine: 'building', position: { ...builder.position } });
   }
 
+  const startingCareWorkers = options.restoring ? 0 : options.startingCareWorkers ?? 0;
+  if (!Number.isInteger(startingCareWorkers) || startingCareWorkers < 0) throw new RangeError('Invalid starting care workforce');
+  for (let i = 0; i < startingCareWorkers; i++) {
+    const id = `nurse-${i}`;
+    workforce.addWorker(id, 'care');
+    states.set(id, {engine: 'parked', position: {...world.landmarks.queenChamberCenter}});
+  }
+  reconcile();
+
   function reconcile(): void {
     const collectors = new Map(simulation.gathering.getCollectors().map(worker => [worker.id, worker]));
     const activeBuilders = new Map(builders.workers().map(worker => [worker.id, worker]));
@@ -89,7 +107,7 @@ export function createWorkforceSimulation(
       const state = states.get(worker.id)!;
       if (state.engine === 'gathering') {
         const collector = collectors.get(worker.id);
-        if (!collector) { workforce.removeWorker(worker.id); states.delete(worker.id); continue; }
+        if (!collector) { rest?.release(worker.id);workforce.removeWorker(worker.id); states.delete(worker.id); continue; }
         state.position = { ...collector.position };
         simulation.gathering.setWorkEfficiency(worker.id, workforce.efficiency(worker.id, 'gathering'));
         simulation.gathering.setCollectingEnabled(worker.id, worker.assignment === 'gathering', home);
@@ -99,7 +117,7 @@ export function createWorkforceSimulation(
         }
       } else if (state.engine === 'building') {
         const builder = activeBuilders.get(worker.id);
-        if (!builder) { workforce.removeWorker(worker.id); states.delete(worker.id); continue; }
+        if (!builder) { rest?.release(worker.id);workforce.removeWorker(worker.id); states.delete(worker.id); continue; }
         state.position = { ...builder.position };
         if (worker.assignment !== 'building' && (builder.readyToLeave ?? builder.resting)) {
           builders.removeWorker(worker.id);
@@ -107,7 +125,7 @@ export function createWorkforceSimulation(
         }
       } else if (state.engine==='care') {
         const nurse=nurses.get(worker.id);
-        if (!nurse) {workforce.removeWorker(worker.id);states.delete(worker.id);continue;}
+        if (!nurse) {rest?.release(worker.id);workforce.removeWorker(worker.id);states.delete(worker.id);continue;}
         state.position={...nurse.position};simulation.broodSupply.setNursingEnabled(worker.id,worker.assignment==='care');
         if(worker.assignment!=='care' && nurse.readyToLeave){simulation.broodSupply.removeNurse(worker.id);state.engine='parked';}
       }
@@ -126,6 +144,31 @@ export function createWorkforceSimulation(
     }
   }
 
+  function advanceRest(seconds: number): void {
+    const chambers=builders.restChambers?.()??[];
+    if(!chambers.length && !rest.size)return;
+    const collectors=new Map(simulation.gathering.getCollectors().map(worker=>[worker.id,worker]));
+    const currentBuilders=new Map(builders.workers().map(worker=>[worker.id,worker]));
+    const nurses=new Map(simulation.broodSupply.getNurses().map(worker=>[worker.id,worker]));
+    const idle=workforce.getWorkers().flatMap(worker=>{
+      const state=states.get(worker.id)!;
+      if(state.engine!=='parked' && state.engine!==worker.assignment)return [];
+      const collector=collectors.get(worker.id),builder=currentBuilders.get(worker.id),nurse=nurses.get(worker.id);
+      const eligible=state.engine==='parked' || (state.engine==='gathering' && collector?.phase==='idle' && !collector.load)
+        || (state.engine==='building' && builder?.resting && (builder.readyToLeave??true) && !!builders.repositionWorker)
+        || (state.engine==='care' && nurse?.readyToLeave);
+      return eligible ? [{id:worker.id,position:collector?.position??builder?.position??nurse?.position??state.position}] : [];
+    });
+    rest.advance(seconds,chambers,idle,(id,position)=>{
+      const state=states.get(id)!;
+      const moved=state.engine==='gathering' ? simulation.gathering.repositionIdleWorker(id,position)
+        : state.engine==='care' ? simulation.broodSupply.repositionIdleWorker(id,position)
+        : state.engine==='building' ? builders.repositionWorker?.(id,position)??false : true;
+      if(moved)state.position={...position};
+      return moved;
+    });
+  }
+
   function getWorkers(): WorkforceSnapshot[] {
     const collectors = new Map(simulation.gathering.getCollectors().map(worker => [worker.id, worker]));
     const activeBuilders = new Map(builders.workers().map(worker => [worker.id, worker]));
@@ -137,7 +180,8 @@ export function createWorkforceSimulation(
       const nurse=nurses.get(worker.id),careActive = state.engine === 'care' && (hasBrood || !!nurse?.active);
       const actualWork = state.engine==='care' ? careActive?'care':'rest' : state.engine === 'parked' ? 'rest' : state.engine;
       return { ...worker, position: { ...(nurse?.position ?? collector?.position ?? builder?.position ?? state.position) }, actualWork,load:nurse?.load,eggId:nurse?.eggId,
-        resting: careActive ? false : state.engine === 'parked' || (collector ? collector.phase === 'idle' || collector.phase === 'waiting' : builder?.resting ?? true),
+        rest: rest?.get(worker.id),
+        resting: rest?.get(worker.id) ? true : careActive ? false : state.engine === 'parked' || (collector ? collector.phase === 'idle' || collector.phase === 'waiting' : builder?.resting ?? true),
         pending: state.engine==='care' ? worker.assignment!=='care' : state.engine !== 'parked' && actualWork !== worker.assignment,
       };
     });
@@ -145,8 +189,15 @@ export function createWorkforceSimulation(
 
   return {
     ...simulation, workforce, getWorkers,
+    exportWorkforceState: () => structuredClone({states, rest: rest.exportState()}),
+    restoreWorkforceState(state: {states: Map<string, EngineState>; rest: ReturnType<RestSystem['exportState']>}) {
+      states.clear(); for (const [id, value] of structuredClone(state.states)) states.set(id, value);
+      rest.restoreState(state.rest);
+    },
     moveWorkers(specialization: Specialization, from: WorkAssignment, to: WorkAssignment, count: number) {
+      const before=new Map(workforce.getWorkers().map(worker=>[worker.id,worker.assignment]));
       workforce.moveWorkers(specialization, from, to, count);
+      for(const worker of workforce.getWorkers())if(before.get(worker.id)!==worker.assignment)rest.release(worker.id);
       reconcile();
     },
     advance(realSeconds: number) {

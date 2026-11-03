@@ -8,6 +8,14 @@ export type LarvalLoss={roomId:string;count:number};
 
 /** Per-room history; no resources or independent clock live here. */
 export class LarvalShortageSystem {
+  /** Complete internal state, detached from the live simulation; not a HUD snapshot. */
+  exportState() { return structuredClone({ config: this.config, rooms: this.rooms }); }
+  restoreState(state: ReturnType<LarvalShortageSystem['exportState']>): void {
+    const copy = structuredClone(state);
+    this.config = copy.config;
+    this.rooms = copy.rooms;
+  }
+
   private rooms=new Map<string,State>();
   private config:LarvalShortageConfig;
   constructor(config:LarvalShortageConfig=LARVAL_SHORTAGE_CONFIG){

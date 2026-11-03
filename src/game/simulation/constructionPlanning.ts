@@ -1,6 +1,6 @@
 import type { WorldCellCoordinate as Cell } from '../world/worldTypes.ts';
 import { cardinalNeighbors, cellKey } from '../world/gridPathfinding.ts';
-import { CONSTRUCTION_CONFIG } from './simulationConfig.ts';
+import { CONSTRUCTION_CONFIG, CHAMBER_BUILD_CONFIG } from './simulationConfig.ts';
 
 export const PLAN_TYPES = ['tunnel', 'food', 'water', 'buildingMaterial', 'brood-gathering', 'brood-building', 'brood-care', 'brood-combat', 'rest'] as const;
 export type PlanType = typeof PLAN_TYPES[number];
@@ -48,4 +48,26 @@ export function isConnectedSelection(cells: Cell[]): boolean {
 export function constructionMaterialEstimate(type: PlanType, area: number): number {
   if (!PLAN_TYPES.includes(type) || !Number.isInteger(area) || area < 0) throw new RangeError('Ungültiger Bauplan');
   return CONSTRUCTION_CONFIG.materialPerTile[type] * area;
+}
+
+export type TemplateSize = 'small' | 'medium' | 'large' | 'free';
+export function squareTemplate(type: PlanType, size: Exclude<TemplateSize, 'free'>, anchor: Cell): Cell[] {
+  if (!PLAN_TYPES.includes(type) || type === 'tunnel') throw new RangeError('Tunnel frei zeichnen');
+  const side = (type.startsWith('brood-') ? CHAMBER_BUILD_CONFIG.broodSides : CHAMBER_BUILD_CONFIG.standardSides)[size];
+  if (!side) throw new RangeError('Ungültige Vorlagengröße');
+  return rectangleSelection(anchor, {column: anchor.column + side - 1, row: anchor.row + side - 1});
+}
+export function maximumChamberArea(type: PlanType): number {
+  return type === 'tunnel' ? Infinity : type.startsWith('brood-')
+    ? CHAMBER_BUILD_CONFIG.broodMaximumArea : CHAMBER_BUILD_CONFIG.standardMaximumArea;
+}
+/** The actual neighboring room cells, for both validation and conflict highlighting. */
+export function chamberDistanceConflicts(cells: Cell[], footprints: readonly (readonly Cell[])[]): Cell[] {
+  const nearby = new Set<string>();
+  const radius = CHAMBER_BUILD_CONFIG.minimumCellDistance - 1;
+  for (const cell of cells) for (let dy = -radius; dy <= radius; dy++) for (let dx = -radius; dx <= radius; dx++)
+    nearby.add(cellKey({column: cell.column + dx, row: cell.row + dy}));
+  const conflicts = new Map<string, Cell>();
+  for (const room of footprints) for (const cell of room) if (nearby.has(cellKey(cell))) conflicts.set(cellKey(cell), {...cell});
+  return [...conflicts.values()];
 }

@@ -18,6 +18,13 @@ export function chamberCapacity(type: PlanType, area: number): number {
 
 /** Furnished rooms only. Resource stock stays in the existing ResourceSystem. */
 export class ChamberSystem {
+  /** Complete internal state, detached from the live simulation; not a HUD snapshot. */
+  exportState() { return structuredClone({ chambers: this.chambers }); }
+  restoreState(state: ReturnType<ChamberSystem['exportState']>): void {
+    const copy = structuredClone(state);
+    this.chambers = copy.chambers;
+  }
+
   private chambers = new Map<number, ChamberSnapshot>();
   private world: StartingWorld;
   private resources: ResourceSystem;

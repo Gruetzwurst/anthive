@@ -37,7 +37,7 @@ test('all start-nest landmarks and world cells stay within the configured bounds
 });
 
 test('resources are stored separately from terrain and tile state', () => {
-  assert.equal(worldResources.length, 1);
+  assert.equal(worldResources.length, 12);
   assert.equal(worldResources[0].kind, 'foodSource');
   assert.equal(worldMap.flat().some((cell) => 'resource' in cell), false);
 });
@@ -47,7 +47,7 @@ test('reference-map scenery is stored as visible decorations without becoming ne
   for (const kind of ['forest', 'pond', 'mountain', 'treeStump', 'ruins', 'watchtower', 'mineral', 'crystal', 'fossil', 'roots']) {
     assert.ok(kinds.has(kind), `world includes ${kind} scenery`);
   }
-  assert.deepEqual(worldResources.map(({ kind }) => kind), ['foodSource']);
+  assert.deepEqual(new Set(worldResources.map(({ kind }) => kind)), new Set(['foodSource']));
   for (const decoration of startingWorld.decorations) {
     assert.ok(decoration.position.x >= 0 && decoration.position.x < worldSize.width);
     assert.ok(decoration.position.y >= 0 && decoration.position.y < worldSize.height);

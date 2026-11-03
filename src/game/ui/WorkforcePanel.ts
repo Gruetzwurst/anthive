@@ -137,7 +137,8 @@ export class WorkforcePanel {
   private updateQueen(): void {
     const state = this.queenState?.();if (!state) return;
     this.queenSummary.textContent = `Eierpuffer: ${state.bufferCount} / ${state.bufferCapacity} · zugewiesen: ${state.assignedCount} · Eiablage: ${state.effectiveEggsPerDay.toLocaleString('de-DE', {maximumFractionDigits: 2})} / Spieltag`;
-    this.queenSummary.textContent += ` · Eier ${state.stageCounts.egg} · Larven ${state.stageCounts.larva} · Puppen ${state.stageCounts.pupa} · geschlüpft ${state.bornCount} · Brutverluste ${state.lostCount} · Pflegetempo ${Math.round(state.careFactor * 100)} %`;
+    this.queenSummary.textContent += ` · Eier ${state.stageCounts.egg} · Larven ${state.stageCounts.larva} · Puppen ${state.stageCounts.pupa} · geschlüpft ${state.bornCount} · Brutverluste ${state.lostCount} · Pflegeabdeckung ${Math.round(state.careFactor * 100)} % · Pflegekapazität ${state.careCapacity.toLocaleString('de-DE', {maximumFractionDigits: 1})} Bruttiere`;
+    this.queenSummary.textContent += ' · Pflegerin: 10 Plätze (100 % Leistung), fachfremde Hilfe: 5 Plätze (50 % Leistung). Volle Abdeckung kann bei kleiner Brut mit beiden erreicht werden.';
     this.broodRooms.replaceChildren();
     const stocks = new Map(this.larvalSupply?.().map(room=>[room.id,room]) ?? []);
     for (const [index, room] of state.chambers.entries()) {

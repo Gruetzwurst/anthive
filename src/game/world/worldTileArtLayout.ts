@@ -53,6 +53,7 @@ export function getTileArtInstruction(
   tiles: WorldTile[][],
   column: number,
   row: number,
+  smoothRooms?: ReadonlySet<string>,
 ): TileArtInstruction {
   const tile = tiles[row]?.[column];
   const materialIndex = tile ? MATERIAL_INDEX[tile.terrain] ?? null : null;
@@ -75,6 +76,12 @@ export function getTileArtInstruction(
   const transitionFrame = upper
     ? TRANSITION_FRAME[`${upper.terrain}>${tile?.terrain}`] ?? null
     : null;
+  if (smoothRooms) {
+    let borderingRoom=false;
+    for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++)
+      if((dx||dy) && smoothRooms.has(`${column+dx},${row+dy}`))borderingRoom=true;
+    if(borderingRoom)return {...empty,transitionFrame,groundFrame:(((column*17+row*31)%3+3)%3)*5+materialIndex};
+  }
   const openSides = CARDINALS.filter(({ dx, dy }) => isOpen(tiles[row + dy]?.[column + dx]));
 
   if (openSides.length >= 2) {

@@ -32,6 +32,7 @@ body {
 
 #game canvas {
   display: block;
+  image-rendering: pixelated;
   touch-action: none;
 }
 
@@ -123,3 +124,41 @@ body {
 #construction-draft [data-action='confirm-plan'] { background: #b99d65; color: #211e19; }
 #construction-draft [data-role='draft-status'] { flex: 1 1 170px; }
 @media (orientation: portrait) { #construction-panel { display: none; } }
+
+#game { position: relative; }
+.colony-menu {
+  position: absolute; inset: 0; z-index: 40; overflow: auto;
+  padding: clamp(16px, 4vw, 38px); background: #25231e; color: #f4efd9;
+  font-size: clamp(12px, 1.6vw, 16px); line-height: 1.45;
+}
+.colony-menu header { border-bottom: 1px solid #71604a; margin-bottom: 14px; }
+.colony-menu h1 { margin: 0; font-size: clamp(24px, 4vw, 38px); letter-spacing: .12em; }
+.colony-menu h2 { margin: 10px 0; font-size: 1.3em; }
+.colony-menu p { margin: 8px 0; }
+.colony-menu button, .colony-menu input:not([type=radio]) {
+  padding: 9px 12px; min-height: 40px; border: 1px solid #887453;
+  border-radius: 3px; background: #373229; color: #f4efd9; font: inherit;
+}
+.colony-menu button { cursor: pointer; }
+.colony-menu button:hover:not(:disabled) { background: #4b4335; }
+.colony-menu button:disabled { opacity: .5; cursor: default; }
+.colony-menu :focus-visible { outline: 2px solid #e5bd77; outline-offset: 3px; }
+.colony-menu form { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+.colony-menu form h2, .colony-menu form label { flex-basis: 100%; }
+.colony-menu label input:not([type=radio]) { display: block; width: min(100%, 460px); margin-top: 6px; }
+.colony-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+.colony-menu-status { min-height: 1.5em; color: #bed0a1; }
+.colony-menu-status.error { color: #f29883; }
+.colony-row { padding: 14px 0; border-bottom: 1px solid #514838; }
+.colony-choice { display: flex; align-items: center; gap: 8px; overflow-wrap: anywhere; }
+.colony-choice input { width: 18px; height: 18px; }
+.colony-last { max-width: 640px; padding: 8px 16px; background: #302b23; border-left: 3px solid #b99d65; overflow-wrap: anywhere; }
+#delete-colony-panel button { margin: 6px 8px 6px 0; }
+.colony-menu select { padding: 9px 12px; min-height: 40px; max-width: 100%; border: 1px solid #887453; border-radius: 3px; background: #373229; color: #f4efd9; font: inherit; }
+.colony-menu-content { overflow-wrap: anywhere; }
+.colony-backup-row { padding: 10px 0; border-bottom: 1px solid #514838; }
+.colony-backup-row button { margin: 4px 8px 4px 0; }
+#save-error-dialog { width: min(92vw, 640px); max-height: 90vh; padding: 20px; overflow: auto; border: 1px solid #99805a; background: #25231e; color: #f4efd9; }
+#save-error-dialog::backdrop { background: rgb(0 0 0 / 65%); }
+#save-error-dialog button { min-height: 40px; padding: 8px 12px; background: #373229; color: #f4efd9; border: 1px solid #887453; font: inherit; cursor: pointer; }
+#save-error-dialog p { line-height: 1.5; }

@@ -31,6 +31,15 @@ const distance = (a: WorldPoint, b: WorldPoint) => Math.hypot(a.x - b.x, a.y - b
 const pathLength = (path: WorldPoint[]) => path.reduce((sum, point, index) => sum + (index ? distance(path[index - 1], point) : 0), 0);
 
 export class GatheringSystem {
+  /** Complete internal state, detached from the live simulation; not a HUD snapshot. */
+  exportState() { return structuredClone({ config: this.config, workers: this.workers, currentPriority: this.currentPriority }); }
+  restoreState(state: ReturnType<GatheringSystem['exportState']>): void {
+    const copy = structuredClone(state);
+    this.config = copy.config;
+    this.workers = copy.workers;
+    this.currentPriority = copy.currentPriority;
+  }
+
   private resources: ResourceSystem;
   private navigation: GatheringNavigation;
   private config: GatheringConfig;
@@ -62,6 +71,12 @@ export class GatheringSystem {
       id: worker.id, position: { ...worker.position }, phase: worker.phase,
       load: worker.load ? { ...worker.load } : null, sourceId: worker.sourceId, storeId: worker.storeId,
     }));
+  }
+
+  repositionIdleWorker(id: string, position: WorldPoint): boolean {
+    const worker=this.workers.get(id);
+    if(!worker || worker.load || worker.phase!=='idle')return false;
+    worker.position={...position};worker.retryIn=0;return true;
   }
 
   retireCollector(id: string): CollectorSnapshot | undefined {
@@ -129,9 +144,16 @@ export class GatheringSystem {
   }
 
   private assign(worker: Worker): boolean {
+    // Large groups need not scan every source when all receiving space is
+    // already occupied or promised to real in-flight loads.
+    const needed = new Set(this.resources.listStores()
+      .filter(store => (store.resource === 'food' || store.resource === 'water') && store.status === 'operational' && store.reachable
+        && store.capacity - store.amount - this.reservedStore(store.id, worker) > 1e-9)
+      .map(store => store.resource));
+    if (!needed.size) return false;
     const choices: Array<{ sourceId: string; path: WorldPoint[]; delivery: StoreChoice; demand: number; score: number }> = [];
     for (const source of this.resources.listSources()) {
-      if (source.resource !== 'food' && source.resource !== 'water') continue;
+      if ((source.resource !== 'food' && source.resource !== 'water') || !needed.has(source.resource)) continue;
       const reserved = [...this.workers.values()].filter(other => other !== worker && other.sourceId === source.id && !other.load)
         .reduce((sum, other) => sum + other.expected, 0);
       const available = source.kind === 'unlimited' ? this.config.carryCapacity

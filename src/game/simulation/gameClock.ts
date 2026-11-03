@@ -9,6 +9,15 @@ export type ClockStep = {
 };
 
 export class GameClock {
+  /** Complete internal state, detached from the live simulation; not a HUD snapshot. */
+  exportState() { return structuredClone({ secondsPerGameDay: this.secondsPerGameDay, elapsedSeconds: this.elapsedSeconds, compensation: this.compensation, paused: this.paused }); }
+  restoreState(state: ReturnType<GameClock['exportState']>): void {
+    const copy = structuredClone(state);
+    this.elapsedSeconds = copy.elapsedSeconds;
+    this.compensation = copy.compensation;
+    this.paused = copy.paused;
+  }
+
   readonly secondsPerGameDay: number;
   private elapsedSeconds = 0;
   private compensation = 0;

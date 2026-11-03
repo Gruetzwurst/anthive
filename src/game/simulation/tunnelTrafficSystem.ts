@@ -5,6 +5,20 @@ import {nonNegativeFinite, positiveFinite} from './validation.ts';
 
 /** Linear aggregation of individuals into straight narrow tunnel sections. */
 export class TunnelTrafficSystem {
+  /** Complete internal state, detached from the live simulation; not a HUD snapshot. */
+  exportState() { return structuredClone({ config: this.config, counts: this.counts, untilRefresh: this.untilRefresh, version: this.version, topology: this.topology, updates: this.updates, agents: this.agents }); }
+  restoreState(state: ReturnType<TunnelTrafficSystem['exportState']>): void {
+    const copy = structuredClone(state);
+    this.config = copy.config;
+    this.counts = copy.counts;
+    this.untilRefresh = copy.untilRefresh;
+    this.version = copy.version;
+    this.topology = copy.topology;
+    this.updates = copy.updates;
+    this.agents = copy.agents;
+    this.segments.clear();
+  }
+
   private world: StartingWorld;
   private config: TrafficConfig;
   private counts = new Map<string, number>();

@@ -21,6 +21,14 @@ function usable(store: ResourceStore): boolean {
 }
 
 export class ResourceSystem {
+  /** Complete internal state, detached from the live simulation; not a HUD snapshot. */
+  exportState() { return structuredClone({ sources: this.sources, stores: this.stores }); }
+  restoreState(state: ReturnType<ResourceSystem['exportState']>): void {
+    const copy = structuredClone(state);
+    this.sources = copy.sources;
+    this.stores = copy.stores;
+  }
+
   private sources = new Map<string, ResourceSource>();
   private stores = new Map<string, ResourceStore>();
 

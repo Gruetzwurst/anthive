@@ -14,7 +14,7 @@ export type GatheringNavigation = {
 
 export class CollectorNavigation implements GatheringNavigation {
   private world: StartingWorld;
-  private ponds: Array<{ id: string; left: number; right: number }>;
+  private ponds: Array<{ id: string; left: number; right: number; profile: ReturnType<typeof createPondProfile> }>;
   private traffic?: TunnelTrafficSystem;
   private cache = new Map<string, WorldCellCoordinate[] | null>();
   private cacheRevision = -1;
@@ -26,7 +26,7 @@ export class CollectorNavigation implements GatheringNavigation {
     this.ponds = world.decorations.filter(item => item.kind === 'pond').map(pond => {
       const profile = createPondProfile(pond.position.x, tile, pond.scale ?? 1, column => this.surfaceRow(column));
       const last = profile.columns[profile.columns.length - 1];
-      return { id: pond.id, left: profile.columns[0].x, right: last.x + last.width };
+      return { id: pond.id, left: profile.columns[0].x, right: last.x + last.width, profile };
     });
   }
 
@@ -39,9 +39,45 @@ export class CollectorNavigation implements GatheringNavigation {
     return { column: Math.floor(point.x / tile), row: Math.floor(point.y / tile) };
   }
 
+  /** Exposed dry bank faces can be climbed; they are not tunnels through soil. */
+  private bankFace(cell: WorldCellCoordinate): {x: number} | undefined {
+    const size = this.world.dimensions.tileSize;
+    for (const pond of this.ponds) for (const x of [pond.left-.5, pond.right+.5]) {
+      const column=Math.floor(x/size), ground=this.surfaceRow(column);
+      if (cell.column===column && cell.row>=ground-1 && cell.row<=Math.floor(pond.profile.waterY/size)) return {x};
+    }
+    return undefined;
+  }
+
+  private bankAlignment(cell: WorldCellCoordinate): number | undefined {
+    const size=this.world.dimensions.tileSize;
+    for (const pond of this.ponds) for (const x of [pond.left-.5,pond.right+.5])
+      if(Math.floor(x/size)===cell.column)return x;
+    return undefined;
+  }
+  private traversable(cell: WorldCellCoordinate, from?: WorldCellCoordinate): boolean {
+    if(!this.passable(cell))return false;
+    if(from && from.column!==cell.column) {
+      for(const edge of [cell,from]) {
+        const tile=this.world.tiles[edge.row]?.[edge.column];
+        if(this.bankFace(edge) && tile?.terrain!=='air' && tile?.state!=='open')return false;
+      }
+    }
+    return true;
+  }
+
+  intersectsWater(cell: WorldCellCoordinate): boolean {
+    const size = this.world.dimensions.tileSize;
+    return this.ponds.some(pond => pond.profile.columns.some(water =>
+      cell.column*size < water.x+water.width && (cell.column+1)*size > water.x
+      && cell.row*size < water.bottomY && (cell.row+1)*size > water.surfaceY));
+  }
+
   private passable(cell: WorldCellCoordinate): boolean {
     const tile = this.world.tiles[cell.row]?.[cell.column];
     if (!tile) return false;
+    if (this.intersectsWater(cell)) return false;
+    if (this.bankFace(cell)) return true;
     if (tile.state === 'open') return true;
     if (tile.terrain !== 'air') return false;
     const centerX = (cell.column + 0.5) * this.world.dimensions.tileSize;
@@ -59,7 +95,11 @@ export class CollectorNavigation implements GatheringNavigation {
     });
   }
 
-  isWalkable(point: WorldPoint): boolean { return this.passable(this.cell(point)); }
+  isWalkable(point: WorldPoint): boolean {
+    const cell=this.cell(point),tile=this.world.tiles[cell.row]?.[cell.column],face=this.bankFace(cell);
+    if (face && tile?.terrain!=='air' && tile?.state!=='open') return this.passable(cell) && Math.abs(point.x-face.x)<=.75;
+    return this.passable(cell);
+  }
 
   canMove(from: WorldPoint, to: WorldPoint): boolean {
     const distance = Math.hypot(to.x - from.x, to.y - from.y);
@@ -75,16 +115,17 @@ export class CollectorNavigation implements GatheringNavigation {
     const start = this.cell(from), goal = this.cell(to), key = `${start.column},${start.row}>${goal.column},${goal.row}`;
     let cells = this.traffic ? this.cache.get(key) : undefined;
     if (cells === undefined) {
-      cells = findGridPath(start, goal, cell => this.passable(cell), this.traffic ? (cell, from) => this.traffic!.cellCost(cell, from) : undefined);
+      cells = findGridPath(start, goal, (cell, from) => this.traversable(cell, from), this.traffic ? (cell, from) => this.traffic!.cellCost(cell, from) : undefined);
       if (this.traffic) {if (this.cache.size >= 2048) this.cache.clear();this.cache.set(key, cells);}
     }
     if (!cells) return null;
     const size = this.world.dimensions.tileSize;
     const points = cells.map(cell => {
+      const bankX=this.bankAlignment(cell);
       const below = this.world.tiles[cell.row + 1]?.[cell.column];
       const onSurface = this.world.tiles[cell.row][cell.column].terrain === 'air'
         && below && below.terrain !== 'air' && below.state !== 'open';
-      return { x: (cell.column + 0.5) * size, y: onSurface ? (cell.row + 1) * size - 3 : (cell.row + 0.5) * size };
+      return { x: bankX ?? (cell.column + 0.5) * size, y: onSurface ? (cell.row + 1) * size - 3 : (cell.row + 0.5) * size };
     });
     // Keep physical endpoints, including positions part-way along a cell.
     return [{ ...from }, ...points, { ...to }];
@@ -99,8 +140,27 @@ export class CollectorNavigation implements GatheringNavigation {
     const pond = this.ponds.find(item => item.id === source.id);
     if (!pond) return [{ ...source.position }];
     const size = this.world.dimensions.tileSize;
-    return [Math.floor(pond.left / size) - 1, Math.ceil(pond.right / size)].map(column => ({
-      x: (column + 0.5) * size, y: this.surfaceRow(column) * size - 3,
-    }));
+    const accesses = new Map<string, WorldPoint>();
+    const add = (point: WorldPoint, requireOpen: boolean) => {
+      const cell = this.cell(point);
+      if ((requireOpen && this.world.tiles[cell.row]?.[cell.column]?.state !== 'open') || !this.isWalkable(point)) return;
+      accesses.set(`${cell.column},${cell.row}`, point);
+    };
+    // Touch the visible waterline after climbing down the exposed dry bank.
+    // Soil behind that narrow face remains solid and cannot be walked through.
+    for (const x of [pond.left - .5, pond.right + .5]) add({x, y:pond.profile.waterY}, false);
+    // Real open dry cells immediately beside the drawn water become intakes.
+    // Recompute from terrain on assignment so newly dug approaches are usable.
+    for (const water of pond.profile.columns) {
+      for (const x of [water.x - .5, water.x + water.width + .5]) {
+        for (let row = Math.floor(water.surfaceY / size); row <= Math.floor((water.bottomY - .01) / size); row++) {
+          const top = Math.max(water.surfaceY, row * size), bottom = Math.min(water.bottomY, (row + 1) * size);
+          if (bottom > top) add({x, y: (top + bottom) / 2}, true);
+        }
+      }
+      if (Math.abs(water.bottomY / size - Math.round(water.bottomY / size)) < 1e-8)
+        add({x: water.x + water.width / 2, y: water.bottomY + .5}, true);
+    }
+    return [...accesses.values()];
   }
 }

@@ -1,10 +1,10 @@
 import { PLAN_TYPES, PLAN_LABELS } from '../simulation/constructionPlanning';
-import type { PlanType } from '../simulation/constructionPlanning';
+import type { PlanType, TemplateSize } from '../simulation/constructionPlanning';
 import type { ConstructionOrderSnapshot, ConstructionStatus } from '../simulation/excavationSystem';
-import { CHAMBER_CONFIG } from '../simulation/simulationConfig';
+import { CHAMBER_CONFIG, CHAMBER_BUILD_CONFIG } from '../simulation/simulationConfig';
 import { chamberCapacity } from '../simulation/chamberSystem';
 
-export type DrawingTool = 'brush' | 'rectangle' | 'pan';
+export type DrawingTool = 'brush' | 'rectangle' | 'pan' | 'template';
 const STATUS_LABELS: Record<ConstructionStatus, string> = {
   planned: 'Geplant', digging: 'Ausgraben', blocked: 'Blockiert', paused: 'Pausiert',
   awaitingFurnishing: 'Einrichtung ausstehend', furnishing: 'Einrichten', furnished: 'Fertig eingerichtet', completed: 'Abgeschlossen', cancelled: 'Abgebrochen',
@@ -12,7 +12,7 @@ const STATUS_LABELS: Record<ConstructionStatus, string> = {
 export const constructionStatusLabel = (order: ConstructionOrderSnapshot) => order.status === 'blocked'
   ? `Blockiert · ${order.blockReason === 'hardness' ? 'Grabkraft fehlt' : order.blockReason === 'material' ? 'Baumaterial fehlt' : 'nicht erreichbar'}` : STATUS_LABELS[order.status];
 type Actions = {
-  start: (type: PlanType) => void; tool: (tool: DrawingTool) => void;
+  start: (type: PlanType, size: TemplateSize) => void; tool: (tool: DrawingTool) => void;
   confirm: () => void; discard: () => void;
   pause: (id: number) => void; resume: (id: number) => void; cancel: (id: number) => void;
 };
@@ -26,6 +26,8 @@ export class ConstructionPanel {
   private draft = document.createElement('aside');
   private draftStatus = document.createElement('span');
   private toolSelect = document.createElement('select');
+  private confirmButton!: HTMLButtonElement;
+  private templateOption = new Option('Vorlage platzieren', 'template');
   private toggle = document.createElement('button');
   private cancel = document.createElement('button');
   private orders: ConstructionOrderSnapshot[] = [];
@@ -40,14 +42,28 @@ export class ConstructionPanel {
     const form = document.createElement('form'); form.className = 'construction-form';
     const type = document.createElement('select'); type.name = 'chamberType';
     for (const value of PLAN_TYPES) type.add(new Option(value === 'tunnel' ? PLAN_LABELS[value] : `${PLAN_LABELS[value]} · ab ${CHAMBER_CONFIG.minimumArea[value]} Kacheln`, value));
+    const size = document.createElement('select'); size.name = 'chamberSize';
+    for (const [value, title] of [['free', 'Frei zeichnen'], ['small', 'Klein'], ['medium', 'Mittel'], ['large', 'Groß']]) size.add(new Option(title, value));
+    const sizeLabel = document.createElement('label'); sizeLabel.append('Form und Größe', size);
+    const refreshSizes = () => {
+      size.disabled = type.value === 'tunnel'; if (size.disabled) size.value = 'free';
+      const sides = type.value.startsWith('brood-') ? CHAMBER_BUILD_CONFIG.broodSides : CHAMBER_BUILD_CONFIG.standardSides;
+      for (const option of [...size.options]) if (option.value !== 'free') {
+        const side = sides[option.value as keyof typeof sides];
+        option.textContent = `${option.value === 'small' ? 'Klein' : option.value === 'medium' ? 'Mittel' : 'Groß'} · ${side}×${side}`;
+      }
+    };
+    type.addEventListener('change', refreshSizes); refreshSizes();
     const label = document.createElement('label'); label.append('Neuen Plan zeichnen', type);
     const begin = this.button('Zeichnen', 'draw-plan', () => {}); begin.type = 'submit';
-    form.append(label, begin);
+    const refreshBegin = () => { begin.textContent = size.value === 'free' ? 'Zeichnen' : 'Platzieren'; };
+    size.addEventListener('change', refreshBegin); type.addEventListener('change', refreshBegin);
+    form.append(label, sizeLabel, begin);
     form.addEventListener('submit', event => {
-      event.preventDefault(); this.actions.start(type.value as PlanType); this.dialog.close();
+      event.preventDefault(); this.actions.start(type.value as PlanType, size.value as TemplateSize); this.dialog.close();
     });
     const explanation = document.createElement('p'); explanation.className = 'workforce-note';
-    explanation.textContent = 'Pinsel und Rechteck lassen sich im selben Entwurf verbinden. Erst Bestätigen erteilt den Auftrag. Nach dem Aushub werden Kammern mit echtem Baumaterial eingerichtet. Ihr geplanter Typ bleibt fest.';
+    explanation.textContent = 'Klein, Mittel und Groß als Quadrat auf der Karte platzieren oder mit Frei selbst zeichnen. Pinsel und Rechteck bleiben kombinierbar. Erst Bestätigen erteilt den Auftrag. Nach dem Aushub werden Kammern mit echtem Baumaterial eingerichtet. Ihr geplanter Typ bleibt fest.';
     this.list.className = 'construction-list'; this.list.dataset.role = 'construction-orders';
     this.details.dataset.role = 'construction-detail'; this.details.setAttribute('aria-live', 'polite');
     this.feedback.setAttribute('role', 'status');
@@ -63,9 +79,10 @@ export class ConstructionPanel {
     for (const [value, title] of [['brush', 'Pinsel'], ['rectangle', 'Rechteck'], ['pan', 'Karte verschieben']]) this.toolSelect.add(new Option(title, value));
     this.toolSelect.addEventListener('change', () => this.actions.tool(this.toolSelect.value as DrawingTool));
     this.draftStatus.dataset.role = 'draft-status'; this.draftStatus.setAttribute('role', 'status');
-    this.draft.append(this.toolSelect, this.button('Bestätigen', 'confirm-plan', () => {
+    this.confirmButton = this.button('Bestätigen', 'confirm-plan', () => {
       try { this.actions.confirm(); } catch (error) { this.updateDraft(undefined, String((error as Error).message)); }
-    }), this.button('Verwerfen', 'discard-plan', () => this.actions.discard()), this.draftStatus);
+    });
+    this.draft.append(this.toolSelect, this.confirmButton, this.button('Verwerfen', 'discard-plan', () => this.actions.discard()), this.draftStatus);
     parent.append(this.dialog, this.draft);
     this.update([]);
   }
@@ -81,11 +98,14 @@ export class ConstructionPanel {
   get isOpen(): boolean { return this.dialog.open; }
   open(): void { if (!this.dialog.open) this.dialog.showModal(); }
   selectOrder(id: number): void { this.selectedId = id; this.renderDetails(); this.open(); }
-  showDraft(type: PlanType): void {
-    this.draft.hidden = false; this.toolSelect.value = 'brush'; this.updateDraft(0, `${PLAN_LABELS[type]} · Fläche markieren`);
+  showDraft(type: PlanType, size: TemplateSize = 'free'): void {
+    this.templateOption.remove();
+    if (size !== 'free') this.toolSelect.add(this.templateOption);
+    this.draft.hidden = false; this.toolSelect.value = size === 'free' ? 'brush' : 'template'; this.updateDraft(0, `${PLAN_LABELS[type]} · Fläche markieren`);
   }
   hideDraft(): void { this.draft.hidden = true; }
-  updateDraft(count?: number, feedback?: string): void {
+  updateDraft(count?: number, feedback?: string, valid?: boolean): void {
+    if (valid !== undefined) this.confirmButton.disabled = !valid;
     if (feedback) this.draftStatus.textContent = feedback;
     else if (count !== undefined) this.draftStatus.textContent = `${count} Kacheln · Werkzeuge kombinierbar`;
   }
@@ -96,7 +116,7 @@ export class ConstructionPanel {
       this.listSignature = signature; this.list.replaceChildren();
       if (!orders.length) this.list.textContent = 'Noch keine Bauaufträge.';
       for (const order of orders) {
-        const button = this.button(`#${order.id} ${PLAN_LABELS[order.type]} · ${constructionStatusLabel(order)}`, 'select-order', () => {
+        const button = this.button(order.status === 'furnished' ? PLAN_LABELS[order.type] : `#${order.id} ${PLAN_LABELS[order.type]} · ${constructionStatusLabel(order)}`, 'select-order', () => {
           this.selectedId = order.id; this.renderDetails();
         });
         button.dataset.orderId = String(order.id); this.list.append(button);
@@ -110,7 +130,7 @@ export class ConstructionPanel {
     this.toggle.hidden = this.cancel.hidden = !order || ['completed', 'cancelled', 'furnished'].includes(order.status);
     if (!order) { this.details.textContent = 'Baustelle auf der Karte oder in der Liste auswählen.'; return; }
     for (const text of [
-      `#${order.id} ${PLAN_LABELS[order.type]} · ${constructionStatusLabel(order)}`,
+      order.status === 'furnished' ? PLAN_LABELS[order.type] : `#${order.id} ${PLAN_LABELS[order.type]} · ${constructionStatusLabel(order)}`,
       `Aushub: ${order.excavated} / ${order.total} Kacheln${order.partialDigSeconds > 0 ? ` · ${order.partialDigSeconds.toFixed(1)} s angegraben` : ''}`,
       order.type === 'tunnel' ? 'Einrichtung: nicht erforderlich' : `Einrichtung: ${order.materialUsed} / ${order.materialRequired} Einheiten${order.status === 'furnished' ? ' · fertig eingerichtet' : ''}`,
       order.type === 'tunnel' ? 'Kapazität: keine' : `Kapazität: ${order.operational ? order.capacity : 0} / ${chamberCapacity(order.type, order.total)} ${order.type.startsWith('brood-') ? 'Brutplätze' : order.type === 'rest' ? 'Ruheplätze' : 'Einheiten'} · ${order.operational ? 'betriebsbereit' : 'noch nicht nutzbar'}`,

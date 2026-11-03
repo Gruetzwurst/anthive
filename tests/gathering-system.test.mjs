@@ -19,7 +19,7 @@ function fixture({ stock = 200, capacity = 120 } = {}) {
     priorityWeight: 2, storeCongestionSeconds: 1, storeFullnessSeconds: 1,
   });
   gathering.addCollector('a', point(0));
-  return { resources, gathering, blocked };
+  return { resources, gathering, blocked, navigation };
 }
 
 test('real pickup reduces the source; only arrival and deposit increase the store', () => {
@@ -215,4 +215,15 @@ test('blocked return preserves real position; individual foreign efficiency halv
   gathering.setCollectingEnabled('a', true);
   gathering.advance(1);
   assert.equal(gathering.getCollectors()[0].position.x, 5);
+});
+
+test('fully reserved destination capacity skips unnecessary source searches for surplus collectors',()=>{
+ const {resources,gathering,navigation}=fixture({capacity:5});
+ let searches=0;
+ const access=navigation.sourceAccessPoints.bind(navigation);
+ navigation.sourceAccessPoints=source=>{searches++;return access(source);};
+ gathering.addCollector('b',point(0));gathering.advance(.1);
+ assert.equal(searches,1);
+ assert.equal(gathering.getCollectors().find(w=>w.id==='b').phase,'idle');
+ assert.equal(resources.getStore('store').amount,0);
 });

@@ -16,6 +16,10 @@ import {
   TILEMAP_ART_ATLAS_FRAME_COUNT,
 } from './worldTileArtLayout.ts';
 
+const ATLAS_MARGIN = 2;
+const ATLAS_SPACING = 4;
+const ATLAS_STRIDE = 24 + ATLAS_SPACING;
+
 const ATLAS_KEYS = {
   ground: 'anthive-ground-variants',
   transitions: 'anthive-layer-transitions',
@@ -30,6 +34,7 @@ const ATLAS_KEYS = {
 
 type TileArtMap = {
   layer: Phaser.Tilemaps.TilemapLayer;
+  smoothRooms: Set<string>;
 };
 
 const sceneTileMaps = new WeakMap<Phaser.Scene, TileArtMap>();
@@ -57,8 +62,8 @@ function copyAtlasFrame(
   const sourceTexture = scene.textures.get(sourceKey);
   const frame = sourceTexture.get(sourceFrame);
   const sourceImage = sourceTexture.getSourceImage(sourceFrame) as CanvasImageSource;
-  const destinationX = (destinationFrame % TILEMAP_ART_ATLAS_COLUMNS) * 24;
-  const destinationY = Math.floor(destinationFrame / TILEMAP_ART_ATLAS_COLUMNS) * 24;
+  const destinationX = (destinationFrame % TILEMAP_ART_ATLAS_COLUMNS) * ATLAS_STRIDE + ATLAS_MARGIN;
+  const destinationY = Math.floor(destinationFrame / TILEMAP_ART_ATLAS_COLUMNS) * ATLAS_STRIDE + ATLAS_MARGIN;
 
   context.save();
   context.translate(destinationX + 12, destinationY + 12);
@@ -88,16 +93,18 @@ function copySurfaceFrameWithSkyMask(
   pixels.data.set(applySurfaceSkyMask(pixels.data, 24, 24));
   sourceContext.putImageData(pixels, 0, 0);
 
-  const destinationX = (destinationFrame % TILEMAP_ART_ATLAS_COLUMNS) * 24;
-  const destinationY = Math.floor(destinationFrame / TILEMAP_ART_ATLAS_COLUMNS) * 24;
+  const destinationX = (destinationFrame % TILEMAP_ART_ATLAS_COLUMNS) * ATLAS_STRIDE + ATLAS_MARGIN;
+  const destinationY = Math.floor(destinationFrame / TILEMAP_ART_ATLAS_COLUMNS) * ATLAS_STRIDE + ATLAS_MARGIN;
   context.drawImage(sourceCanvas, destinationX, destinationY);
 }
 
 function createComposedAtlas(scene: Phaser.Scene): void {
-  const atlasHeight = Math.ceil(TILEMAP_ART_ATLAS_FRAME_COUNT / TILEMAP_ART_ATLAS_COLUMNS) * 24;
+  // Textures belong to the game and outlive a scene; reuse them across colonies.
+  if (scene.textures.exists(ATLAS_KEYS.composed)) return;
+  const atlasHeight = Math.ceil(TILEMAP_ART_ATLAS_FRAME_COUNT / TILEMAP_ART_ATLAS_COLUMNS) * ATLAS_STRIDE;
   const texture = scene.textures.createCanvas(
     ATLAS_KEYS.composed,
-    TILEMAP_ART_ATLAS_COLUMNS * 24,
+    TILEMAP_ART_ATLAS_COLUMNS * ATLAS_STRIDE,
     atlasHeight,
   );
   if (!texture) throw new Error('Kachelgrafik-Atlas konnte nicht angelegt werden.');
@@ -147,6 +154,22 @@ function createComposedAtlas(scene: Phaser.Scene): void {
   copyAtlasFrame(context, scene, ATLAS_KEYS.grassEarth, 0, 135);
   copySurfaceFrameWithSkyMask(context, scene, ATLAS_KEYS.irregularSurface, 136);
 
+  // Duplicate boundary pixels into a private gutter around every frame. Zoomed
+  // sampling can no longer pick up purple rock or brown soil from its neighbor.
+  const canvas = texture.getSourceImage() as HTMLCanvasElement;
+  for (let frame = 0; frame < TILEMAP_ART_ATLAS_FRAME_COUNT; frame++) {
+    const x=(frame % TILEMAP_ART_ATLAS_COLUMNS)*ATLAS_STRIDE+ATLAS_MARGIN;
+    const y=Math.floor(frame / TILEMAP_ART_ATLAS_COLUMNS)*ATLAS_STRIDE+ATLAS_MARGIN;
+    for(let offset=1;offset<=ATLAS_MARGIN;offset++) {
+      context.drawImage(canvas,x,y,24,1,x,y-offset,24,1);
+      context.drawImage(canvas,x,y+23,24,1,x,y+23+offset,24,1);
+    }
+    for(let offset=1;offset<=ATLAS_MARGIN;offset++) {
+      context.drawImage(canvas,x,y-ATLAS_MARGIN,1,24+ATLAS_SPACING,x-offset,y-ATLAS_MARGIN,1,24+ATLAS_SPACING);
+      context.drawImage(canvas,x+23,y-ATLAS_MARGIN,1,24+ATLAS_SPACING,x+23+offset,y-ATLAS_MARGIN,1,24+ATLAS_SPACING);
+    }
+  }
+  texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
   texture.update();
 }
 
@@ -163,13 +186,13 @@ export function drawWorldTileArt(
 ): Phaser.Tilemaps.TilemapLayer {
   createComposedAtlas(scene);
   const map = scene.make.tilemap({ data: tileIndicesForWorld(tiles), tileWidth: tileSize, tileHeight: tileSize });
-  const tileset = map.addTilesetImage('anthive-world-art', ATLAS_KEYS.composed, tileSize, tileSize, 0, 0, 0);
+  const tileset = map.addTilesetImage('anthive-world-art', ATLAS_KEYS.composed, tileSize, tileSize, ATLAS_MARGIN, ATLAS_SPACING, 0);
   if (!tileset) throw new Error('Kachelgrafik-Atlas konnte nicht als Tileset eingebunden werden.');
   const layer = map.createLayer(0, tileset, 0, 0);
   if (!layer) throw new Error('Kachelkarte für die Bodengrafiken konnte nicht erstellt werden.');
 
   layer.setName('anthive-world-tile-art').setDepth(0);
-  sceneTileMaps.set(scene, { layer });
+  sceneTileMaps.set(scene, { layer, smoothRooms: new Set() });
   return layer;
 }
 
@@ -183,8 +206,17 @@ export function updateWorldTileArt(
 
   for (let row = changedCell.row - 1; row <= changedCell.row + 1; row += 1) {
     for (let column = changedCell.column - 1; column <= changedCell.column + 1; column += 1) {
-      const instruction = getTileArtInstruction(tiles, column, row);
+      const instruction = getTileArtInstruction(tiles, column, row, tileMap.smoothRooms);
       tileMap.layer.putTileAt(getTilemapAtlasFrame(instruction), column, row, false);
     }
   }
+}
+
+/** Replace curved tunnel lips around real room surfaces with flush soil edges. */
+export function setSmoothRoomArt(scene:Phaser.Scene,tiles:WorldTile[][],cells:readonly {column:number;row:number}[]):void {
+  const tileMap=sceneTileMaps.get(scene);if(!tileMap)return;
+  const next=new Set(cells.map(cell=>`${cell.column},${cell.row}`));
+  if(next.size===tileMap.smoothRooms.size && [...next].every(key=>tileMap.smoothRooms.has(key)))return;
+  const changed=[...new Set([...next,...tileMap.smoothRooms])];tileMap.smoothRooms=next;
+  for(const key of changed){const [column,row]=key.split(',').map(Number);updateWorldTileArt(scene,tiles,{column,row});}
 }

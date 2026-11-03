@@ -143,8 +143,11 @@ function createStartingTiles(): WorldTile[][] {
   );
 }
 
-function createStartingResources(landmarks: WorldLandmarks): WorldResource[] {
-  return [{ id: 'surface-food-source', kind: 'foodSource', position: landmarks.surfaceFoodSource }];
+function createStartingResources(landmarks: WorldLandmarks, additionalFoodSources=false): WorldResource[] {
+  const sources:WorldResource[] = [{ id: 'surface-food-source', kind: 'foodSource', position: landmarks.surfaceFoodSource }];
+  if(additionalFoodSources)for(const column of [27,53,75,111,133,180,207,231,256,281,305])
+    sources.push({id:`food-patch-${column}`,kind:'foodSource',position:{x:(column+.5)*TILE_SIZE,y:surfaceRow(column)*TILE_SIZE-3}});
+  return sources;
 }
 
 function createStartingStorageChambers(landmarks: WorldLandmarks): StartingWorld['storageChambers'] {
@@ -210,7 +213,7 @@ function createStartingDecorations(): WorldDecoration[] {
   ];
 }
 
-export function createStartingWorld(): StartingWorld {
+export function createStartingWorld(options: {additionalFoodSources?:boolean} = {}): StartingWorld {
   const landmarks = createStartingLandmarks();
   const rectangle = (left: number, right: number, top: number, bottom: number) =>
     Array.from({length: (right - left) * (bottom - top)}, (_, index) => ({
@@ -230,7 +233,7 @@ export function createStartingWorld(): StartingWorld {
       cells: chamberFootprints[index + 4].map(cell => ({...cell})),
     })),
     tiles: createStartingTiles(),
-    resources: createStartingResources(landmarks),
+    resources: createStartingResources(landmarks,options.additionalFoodSources),
     decorations: createStartingDecorations(),
     storageChambers: createStartingStorageChambers(landmarks),
     landmarks,
@@ -238,7 +241,7 @@ export function createStartingWorld(): StartingWorld {
   };
 }
 
-export const startingWorld = createStartingWorld();
+export const startingWorld = createStartingWorld({additionalFoodSources:true});
 
 export const worldSize = {
   width: WORLD_CONFIG.columns * TILE_SIZE,

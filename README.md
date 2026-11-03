@@ -209,4 +209,155 @@ Changing one egg quota now redistributes the others proportionally to exactly 10
 
 Actual larval shortages warn for one game day, then limit development to the poorer resource coverage (minimum 25%). Overall larval progress uses MIN(care, resources). Full food/water supply restores the resource factor gradually over one day. User-approved test values: coverage below 25% is severe; after six full severe days, fractional losses accumulate at 5% of remaining affected larvae per further day. Brief relief pauses severe history; one full day without severe shortage resets it. Care shortage alone never kills brood. The group panel shows the distinct causes, recovery and losses.
 
-`python3 scripts/check-economy-browser.py --c4-only` checks quota interaction, shortage/loss integration, renderer, mobile and pond. See `docs/C4-LARVENMANGEL-ERGEBNIS.md`. **Next: C5 growth integration tests; not started.**
+`python3 scripts/check-economy-browser.py --c4-only` checks quota interaction, shortage/loss integration, renderer, mobile and pond. See `docs/C4-LARVENMANGEL-ERGEBNIS.md`. **C5 is complete; see below.**
+
+
+### C5 integrated colony growth checks (2026-10-27)
+
+Four additional model integration tests use the real starting world, existing
+600-second day, physical egg and larval deliveries, and actual workforce engines.
+They cover natural births in all four specializations, newborn adult consumption,
+a full 50-egg buffer without nurses followed by a care bottleneck, supply
+interruption and recovery, population/cargo conservation, pause, and identical
+results for daily versus ten-second advance calls. The longest scenario runs
+33 game days. Explicit test reserves do not change production starting stocks.
+
+`npm test`: 229 checks pass; world checks and build also pass. No gameplay,
+balance or graphics changes. See `docs/C5-WACHSTUM-ERGEBNIS.md` for scope and
+limits. Next: D1.0 data inventory and persistence contract planning; save/load
+implementation and the separate post-C5 chamber changes require their own scope.
+
+
+### Post-C5 chamber updates (2026-10-27)
+
+**Bauen → Form und Größe** now offers Klein/Mittel/Groß square templates as well
+as the existing free brush/rectangle drawing. Position a template on the map,
+then confirm. Area limits (128 standard / 162 brood tiles) and two empty tile
+positions between chamber footprints, including diagonals, are validated in
+both the preview and order submission. Conflicting neighbor cells are marked.
+
+Idle workers physically reserve and occupy reachable furnished rest places.
+Food/water consumption is 100% active, 80% resting outside or walking to a place,
+and 50% actually resting there. Suitable work releases the place and starts
+from the real position. New chambers gain natural modular furnishing as actual
+material is installed; stores show actual inventory without granting free stock.
+See `docs/POST-C5-KAMMERN-ERGEBNIS.md`. Run
+`python3 -u scripts/check-economy-browser.py --post-c5-only` for the new browser
+flow; the original `--construction-only` regression remains available.
+
+### Playtest balance adjustment (2026-10-27)
+
+The playable scene now starts with one additional native nurse (ten workers in
+all). At full supply the queen lays one egg every two real minutes, and
+brood develops in 1/3/2 real minutes plus actual egg transport. These current
+settings live in `PLAYABLE_COLONY_CONFIG`; existing standalone model scenarios
+can still use their original six-day parameters. Care coverage and actual
+capacity are displayed separately: a native nurse supports ten brood, foreign
+help five. Finished rooms display their room name on the map and in the list.
+See `docs/2026-10-27-SPIELTEST-ANPASSUNGEN.md`;
+`python3 -u scripts/check-economy-browser.py --playable-only` verifies this flow.
+
+### Camera zoom and extra surface exits (2026-10-27)
+
+Use **− / +** at the bottom right, or the mouse wheel over the map, to zoom
+between fixed 25%, 50%, 100% and 200% levels. Click the percentage to reset to 100%. HUD and controls
+keep their normal size. Tunnel plans may now break through the grass surface
+and connect to walkable outdoor ground, creating additional exits. Functional
+chambers remain underground; unsupported sky is not a valid tunnel location.
+Run `python3 -u scripts/check-economy-browser.py --zoom-exits-only` for the
+browser check. See `docs/2026-10-27-ZOOM-UND-AUSGAENGE.md`.
+
+
+Zoom refinement (latest playtest preference): world labels retain their original
+world font size and scale naturally with the map, including at 25%. Zoom in to
+read smaller labels; the fixed HUD keeps its normal screen size.
+Canvas display uses pixel-preserving scaling. The original building-material
+store label is centered on its room. Pond collection still uses its two existing
+bank access points; an underground tunnel does not create a water extraction site.
+
+### Pond shoreline access correction (2026-10-27)
+
+Water pickups now follow the actual rendered pond contour. Ants descend exposed
+dry banks to the waterline; newly opened dry tunnel approaches beside water
+become collection points. Route selection considers the real trip to each
+intake and back to an individual store. Visible water cannot be crossed, even
+through opened underlying tiles, and ants cannot enter bank faces through
+undug soil. Existing trips finish safely; new assignments use current accesses.
+`python3 -u scripts/check-economy-browser.py --pond-shore-only` verifies actual
+pickup and delivery through a new side tunnel. See `docs/2026-10-27-TEICHZUGAENGE.md`.
+
+The top resource bar can be collapsed/expanded with **− / +** at its right
+edge. The compact header keeps Bauen/Gruppen available and frees the map below.
+The tile atlas now has extruded private gutters and nearest-pixel sampling to
+prevent adjacent-frame color fringes at zoom levels. Camera scrolling aligns
+to screen pixels. Old continuous floor stripes in start rooms were removed.
+`python3 -u scripts/check-economy-browser.py --hud-art-only` checks every atlas
+frame gutter, multiple zoom levels, collapse/expand, freed-map input and touch.
+
+Planning boundary update: tunnel plans must stop at the ground surface. Any
+selected air or visible-water tile invalidates the whole draft; no partial
+order is created. New exits through the surface remain possible, and normal
+outdoor movement remains available.
+
+
+While holding a brush or rectangle drawing, keep the pointer/finger near the
+map edge to scroll continuously and extend the draft beyond the current view.
+Useful rooms, including the furnished start nest, now have smooth continuous
+material-themed interiors and wall linings. Rest uses wool-white trim, water
+ice-blue, food pollen-yellow, material stores slate-blue, queen lavender, and
+brood rooms mint/periwinkle/rose/berry. Tunnel colors stay unchanged; furnishing
+still reflects actual installed work. See
+`docs/2026-10-27-BAUPLAN-KAMERA-UND-RAUMFARBEN.md`.
+
+Latest playtest adjustment: room palettes are less saturated and their surfaces
+now meet earth directly, without the old curved beige tunnel lip around room
+walls. Tunnel graphics and room dimensions stay unchanged. The playable scene
+uses provisional food-source stock/capacity 1,000 and regeneration 60 per game
+day; adult/larval consumption and real transport are retained. This addresses
+the former 20/day source bottleneck for a test population of twenty collectors
+plus three other adults and the queen. See
+`docs/2026-10-27-RAUMRAENDER-UND-NAHRUNG.md`.
+
+### Food network and concurrent construction (2026-10-27)
+
+The playable world now has twelve finite food deposits (1,000 stock and 60/day
+regeneration each). Nine are initially reachable, up to 540/day; all twelve
+total up to 720/day. Collectors use existing travel-time/traffic-aware source
+selection and can switch from exhausted deposits. The two 400-adult logistics
+scenarios cover 150 and 200 actual carriers on flat connected routes, not a
+rendered-scene performance guarantee.
+
+Free builders now seek the next executable order when earlier work fronts are
+already reserved; earlier feasible work still has priority. Digging, supplying
+and furnishing retain reservations and physical material. Starting-room names
+are drawn above the new room surfaces. See
+`docs/2026-10-27-NAHRUNGSNETZ-UND-PARALLELBAU.md` and browser mode
+`python3 -u scripts/check-economy-browser.py --food-network-only`.
+
+Collector support target: at least three adults supplied per collector under
+ordinary reachable routes. A real starting-world integration test verifies one
+collector supplying three adults plus the queen for eight game days with actual
+food/water pickups, movement, delivery and consumption; no virtual minimum
+credits are applied. Source exhaustion and longer routes still matter.
+All open passages now use flush straight terrain borders, including ordinary
+tunnels; terrain/collision and construction costs are unchanged.
+
+## D1.0: Speicherplanung (28.10.2026)
+
+[Dateninventar und Speichervertrag](docs/2026-10-28-D1.0-DATENINVENTAR-UND-SPEICHERVERTRAG.md) dokumentieren den aktuellen Simulationszustand und die Anforderungen an D1.1. Noch keine Speicherimplementierung.
+
+## D1.1: Speichergrundlage (28.10.2026)
+
+[Snapshot und lokale Persistenz](docs/D1.1-SPEICHERN-LADEN-ERGEBNIS.md): vollständige Modellzustände, isoliertes Wiederherstellen und atomare IndexedDB-Speicherung. Menü, Speicherknöpfe, Autosave und Backups folgen in den nächsten D1-Paketen.
+
+## D1.2: Autosave, Backups und Tab-Schutz (28.10.2026)
+
+[Ergebnisbericht](docs/D1.2-AUTOSAVE-BACKUPS-TABS-ERGEBNIS.md): Speichern im HUD/Strg+S, aktive 5-Minuten-Autosaves, gestaffelte 15/60/180-Minuten-Sicherungen und exklusives Schreibrecht. Das Startmenü mit Spielstandauswahl folgt in D1.3; Reload startet bis dahin weiterhin eine neue Runde, ohne ältere Saves zu überschreiben.
+
+## D1.3: Hauptmenü und Kolonieverwaltung (28.10.2026)
+
+[Ergebnisbericht](docs/D1.3-HAUPTMENUE-KOLONIEN-ERGEBNIS.md): Start im Menü, letzte Kolonie fortsetzen, neue unabhängige Kolonien, Umbenennen, Dateiexport und bestätigtes Löschen. **Die frühere Zwischenlösung „Reload startet eine neue Runde“ ist damit abgelöst.** Dateiimport und Backup-Wiederherstellung folgen in D1.4.
+
+## D1.4: Dateiimport und Wiederherstellung (28.10.2026)
+
+[Ergebnisbericht](docs/D1.4-IMPORT-WIEDERHERSTELLUNG-ERGEBNIS.md): Datei als neue Kolonie importieren oder ein bewusst gewähltes Ziel nach Bestätigung ersetzen. Automatische Backups und zusätzliche Sicherheitskopien lassen sich exportieren und wiederherstellen. Ein gültiger bisheriger Stand wird zuvor zusätzlich gesichert; bei Platzmangel wird abgebrochen. D1.5 folgt mit Migration und Robustheitsabnahme.

@@ -125,3 +125,23 @@ export const LARVAL_SHORTAGE_CONFIG = {
   severeCoverageBelow: 0.25, severeGraceDays: 6, lossFractionPerDay: 0.05,
 };
 export type LarvalShortageConfig = typeof LARVAL_SHORTAGE_CONFIG;
+
+// Post-C5 user-selected square templates and placement bounds.
+export const CHAMBER_BUILD_CONFIG = {
+  standardSides: {small: 4, medium: 6, large: 8},
+  broodSides: {small: 5, medium: 7, large: 9},
+  standardMaximumArea: 128, broodMaximumArea: 162, minimumCellDistance: 3,
+};
+
+// Current playable colony balance, confirmed 27.10.2026. Model defaults above
+// remain available to run existing six-day lifecycle/regression scenarios.
+export const PLAYABLE_COLONY_CONFIG = {
+  eggTransport: true,
+  startingCareWorkers: 1,
+  simulationConfig: {...SIMULATION_CONFIG, foodSource: {...SIMULATION_CONFIG.foodSource, capacity: 1000, initialAmount: 1000, regenerationPerDay: 60}},
+  queenConfig: {...QUEEN_CONFIG, eggsPerGameDay: SIMULATION_CONFIG.secondsPerGameDay / 120},
+  broodConfig: {...BROOD_CONFIG, stageDays: {egg: .1, larva: .3, pupa: .2}},
+};
+
+// Balance target verified with actual pickups, travel, delivery and consumption.
+export const COLLECTOR_BALANCE_TARGET = {adultsPerCollector: 3};

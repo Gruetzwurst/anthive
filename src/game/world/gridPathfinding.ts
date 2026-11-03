@@ -10,7 +10,7 @@ export const cardinalNeighbors = ({ column, row }: WorldCellCoordinate): WorldCe
 export function findGridPath(
   start: WorldCellCoordinate,
   goal: WorldCellCoordinate,
-  isPassable: (cell: WorldCellCoordinate) => boolean,
+  isPassable: (cell: WorldCellCoordinate, from?: WorldCellCoordinate) => boolean,
   cost?: (cell: WorldCellCoordinate, from: WorldCellCoordinate) => number,
 ): WorldCellCoordinate[] | null {
   if (!isPassable(start) || !isPassable(goal)) return null;
@@ -27,7 +27,7 @@ export function findGridPath(
       return path.reverse();
     }
     for (const next of cardinalNeighbors(current)) {
-      if (previous.has(cellKey(next)) || !isPassable(next)) continue;
+      if (previous.has(cellKey(next)) || !isPassable(next, current)) continue;
       previous.set(cellKey(next), current);
       queue.push(next);
     }
@@ -37,7 +37,7 @@ export function findGridPath(
 
 // A* uses the same cardinal topology; optional costs must be finite and >= 1.
 function weightedPath(start: WorldCellCoordinate, goal: WorldCellCoordinate,
-  passable: (cell: WorldCellCoordinate) => boolean, cost: (cell: WorldCellCoordinate, from: WorldCellCoordinate) => number): WorldCellCoordinate[] | null {
+  passable: (cell: WorldCellCoordinate, from?: WorldCellCoordinate) => boolean, cost: (cell: WorldCellCoordinate, from: WorldCellCoordinate) => number): WorldCellCoordinate[] | null {
   type Entry = {cell: WorldCellCoordinate; distance: number; score: number; order: number};
   const heap: Entry[] = [], previous = new Map<string, WorldCellCoordinate>(), distances = new Map([[cellKey(start), 0]]);
   let order = 0;
@@ -66,7 +66,7 @@ function weightedPath(start: WorldCellCoordinate, goal: WorldCellCoordinate,
       while (parent) {result.push({...parent});parent = previous.get(cellKey(parent));}return result.reverse();
     }
     for (const next of cardinalNeighbors(current.cell)) {
-      if (!passable(next)) continue;
+      if (!passable(next, current.cell)) continue;
       const weight = cost(next, current.cell);
       if (!Number.isFinite(weight) || weight < 1) throw new RangeError('Path costs must be finite and >= 1');
       const distance = current.distance + weight, nextKey = cellKey(next);

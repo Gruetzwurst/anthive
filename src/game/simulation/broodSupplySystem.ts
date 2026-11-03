@@ -23,6 +23,19 @@ const empty = (): Stock => ({amount: 0, target: 0, capacity: 0, refilling: false
 
 /** Small private larval reservoirs and physical nurse deliveries, not general stores. */
 export class BroodSupplySystem {
+  /** Complete internal state, detached from the live simulation; not a HUD snapshot. */
+  exportState() { return structuredClone({ config: this.config, rooms: this.rooms, nurses: this.nurses, drops: this.drops, withdrawn: this.withdrawn, returned: this.returned, shortage: this.shortage.exportState() }); }
+  restoreState(state: ReturnType<BroodSupplySystem['exportState']>): void {
+    const copy = structuredClone(state);
+    this.config = copy.config;
+    this.rooms = copy.rooms;
+    this.nurses = copy.nurses;
+    this.drops = copy.drops;
+    this.withdrawn = copy.withdrawn;
+    this.returned = copy.returned;
+    this.shortage.restoreState(copy.shortage);
+  }
+
   readonly shortage = new LarvalShortageSystem();
   private resources: ResourceSystem;
   private navigation: GatheringNavigation;
@@ -109,6 +122,11 @@ export class BroodSupplySystem {
     if (!id.trim() || this.nurses.has(id)) throw new Error('Nurse requires a unique ID');
     nonNegativeFinite(position.x, 'position.x');nonNegativeFinite(position.y, 'position.y');
     this.nurses.set(id, {id, position: {...position}, load: null,eggId:null, enabled: true, job: null, retry: 0});
+  }
+  repositionIdleWorker(id: string, position: WorldPoint): boolean {
+    const nurse=this.nurses.get(id);
+    if(!nurse || nurse.job || nurse.load || nurse.eggId)return false;
+    nurse.position={...position};nurse.retry=0;return true;
   }
   setNursingEnabled(id: string, enabled: boolean): void {
     const nurse = this.nurses.get(id);if (!nurse) throw new Error('Unknown nurse');

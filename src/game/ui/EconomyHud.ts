@@ -4,14 +4,20 @@ import { describeSources, describeSupply, formatAmount } from './economyOverview
 import type { EconomyOverview } from './economyOverview.ts';
 
 export const ECONOMY_HUD_BOUNDS = { x: 8, y: 6, width: 624, height: 104 };
-export function isEconomyHudPoint(x: number, y: number): boolean {
+export function isEconomyHudPoint(x: number, y: number, collapsed = false): boolean {
   const bounds = ECONOMY_HUD_BOUNDS;
-  return x >= bounds.x && x <= bounds.x + bounds.width && y >= bounds.y && y <= bounds.y + bounds.height;
+  return x >= bounds.x && x <= bounds.x + bounds.width && y >= bounds.y && y <= bounds.y + (collapsed ? 28 : bounds.height);
 }
 const INK = '#f4efd9';
 
 /** Fixed Phaser view; all resource facts come from the read-only overview. */
 export class EconomyHud {
+  private saveButton?: Phaser.GameObjects.Text;
+  private saveHint?: Phaser.GameObjects.Text;
+  private compact = false;
+  private background!: Phaser.GameObjects.Rectangle;
+  private details: Array<Phaser.GameObjects.Text | Phaser.GameObjects.Rectangle> = [];
+  private collapseToggle!: Phaser.GameObjects.Text;
   private header: Phaser.GameObjects.Text;
   private food: Phaser.GameObjects.Text;
   private water: Phaser.GameObjects.Text;
@@ -21,19 +27,33 @@ export class EconomyHud {
   private warning: Phaser.GameObjects.Text;
   private buttons: Array<{ priority: GatheringPriority; body: Phaser.GameObjects.Rectangle; label: Phaser.GameObjects.Text }> = [];
 
-  constructor(scene: Phaser.Scene, onPriority: (priority: GatheringPriority) => void, onWorkforce?: () => void, onConstruction?: () => void) {
+  constructor(scene: Phaser.Scene, onPriority: (priority: GatheringPriority) => void, onWorkforce?: () => void, onConstruction?: () => void, onSave?: () => void, onMenu?: () => void) {
     const bounds = ECONOMY_HUD_BOUNDS;
-    scene.add.rectangle(bounds.x, bounds.y, bounds.width, bounds.height, 0x211e19, 0.96)
+    this.background = scene.add.rectangle(bounds.x, bounds.y, bounds.width, bounds.height, 0x211e19, 0.96)
       .setOrigin(0).setStrokeStyle(1, 0x71604a).setScrollFactor(0).setDepth(20);
-    const text = (x: number, y: number, content: string, size = 10) => scene.add.text(x, y, content, {
-      color: INK, fontFamily: 'system-ui, sans-serif', fontSize: `${size}px`,
-    }).setScrollFactor(0).setDepth(21);
-    text(18, 12, 'ANTHIVE', 11).setFontStyle('bold');
-    this.header = text(110, 13, '', 9);
+    const text = (x: number, y: number, content: string, size = 10) => {
+      const label = scene.add.text(x, y, content, {color: INK, fontFamily: 'system-ui, sans-serif', fontSize: `${size}px`}).setScrollFactor(0).setDepth(21);
+      if (y >= 31) this.details.push(label);
+      return label;
+    };
+    if(onSave){
+      this.saveButton=text(18,12,'Speichern',10).setFontStyle('bold').setInteractive({useHandCursor:true});
+      this.saveHint=text(18,114,'',9).setBackgroundColor('#211e19').setPadding(5).setWordWrapWidth(590).setDepth(25).setVisible(false);
+      this.saveButton.on(Phaser.Input.Events.POINTER_DOWN,(_p:Phaser.Input.Pointer,_x:number,_y:number,event:Phaser.Types.Input.EventData)=>{event.stopPropagation();onSave();});
+      this.details=this.details.filter(object=>object!==this.saveHint);
+      this.saveButton.on('pointerover',()=>this.saveHint?.setVisible(true));
+      this.saveButton.on('pointerout',()=>this.saveHint?.setVisible(false));
+    }else text(18, 12, 'ANTHIVE', 11).setFontStyle('bold');
+    this.header = text(onMenu?150:110, 13, '', 9);
+    if(onMenu){
+      const menu=scene.add.rectangle(100,9,40,21,0x39352e).setOrigin(0).setScrollFactor(0).setDepth(21).setInteractive({useHandCursor:true});
+      text(120,19.5,'Menü',10).setOrigin(.5);
+      menu.on(Phaser.Input.Events.POINTER_DOWN,(_p:Phaser.Input.Pointer,_x:number,_y:number,event:Phaser.Types.Input.EventData)=>{event.stopPropagation();onMenu();});
+    }
     if (onWorkforce) {
-      const groups = scene.add.rectangle(551, 9, 71, 21, 0x39352e).setOrigin(0).setScrollFactor(0)
+      const groups = scene.add.rectangle(548, 9, 56, 21, 0x39352e).setOrigin(0).setScrollFactor(0)
         .setDepth(21).setStrokeStyle(1, 0x71604a).setInteractive({ useHandCursor: true });
-      text(586.5, 19.5, 'Gruppen', 10).setOrigin(0.5);
+      text(576, 19.5, 'Gruppen', 10).setOrigin(0.5);
       groups.on(Phaser.Input.Events.POINTER_DOWN,
         (_pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
           event.stopPropagation(); onWorkforce();
@@ -65,9 +85,26 @@ export class EconomyHud {
           event.stopPropagation();
           onPriority(priority);
         });
+      this.details.push(body);
       this.buttons.push({ priority, body, label });
     });
     this.warning = text(18, 97, '', 9);
+    this.collapseToggle = text(616, 19, '−', 14).setOrigin(.5).setBackgroundColor('#39352e').setPadding(3, 0).setInteractive({useHandCursor: true});
+    this.collapseToggle.on(Phaser.Input.Events.POINTER_DOWN, (_p: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {event.stopPropagation();this.setCollapsed(!this.compact);});
+  }
+
+  setSaveStatus(kind:string,message:string):void {
+    this.saveButton?.setText(kind==='saving'?'Speichert …':kind==='saved'?'Gespeichert':kind==='error'?'Nicht gesichert':kind==='readonly'?'Nur Lesen':'Speichern')
+      .setColor(kind==='error'||kind==='readonly'?'#f29883':'#f4efd9').setData('status',message);
+    this.saveHint?.setText(message);
+  }
+
+  get collapsed(): boolean {return this.compact;}
+  setCollapsed(value: boolean): void {
+    this.compact=value;
+    this.background.setSize(ECONOMY_HUD_BOUNDS.width, value ? 28 : ECONOMY_HUD_BOUNDS.height);
+    for (const object of this.details) object.setVisible(!value);
+    this.collapseToggle.setText(value ? '+' : '−');
   }
 
   update(overview: EconomyOverview): void {

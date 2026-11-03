@@ -15,8 +15,16 @@ bereits belegt, zuerst die obige Adresse öffnen; keinen anderen Port wählen,
 denn lokale Browser-Spielstände gehören zur jeweiligen Adresse. Browser-Spielstände bleiben lokal; wichtige
 Kolonien zusätzlich über Export als Datei sichern.
 
-Stand: D1.1–D1.4 abgeschlossen; D1.5 Migration/Robustheitsabnahme in Arbeit.
-Plan: docs/superpowers/plans/2026-10-28-d1-5-migration.md.
-Bestehenden lokalen Feature-Stand erhalten; kein Reset/Branchwechsel. Viele
-Änderungen sind uncommittet. Letzter geprüfter Gesamtstand:294 Tests erfolgreich.
-Checkpoint vor D1.5: `/tmp/anthive-before-d1-5-2026-10-28/`.
+Stand am 03.11.2026: D1.1–D1.5 abgeschlossen, einschließlich Formatmigration,
+Originalschutz und Export bei Speicherfehlern.
+Ergebnis: docs/D1.5-MIGRATION-ROBUSTHEIT-ERGEBNIS.md.
+Gesamttests:304/304 erfolgreich; Build und Browserprüfungen für Migration,
+Import/Wiederherstellung, Speicherfehler sowie Autosave/Backups/Zwei-Tab-Schutz erfolgreich.
+Branch: `codex/c4-brood-shortage`, GitHub: `Gruetzwurst/anthive`.
+Der bisherige Feature-Stand wurde als Commit `35beeb2` auf GitHub gesichert;
+die Abschlussdokumentation folgt als eigener Commit. Kein Reset/Branchwechsel.
+
+Nächster sinnvoller Schritt: eigener Spieltest der Speicherverwaltung
+(Kolonie spielen, speichern, neu laden, exportieren und als neue Kolonie
+importieren). Danach das nächste Arbeitspaket anhand der aktuellen Planung
+festlegen; D1.5 muss nicht erneut implementiert werden.

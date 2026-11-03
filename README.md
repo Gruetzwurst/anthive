@@ -361,3 +361,10 @@ tunnels; terrain/collision and construction costs are unchanged.
 ## D1.4: Dateiimport und Wiederherstellung (28.10.2026)
 
 [Ergebnisbericht](docs/D1.4-IMPORT-WIEDERHERSTELLUNG-ERGEBNIS.md): Datei als neue Kolonie importieren oder ein bewusst gewähltes Ziel nach Bestätigung ersetzen. Automatische Backups und zusätzliche Sicherheitskopien lassen sich exportieren und wiederherstellen. Ein gültiger bisheriger Stand wird zuvor zusätzlich gesichert; bei Platzmangel wird abgebrochen. D1.5 folgt mit Migration und Robustheitsabnahme.
+
+## D1.5: Migration und Robustheit (03.11.2026)
+
+[Ergebnisbericht](docs/D1.5-MIGRATION-ROBUSTHEIT-ERGEBNIS.md): bekannte ältere Spielstände sicher auf Schema2 übernehmen, Original vor dem Formatwechsel zusätzlich sichern und unbekannte Formate abweisen. Bei Speicherfehlern lässt sich der aktuelle ungesicherte Fortschritt exportieren. Abschluss mit304 erfolgreichen Tests, Build und Browserprüfungen für Migration, Import, Wiederherstellung, Speicherfehler und Autosave-/Tab-Schutz.
+
+Das Spiel startet über `./start-anthive.sh` unter http://localhost:5173/.
+[Start und Fortsetzung ohne laufenden Chat](WEITERMACHEN.md).

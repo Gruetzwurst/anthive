@@ -140,3 +140,10 @@ vollständigen Gesamtlauf gemäß Nutzerwunsch verzichtet. Neuer Stand lokal,
 noch nicht gepusht. Bericht: `docs/2026-11-04-KOENIGINNEN-VERSORGUNG.md`.
 Browserprüfung für den neuen Versorgungsstand ebenfalls erfolgreich, inklusive
 beider Countdown-Anzeigen, Aufzucht/eigener Eiablage/Transport und Reload.
+
+Öffentliche Handy-Testseite vom Nutzer freigegeben:
+https://gruetzwurst.github.io/anthive/ (Querformat). Pages-Actions-Workflow in
+`.github/workflows/pages.yml` veröffentlicht aktuelle Pushes auf dem Featurebranch
+oder main; main wird dafür nicht zusammengeführt/umgestellt. Build-Basispfad
+nur im Deployment /anthive/, lokale Entwicklung weiter /. Lokale und öffentliche
+Browser-Spielstände sind getrennt; bestehende Kolonien über Export/Import übertragen.

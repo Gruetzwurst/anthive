@@ -437,3 +437,11 @@ verbraucht5 Nahrung und5 Wasser je Spieltag aus ihrem eigenen Kammervorrat
 starten leer und werden tatsächlich beliefert. Kein doppelter Verbrauch aus
 dem allgemeinen Lager; individuelle Countdown- und Vorratsanzeigen an jeder
 Königin. Schema9 erhält alte Spielstände über Migration1–8 mit Originalschutz.
+
+Öffentliche Testseite für Handy und Desktop:
+https://gruetzwurst.github.io/anthive/ – auf dem Handy im Querformat öffnen.
+GitHub Actions baut nach Pushes auf `codex/c4-brood-shortage` oder `main` die
+jeweilige Version und veröffentlicht nur `dist/` über GitHub Pages. Lokale
+Entwicklung bleibt unter http://localhost:5173/. Spielstände gehören zum
+jeweiligen Browser und zur Adresse; für einen Wechsel Export/Import verwenden.
+Workflow: `.github/workflows/pages.yml`.

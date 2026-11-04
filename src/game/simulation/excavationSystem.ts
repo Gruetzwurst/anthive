@@ -1,11 +1,10 @@
 import type { StartingWorld, WorldCellCoordinate, WorldPoint, WorldTile } from '../world/worldTypes.ts';
 import { CollectorNavigation } from '../world/collectorNavigation.ts';
 import { terrainDefinitions } from '../world/terrainDefinitions.ts';
-import { diggingGradeAt } from '../world/worldGenerator.ts';
 import { cardinalNeighbors, cellKey, findGridPath } from '../world/gridPathfinding.ts';
 import { ResourceSystem } from './resourceSystem.ts';
 import { BuildingMaterialSystem } from './buildingMaterialSystem.ts';
-import { EXCAVATION_CONFIG, CONSTRUCTION_CONFIG, CHAMBER_CONFIG } from './simulationConfig.ts';
+import { EXCAVATION_CONFIG, CONSTRUCTION_CONFIG, CHAMBER_CONFIG,BUILDER_DEVELOPMENT,TERRAIN_DIGGING_GRADES } from './simulationConfig.ts';
 import { ChamberSystem } from './chamberSystem.ts';
 import type { TunnelTrafficSystem } from './tunnelTrafficSystem.ts';
 import type { ExcavationConfig } from './simulationConfig.ts';
@@ -38,13 +37,13 @@ type Builder = { id: string; position: WorldPoint; job: Job | null; status: stri
 const EPS = 1e-9;
 const distance = (a: WorldPoint, b: WorldPoint) => Math.hypot(a.x - b.x, a.y - b.y);
 export function requiredDiggingGrade(cell: Cell, tile: WorldTile): number {
-  return tile.terrain === 'stone' ? 3 : diggingGradeAt(cell.column, cell.row);
+  return TERRAIN_DIGGING_GRADES[tile.terrain];
 }
 
 /** Existing cardinal digging/haul workflow, separated from Phaser for B2 tests. */
 export class ExcavationSystem {
   /** Complete internal state, detached from the live simulation; not a HUD snapshot. */
-  exportState() { return structuredClone({ config: this.config, minimumAreas: this.minimumAreas, builders: this.builders, orders: this.orders, reservations: this.reservations, changed: this.changed, chamberAccessDirty: this.chamberAccessDirty, grade: this.grade, nextOrderId: this.nextOrderId, notices: this.notices, completedChambers: this.completedChambers }); }
+  exportState() { return structuredClone({ developmentLevel:this.stage,config: this.config, minimumAreas: this.minimumAreas, builders: this.builders, orders: this.orders, reservations: this.reservations, changed: this.changed, chamberAccessDirty: this.chamberAccessDirty, grade: this.grade, nextOrderId: this.nextOrderId, notices: this.notices, completedChambers: this.completedChambers }); }
   restoreState(state: ReturnType<ExcavationSystem['exportState']>): void {
     const copy = structuredClone(state);
     this.config = copy.config;
@@ -55,6 +54,7 @@ export class ExcavationSystem {
     this.changed = copy.changed;
     this.chamberAccessDirty = copy.chamberAccessDirty;
     this.grade = copy.grade;
+    this.stage = copy.developmentLevel;
     this.nextOrderId = copy.nextOrderId;
     this.notices = copy.notices;
     this.completedChambers = copy.completedChambers;
@@ -75,6 +75,16 @@ export class ExcavationSystem {
   private changed: Cell[] = [];
   private chamberAccessDirty = false;
   private grade = 0;
+  private stage = 0;
+  private queenLimit=()=>1;
+  setQueenLimitProvider(provider:()=>number):void{this.queenLimit=provider;}
+  get queenSlotsAvailable():number{return Math.max(0,this.queenLimit()-1-this.orders.filter(o=>o.type==='queen'&&!o.cancelled).length);}
+  get diggingGrade():number{return this.grade;}
+  get developmentStage():number{return this.stage;}
+  setDevelopmentLevel(level:number):void{
+    if(!Number.isInteger(level)||level<0||level>=BUILDER_DEVELOPMENT.length)throw new RangeError('Invalid builder development stage');
+    this.stage=level;this.setDiggingGrade(level);
+  }
   private nextOrderId = 1;
   private notices: ConstructionNotice[] = [];
   private completedChambers: Array<{ id: number; type: PlanType; cells: Cell[] }> = [];
@@ -93,7 +103,7 @@ export class ExcavationSystem {
     this.chambers = new ChamberSystem(world, resources);
   }
   setDiggingGrade(grade: number): void {
-    if (!Number.isInteger(grade) || grade < 0) throw new RangeError('Digging grade must be a nonnegative integer');
+    if (!Number.isInteger(grade) || grade < 0 || grade>4) throw new RangeError('Digging grade must be between0 and4');
     this.grade = grade;
     for (const worker of this.builders.values()) {
       const job = worker.job;
@@ -180,6 +190,7 @@ export class ExcavationSystem {
   drainChangedCells(): Cell[] { const changed = this.changed; this.changed = []; return changed; }
   validateOrder(cells: Cell[], type: PlanType = 'tunnel'): {valid: boolean; message: string; conflicts: Cell[]} {
     const fail = (message: string, conflicts: Cell[] = []) => ({valid: false, message, conflicts});
+    if(type==='queen'&&this.queenSlotsAvailable===0)return fail('Kein freier Königinnenplatz. Freischaltung bei50/150/500/1000 Koloniemitgliedern.');
     if (!PLAN_TYPES.includes(type) || !cells.length || cells.some(cell => !Number.isInteger(cell.column) || !Number.isInteger(cell.row)
       || !this.tile(cell) || this.surfaceNavigation.intersectsWater(cell)
       || !(terrainDefinitions[this.tile(cell)!.terrain].diggable || (type === 'tunnel' && this.tile(cell)!.terrain === 'surface'))
@@ -496,8 +507,10 @@ export class ExcavationSystem {
             remaining -= spent;
             if (fraction >= 1 - EPS) { worker.position = { ...target }; job.pathIndex++; }
           } else {
-            const spent = Math.min(remaining, job.duration - job.progress);
-            remaining -= spent; job.progress += spent;
+            const development=BUILDER_DEVELOPMENT[this.stage];
+            const rate=job.kind==='dig'?1/development.digDurationFactor:job.kind==='furnish'?CONSTRUCTION_CONFIG.furnishingSecondsPerUnit/development.furnishingSeconds:1;
+            const spent = Math.min(remaining, (job.duration - job.progress)/rate);
+            remaining -= spent; job.progress += spent*rate;
             if (job.kind === 'dig') job.order!.progress.set(cellKey(job.target!), job.progress);
             if (job.kind === 'furnish') job.order!.furnishingProgress.set(cellKey(job.target!), job.progress);
             if (job.progress >= job.duration - EPS) this.finish(worker, job);

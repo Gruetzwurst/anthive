@@ -2,12 +2,12 @@ import type { WorldCellCoordinate as Cell } from '../world/worldTypes.ts';
 import { cardinalNeighbors, cellKey } from '../world/gridPathfinding.ts';
 import { CONSTRUCTION_CONFIG, CHAMBER_BUILD_CONFIG } from './simulationConfig.ts';
 
-export const PLAN_TYPES = ['tunnel', 'food', 'water', 'buildingMaterial', 'brood-gathering', 'brood-building', 'brood-care', 'brood-combat', 'rest'] as const;
+export const PLAN_TYPES = ['tunnel', 'food', 'water', 'buildingMaterial', 'brood-gathering', 'brood-building', 'brood-care', 'brood-combat', 'rest','queen'] as const;
 export type PlanType = typeof PLAN_TYPES[number];
 export const PLAN_LABELS: Record<PlanType, string> = {
   tunnel: 'Tunnel', food: 'Nahrungslager', water: 'Wasserlager', buildingMaterial: 'Baustofflager',
   'brood-gathering': 'Brutkammer · Sammeln', 'brood-building': 'Brutkammer · Bauen',
-  'brood-care': 'Brutkammer · Pflege', 'brood-combat': 'Brutkammer · Kampf', rest: 'Ruhekammer',
+  'brood-care': 'Brutkammer · Pflege', 'brood-combat': 'Brutkammer · Kampf', rest: 'Ruhekammer',queen:'Königinnenkammer',
 };
 function validate(cell: Cell): void {
   if (!Number.isInteger(cell.column) || !Number.isInteger(cell.row) || cell.column < 0 || cell.row < 0) throw new RangeError('Ungültige Kachelkoordinaten');
@@ -53,6 +53,7 @@ export function constructionMaterialEstimate(type: PlanType, area: number): numb
 export type TemplateSize = 'small' | 'medium' | 'large' | 'free';
 export function squareTemplate(type: PlanType, size: Exclude<TemplateSize, 'free'>, anchor: Cell): Cell[] {
   if (!PLAN_TYPES.includes(type) || type === 'tunnel') throw new RangeError('Tunnel frei zeichnen');
+  if(type==='queen')return rectangleSelection(anchor,{column:anchor.column+10,row:anchor.row+3});
   const side = (type.startsWith('brood-') ? CHAMBER_BUILD_CONFIG.broodSides : CHAMBER_BUILD_CONFIG.standardSides)[size];
   if (!side) throw new RangeError('Ungültige Vorlagengröße');
   return rectangleSelection(anchor, {column: anchor.column + side - 1, row: anchor.row + side - 1});

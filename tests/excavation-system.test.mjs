@@ -14,7 +14,7 @@ function fixture(terrain='topsoil', capacity=20, initial=0) {
   const resources=new ResourceSystem();
   resources.addStore({id:'material',resource:'buildingMaterial',position:point(0),amount:initial,capacity,status:'operational',reachable:true});
   const excavation=new ExcavationSystem(world,resources);
-  excavation.setDiggingGrade(3);
+  excavation.setDiggingGrade(4);
   excavation.addBuilder('a',point(2));
   return {world,resources,excavation};
 }

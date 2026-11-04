@@ -3,8 +3,9 @@ import {validateColonyState} from './validateColonyState.ts';
 import type {ColonySave} from './colonySession.ts';
 import {newPersistenceTiming,BACKUP_INTERVALS} from './persistenceController.ts';
 import type {PersistenceTiming} from './persistenceController.ts';
+import {COLONY_MILESTONES} from '../simulation/simulationConfig.ts';
 
-export type RestoreTarget={id:string;name:string;revision:number;persistenceTiming:PersistenceTiming};
+export type RestoreTarget={id:string;name:string;revision:number;persistenceTiming:PersistenceTiming;highestPopulation?:number};
 export const normalizedColonyName=(name:string)=>name.trim().normalize('NFC').toLocaleLowerCase('de-DE');
 export function suggestImportName(name:string,existing:readonly {name:string}[]):string{
  const names=new Set(existing.map(r=>normalizedColonyName(r.name)));
@@ -22,6 +23,14 @@ function prepare(input:unknown,current:RestoreTarget,replacing:boolean):ColonySa
  input=migrateColonySave(input).save;validateColonyState(input);
  if(!current.id.trim()||!current.name.trim()||!Number.isSafeInteger(current.revision)||current.revision<0)throw new Error('Ungültiges Wiederherstellungsziel.');
  const save=structuredClone(input);save.id=current.id;save.name=replacing?input.name:current.name;save.revision=current.revision+1;
+ if(!replacing&&current.highestPopulation!==undefined){
+  if(!Number.isSafeInteger(current.highestPopulation)||current.highestPopulation<1)throw new Error('Ungültiger Koloniehöchststand.');
+  save.state.progression.highestPopulation=Math.max(save.state.progression.highestPopulation,current.highestPopulation);
+  const level=COLONY_MILESTONES.filter(n=>save.state.progression.highestPopulation>=n).length;
+  save.state.construction.grade=level;save.state.construction.developmentLevel=level;
+  save.state.gathering.developmentLevel=level;
+  save.state.queen.developmentLevel=level;save.state.broodSupply.developmentLevel=level;
+ }
  save.persistenceTiming=structuredClone(current.persistenceTiming);
  const active=save.persistenceTiming.activeSeconds;save.persistenceTiming.lastAutosaveActiveSeconds=active;
  if(replacing)for(const slot of [1,2,3] as const)save.persistenceTiming.backupDue[slot]=active+BACKUP_INTERVALS[slot];

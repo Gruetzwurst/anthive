@@ -368,3 +368,65 @@ tunnels; terrain/collision and construction costs are unchanged.
 
 Das Spiel startet über `./start-anthive.sh` unter http://localhost:5173/.
 [Start und Fortsetzung ohne laufenden Chat](WEITERMACHEN.md).
+
+Performance (03.11.2026): Der statische Geländeuntergrund wird nur für sichtbare
+Kartenabschnitte gerendert und beim ersten Besuch aufgebaut. Das reduziert die
+Zeichenarbeit beim Heranzoomen ohne Änderung der Grafikqualität.
+[Messung und Regression](docs/2026-11-03-PERFORMANCE-SICHTBARES-GELAENDE.md).
+
+## D2.1: Koloniehöchststand und Berufsstufen
+
+Die gesamte erwachsene Kolonie einschließlich Königin zählt zu den Meilensteinen
+50/150/250/500. Der Höchststand bleibt bei Verlusten und Backup-Wiederherstellung
+erhalten. Größe, Höchststand und Stufe stehen im Gruppenfenster. Schema3 ergänzt
+den Fortschritt mit geschützter Migration der bisherigen Spielstände; konkrete
+Berufsboni folgen in den nächsten D2-Paketen.
+[Ergebnis und Prüfungen](docs/D2.1-KOLONIEFORTSCHRITT-ERGEBNIS.md).
+
+## D2.2: Baumeisterinnen und Terrainfreigaben
+
+Koloniestufen schalten die fünf Bodenarten frei und verkürzen Grab-/
+Einrichtungszeiten. Der bisherige Test-Grabkraftschalter ist durch eine
+Statusanzeige ersetzt. Laufende Arbeit bleibt erhalten; Transport und
+Materialbilanz werden weiter real ausgeführt. Schema4 übernimmt ältere
+Spielstände mit Originalschutz.
+[Ergebnis und Prüfungen](docs/D2.2-BAUMEISTERINNEN-ERGEBNIS.md).
+
+## D2.3: Sammlerinnen
+
+Koloniestufen erhöhen Nahrung-/Wasser-Traglast bis15Einheiten und Grundtempo
+bis105px/s. Fachfremde Sammlerinnen transportieren die volle entwickelte Last
+mit dem bestehenden50%-Zeitfaktor. Reservierungen, Quellen und Lager bleiben
+begrenzt; laufende Ladungen wachsen beim Upgrade nicht nachträglich.
+Schema5 übernimmt die bisherigen Spielstände mit Originalschutz.
+[Ergebnis und Prüfungen](docs/D2.3-SAMMLERINNEN-ERGEBNIS.md).
+
+## D2.4: Brutpflege
+
+Koloniestufen erhöhen die Pflegekapazität von10 auf15 Bruttiere je effektiver
+Fachpflegerin und die reale Versorgungstraglast von5 auf12Einheiten. Tempo und
+normale Brutdauer bleiben unverändert. Das Gruppenfenster zeigt die aktuellen
+Fach-/Fremdpflegewerte. Schema6 übernimmt ältere Spielstände mit Originalschutz.
+[Ergebnis und Prüfungen](docs/D2.4-BRUTPFLEGE-ERGEBNIS.md).
+
+## D2.5: Königinnenkammer und besonderes Ei
+
+Ab50/150/500/1000 Koloniemitgliedern werden zusätzliche Königinnenplätze frei
+(am04.11.2026 zusätzlicher Platz bei50; die bisherigen Schwellen bleiben erhalten).
+Kammern lassen sich als11×4-Vorlage oder frei ab44 Kacheln bauen, für3Material
+je Kachel. Nach echter Einrichtung und Verbindung entsteht genau ein besonderes
+Ei bei der Startkönigin; Pflegerinnen tragen es in die neue Kammer. Schema7
+bewahrt Ei und Träger mit Originalschutz für alte Spielstände. Aufzucht und
+autonome Eiablage weiterer erwachsener Königinnen folgen im eigenen PaketD2.6.
+[Ergebnis und Prüfungen](docs/D2.5-KOENIGINNENKAMMER-EI-ERGEBNIS.md).
+
+
+D2.6: Königliche Brut entwickelt sich nach Ankunft in ihrer Königinnenkammer
+in12 Minuten(2 Ei /6 Larve /4 Puppe) bei vollständiger Pflege und Versorgung.
+Sie bindet2 Pflegeplätze, Larven benötigen doppelte tägliche Nahrung/Wasser
+über echte Pflegerinnenlieferungen. Ohne Pflege oder Larvenvorrat pausiert die
+Entwicklung; königliche Brut stirbt nicht. Jede erwachsene Königin legt unter
+den bestehenden Versorgungsregeln alle2 Minuten eigene normale Eier in ihrer
+Kammer, mit eigenem Puffer/Fortschritt und gemeinsamen Berufsquoten. Pflegerinnen
+bringen diese Eier in die spezialisierten Brutkammern. Schema8 migriert1–7
+mit dem bestehenden atomaren Originalschutz; keine Offline-Entwicklung.

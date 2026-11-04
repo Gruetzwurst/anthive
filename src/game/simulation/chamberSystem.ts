@@ -10,6 +10,7 @@ export type ChamberSnapshot = {
 };
 export function chamberCapacity(type: PlanType, area: number): number {
   if (type === 'tunnel') return 0;
+  if(type==='queen')return 1;
   const perTile = type === 'rest' ? CHAMBER_CONFIG.restPlacesPerTile
     : type.startsWith('brood-') ? CHAMBER_CONFIG.broodPlacesPerTile
     : SIMULATION_CONFIG.storageCapacityPerTile[type as 'food' | 'water' | 'buildingMaterial'];

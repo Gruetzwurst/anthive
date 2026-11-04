@@ -28,6 +28,7 @@ server = subprocess.Popen([str(ROOT / 'node_modules/.bin/vite'), '--host', '127.
                            '--port', str(vite_port), '--strictPort'], cwd=ROOT,
                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 browser = None
+browser_log = None
 try:
     with tempfile.TemporaryDirectory(prefix='anthive-a4-firefox-', dir=OUTPUT) as profile:
         # Expose touch hardware before Phaser performs its boot-time detection.
@@ -43,8 +44,9 @@ try:
                 time.sleep(0.1)
         else:
             raise RuntimeError('Local Vite server did not start')
+        browser_log = (OUTPUT / 'anthive-firefox.log').open('w')
         browser = subprocess.Popen(['firefox', '--headless', '--no-remote', '--marionette', '--profile', profile],
-                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                   stdout=browser_log, stderr=subprocess.STDOUT)
         for _ in range(120):
             try:
                 connection = socket.create_connection(('127.0.0.1', browser_port), timeout=1)
@@ -52,8 +54,8 @@ try:
             except OSError:
                 time.sleep(0.1)
         else:
-            raise RuntimeError('Firefox automation did not start')
-        connection.settimeout(60)
+            raise RuntimeError('Firefox automation did not start; see node_modules/.cache/anthive-firefox.log')
+        connection.settimeout(75)  # Allow WebDriver's60s script timeout to report a structured error first.
 
         def receive():
             size = b''
@@ -198,6 +200,48 @@ try:
         command('WebDriver:Navigate', {'url': f'http://127.0.0.1:{vite_port}/'})
         if '--menu-only' not in sys.argv and '--import-ui-only' not in sys.argv:
             hook()
+        if '--performance-only' in sys.argv:
+            result=page("""
+              await scene.persistenceReady;scene.gathering.clock.setPaused(true);
+              const g=scene.gathering,engines=g.exportWorkforceState();
+              for(let i=g.getWorkers().length;i<47;i++){
+                const id=`profile-${i}`;g.workforce.addWorker(id,'gathering');
+                engines.states.set(id,{engine:'parked',position:{...scene.saveSession.world.landmarks.nestChamberCenter}});
+              }
+              g.restoreWorkforceState(engines);g.clock.setPaused(false);
+              const start=performance.now();for(let i=0;i<60;i++)g.advance(1/60);
+              const simulationMs=(performance.now()-start)/60;g.clock.setPaused(true);scene.update(0,16);
+              const graphics=scene.children.list.filter(o=>Array.isArray(o.commandBuffer));
+              const largest=graphics.reduce((a,b)=>a.commandBuffer.length>b.commandBuffer.length?a:b);
+              const samples=[];
+              for(const zoom of [1,2])for(const hidden of [false,true]){
+                scene.setWorldZoom(zoom);largest.setVisible(!hidden);
+                const renderer=scene.game.renderer;
+                const times=[];for(let i=0;i<12;i++){
+                  const t=performance.now();renderer.preRender();scene.sys.render(renderer);renderer.postRender();
+                  times.push(performance.now()-t);
+                }
+                times.sort((a,b)=>a-b);samples.push({zoom,hideLargest:hidden,medianMs:times[6],
+                  terrainCommands:graphics.filter(o=>o.depth===0&&o.willRender(scene.cameras.main)).reduce((n,o)=>n+o.commandBuffer.length,0)});
+              }
+              largest.setVisible(true);
+              const camera=scene.cameras.main,origin={x:camera.scrollX,y:camera.scrollY},visits=[];
+              for(const point of [{x:scene.saveSession.world.dimensions.columns*24-640,y:scene.saveSession.world.dimensions.rows*24-360},origin]){
+                camera.setScroll(point.x,point.y);camera.preRender();
+                const renderer=scene.game.renderer;renderer.preRender();scene.sys.render(renderer);renderer.postRender();
+                visits.push(graphics.filter(o=>o.depth===0&&o.willRender(camera)).reduce((n,o)=>n+o.commandBuffer.length,0));
+              }
+              return {workers:g.getWorkers().length,renderer:scene.game.renderer.type,simulationMs,
+                graphics:graphics.map(o=>({commands:o.commandBuffer.length,depth:o.depth})).sort((a,b)=>b.commands-a.commands).slice(0,4),samples,visits};
+            """)
+            print('Performance:',json.dumps(result))
+            screenshot('anthive-performance-zoom.png')
+            if '--performance-regression' in sys.argv:
+                near=next(s for s in result['samples'] if s['zoom']==2 and not s['hideLargest'])
+                assert near['terrainCommands'] < 50000, 'Offscreen terrain still replays the entire world at close zoom'
+                assert all(0 < n < 50000 for n in result['visits']), 'Terrain must render when visiting distant chunks and returning'
+            finish_focused()
+            raise SystemExit(0)
         if '--menu-only' in sys.argv:
             def menu_ready():
                 for _ in range(160):
@@ -213,7 +257,7 @@ try:
             saved=page("""
               await scene.persistenceReady;scene.gathering.clock.setPaused(true);
               scene.gathering.resources.depositInStore('water-store',{resource:'water',amount:7});
-              scene.excavation.setDiggingGrade(2);scene.diggingGrade=2;scene.updateUpgradeLabel();
+              scene.gathering.restoreProgression({highestPopulation:150});scene.saveSession.syncConstruction();scene.diggingGrade=2;scene.updateUpgradeLabel();
               await scene.persistence.manual();
               const s=scene.saveSession;
               const expected={id:s.id,count:s.simulation.getWorkers().length,water:s.simulation.resources.getStore('water-store').amount};
@@ -230,7 +274,7 @@ try:
               await scene.persistenceReady;
               const e=JSON.parse(sessionStorage.getItem('anthive-menu-expected'));
               if(scene.saveSession.id!==e.id||scene.gathering.getWorkers().length!==e.count||scene.gathering.resources.getStore('water-store').amount!==e.water)throw Error('resume changed colony');
-              if(scene.diggingGrade!==2||!scene.upgradeButton.text.endsWith('2'))throw Error('loaded digging grade label incorrect');
+              if(scene.diggingGrade!==2||!scene.upgradeButton.text.endsWith('Lehm'))throw Error('loaded digging grade label incorrect');
               return {id:scene.saveSession.id,count:scene.gathering.getWorkers().length};
             """)
             click(120,19)
@@ -423,37 +467,247 @@ try:
             print('D1 save failure:',exported,{'retry':True})
             finish_focused()
             raise SystemExit(0)
-        if '--migration-only' in sys.argv:
+        if '--royal-only' in sys.argv or '--royal-lifecycle-only' in sys.argv:
+            print('Royal: scene hooked',flush=True)
+            page("await Promise.race([scene.persistenceReady,new Promise((_,reject)=>setTimeout(()=>reject(Error('persistence readiness timed out')),5000))]);return true;")
+            print('Royal: persistence ready',flush=True)
+            ready=page("""
+              await scene.persistenceReady;scene.gathering.clock.setPaused(true);scene.updateConstruction();scene.constructionPanel.open();
+              const type=document.querySelector('[name=chamberType]');if(!type.querySelector('[value=queen]').disabled)throw Error('queen option unlocked too soon');
+              scene.gathering.restoreProgression({highestPopulation:50});scene.update(0,0);scene.updateConstruction();
+              if(type.querySelector('[value=queen]').disabled)throw Error('queen option did not unlock');
+              type.value='queen';type.dispatchEvent(new Event('change',{bubbles:true}));const size=document.querySelector('[name=chamberSize]');
+              size.value='small';size.dispatchEvent(new Event('change',{bubbles:true}));
+              if(!size.selectedOptions[0].textContent.includes('11×4')||!size.querySelector('[value=medium]').disabled)throw Error('queen template options incorrect');
+              const {squareTemplate}=await import('/src/game/simulation/constructionPlanning.ts');let cells;
+              for(const column of [100,80,60,40,200,220]){const candidate=squareTemplate('queen','small',{column,row:28});if(scene.excavation.validateOrder(candidate,'queen').valid){cells=candidate;break;}}
+              if(!cells)throw Error('queen test site missing');window.__royalCells=cells;
+              document.querySelector('#construction-panel form').requestSubmit();scene.setWorldZoom(1);
+              scene.cameras.main.centerOn((cells[0].column+.5)*24,(cells[0].row+.5)*24);scene.cameras.main.preRender();return true;
+            """)
+            click(320,180)
+            assert page('return scene.draftCells.length===44;')
+            native_click('[data-action=confirm-plan]')
+            result=page("""
+              const a=scene.saveSession,e=a.excavation,w=a.world,cells=window.__royalCells;
+              if(e.getConstructionOrders().length!==1||e.getConstructionOrders()[0].type!=='queen'||e.queenSlotsAvailable!==0)throw Error('queen plan did not reserve slot');
+              a.syncConstruction();if(a.royal.getEggs().length)throw Error('egg before furnishing');
+              let col=Math.floor(w.landmarks.nestChamberCenter.x/24),row=Math.floor(w.landmarks.nestChamberCenter.y/24);
+              while(col!==cells[0].column){w.tiles[row][col].state='open';col+=Math.sign(cells[0].column-col);}while(row!==cells[0].row){w.tiles[row][col].state='open';row+=Math.sign(cells[0].row-row);}
+              for(const c of cells)w.tiles[c.row][c.column].state='open';a.simulation.traffic.invalidateTopology();
+              const pile=e.materials.produce(w.landmarks.buildingMaterialStoreCenter,132);
+              while(e.materials.getGround().some(p=>p.id===pile)){e.materials.pickUp(pile,'builder-0',5);e.materials.deposit('builder-0','building-material-store');}
+              for(let n=0;n<20000&&e.getConstructionOrders()[0].status!=='furnished';n++)e.advance(.25);
+              if(e.getConstructionOrders()[0].status!=='furnished'||e.materials.balance.consumed!==132)throw Error('queen room was not physically furnished');
+              a.syncConstruction();if(a.royal.getEggs().length!==1)throw Error('special egg missing/duplicated');
+              for(let n=0;n<2000&&!a.simulation.broodSupply.getNurses().some(n=>n.eggId?.startsWith('royal-'));n++)a.simulation.broodSupply.advanceWorkers(.05);
+              if(!a.simulation.broodSupply.getNurses().some(n=>n.eggId?.startsWith('royal-')))throw Error('nurse never picked up royal egg');
+              scene.update(0,0); // Flush construction notices exactly as the normal frame loop does before the checkpoint.
+              await scene.persistence.manual();const {ColonyRepository}=await import('/src/game/persistence/colonyRepository.ts');
+              const {captureColony,serializeColony}=await import('/src/game/persistence/colonySession.ts');const repo=new ColonyRepository(),b=await repo.load(a.id);
+              const left=JSON.parse(serializeColony(captureColony(a))),right=JSON.parse(serializeColony(captureColony(b)));
+              const diff=(a,b,path='')=>{if(Object.is(a,b))return null;if(!a||!b||typeof a!=='object'||typeof b!=='object')return path;for(const k of new Set([...Object.keys(a),...Object.keys(b)])){const d=diff(a[k],b[k],path+'.'+k);if(d)return d;}return null;};
+              const mismatch=diff(left,right);if(mismatch)throw Error('royal carrier changed after load: '+mismatch);
+              for(let n=0;n<4000&&!b.royal.getEggs()[0].arrived;n++)b.simulation.broodSupply.advanceWorkers(.05);
+              if(!b.royal.getEggs()[0].arrived)throw Error('royal delivery did not resume');
+              for(let n=0;n<4000&&!a.royal.getEggs()[0].arrived;n++)a.simulation.broodSupply.advanceWorkers(.05);
+              scene.renderBrood(100);scene.updateConstruction();scene.constructionPanel.open();scene.constructionPanel.selectOrder(e.getConstructionOrders()[0].id);
+              await scene.persistence.manual();const last=await repo.load(a.id);if(last.royal.getEggs().length!==1||!last.royal.getEggs()[0].arrived)throw Error('royal egg duplicated after arrival reload');
+              await repo.close();return {unlock:true,template44:true,slotReserved:true,material132:true,sourceEgg:true,realCarrier:true,activeReload:true,arrivalReload:true};
+            """)
+            if '--royal-lifecycle-only' in sys.argv:
+                lifecycle=page("""
+                  const a=scene.saveSession,g=a.simulation,q=g.queen,b=g.broodSupply;
+                  for(const k of ['food','water'])g.resources.depositInStore(`${k}-store`,{resource:k,amount:100});
+                  const advance=days=>{q.advance(days,0,q.snapshot.chambers,1,d=>{for(const loss of b.consume(d,q.getLarvalRooms()))q.loseLarvae(loss.roomId,loss.count);},b);b.syncRooms(q.getLarvalRooms());};
+                  advance(.2);if(a.royal.getEggs()[0].stage!=='larva')throw Error('royal egg did not develop after2min');
+                  for(let i=0;i<5000;i++)b.advanceWorkers(.1);
+                  const r=b.getRooms().find(r=>r.royal);if(!r||r.food.amount<.6||r.water.amount<.6)throw Error('no real royal larval deliveries');
+                  advance(.6);if(a.royal.getEggs()[0].stage!=='pupa')throw Error('royal larva did not develop after6min');
+                  advance(.4);if(q.queenCount!==2||g.getProgression().population!==g.workforce.size+2)throw Error('new adult queen missing/not counted');
+                  q.setQuotas({gathering:100,building:0,care:0,combat:0});q.advance(.2,1,q.snapshot.chambers,1);
+                  const egg=q.snapshot.eggs.find(e=>e.sourceQueenId!=='queen-1');
+                  if(!egg||JSON.stringify(egg.origin)!==JSON.stringify(a.royal.getEggs()[0].position))throw Error('new queen did not lay in own chamber');
+                  for(let i=0;i<10000&&!q.snapshot.eggs.find(e=>e.id===egg.id).arrived;i++)b.advanceWorkers(.1);
+                  if(!q.snapshot.eggs.find(e=>e.id===egg.id).arrived)throw Error('new queen normal egg not physically delivered');
+                  scene.renderBrood(100);scene.updateConstruction();scene.updateEconomyHud();scene.update(0,0);
+                  if(!document.querySelector('[data-role=queen-summary]').textContent.includes('Königinnen: 2'))throw Error('queen summary missing');
+                  const {ColonyRepository}=await import('/src/game/persistence/colonyRepository.ts');
+                  const {captureColony,serializeColony}=await import('/src/game/persistence/colonySession.ts');
+                  await scene.persistence.manual();const repo=new ColonyRepository(),loaded=await repo.load(a.id);
+                  if(loaded.simulation.queen.queenCount!==2||loaded.royal.getEggs()[0].stage!=='adult')throw Error('adult queen reload lost');
+                  const check=JSON.parse(serializeColony(captureColony(loaded))),live=JSON.parse(serializeColony(captureColony(a)));
+                  if(JSON.stringify(check)!==JSON.stringify(live))throw Error('adult queen continuation checkpoint changed');
+                  await repo.close();return {phases2_6_4:true,realLarvalDelivery:true,adultCount:true,ownSource:true,normalEggTransport:true,adultReload:true,queenHud:true};
+                """)
+                print('D2 royal lifecycle:',lifecycle,flush=True)
+            screenshot('anthive-d2-royal-room.png')
+            print('D2 royal:',result)
+            finish_focused()
+            raise SystemExit(0)
+        if '--care-only' in sys.argv:
+            result=page("""
+              const {ColonyRepository}=await import('/src/game/persistence/colonyRepository.ts');
+              const {captureColony,serializeColony}=await import('/src/game/persistence/colonySession.ts');
+              await scene.persistenceReady;const a=scene.saveSession,g=a.simulation;g.clock.setPaused(true);
+              g.restoreProgression({highestPopulation:500});scene.update(0,0);scene.updateEconomyHud();scene.workforcePanel.open();
+              const summary=document.querySelector('[data-role=workforce-summary]').textContent,queenSummary=document.querySelector('[data-role=queen-summary]').textContent;
+              if(!summary.includes('Brutversorgung: 12 Einheiten · 78 px/s')||!queenSummary.includes('Pflegerin: 15 Plätze')||!queenSummary.includes('fachfremde Hilfe: 7,5 Plätze'))throw Error('developed care values missing');
+              scene.workforcePanel.dialog.close();
+              const state=g.queen.exportState(),room=[...state.rooms.values()].find(r=>r.specialization==='gathering');
+              state.eggs=Array.from({length:18},(_,i)=>({id:`egg-${i+1}`,sourceQueenId:'queen-1',targetSpecialization:'gathering',chamberId:room.id,stage:'larva',stageProgressDays:0,arrived:true,carrierId:null,carried:false,origin:{...a.world.landmarks.queenChamberCenter}}));
+              g.queen.restoreState(state);g.broodSupply.syncRooms(g.queen.getLarvalRooms());
+              for(const resource of ['food','water'])g.resources.depositInStore(`${resource}-store`,{resource,amount:100});
+              g.clock.setPaused(false);for(let i=0;i<2000&&!g.broodSupply.getNurses().some(n=>(n.load?.amount??0)>5);i++)g.advance(.05);g.clock.setPaused(true);
+              if(!g.broodSupply.getNurses().some(n=>(n.load?.amount??0)>5)||g.queen.snapshot.careCapacity!==15)throw Error('care transport or capacity incorrect');
+              g.moveWorkers('building','building','care',1);g.clock.setPaused(false);g.advance(.01);g.clock.setPaused(true);
+              if(g.queen.snapshot.careCapacity!==22.5)throw Error('foreign care was not half performance');
+              await scene.persistence.manual();const repo=new ColonyRepository(),b=await repo.load(a.id);
+              if(serializeColony(captureColony(a))!==serializeColony(captureColony(b)))throw Error('active care changed on reload');
+              a.simulation.clock.setPaused(false);b.simulation.clock.setPaused(false);a.simulation.advance(.25);b.simulation.advance(.25);a.simulation.clock.setPaused(true);b.simulation.clock.setPaused(true);
+              if(serializeColony(captureColony(a))!==serializeColony(captureColony(b)))throw Error('care diverged after reload');
+              const profile=captureColony(a).state.queen;
+              if(JSON.stringify(profile.broodConfig.stageDays)!==JSON.stringify({egg:.1,larva:.3,pupa:.2})||profile.config.eggsPerGameDay!==5)throw Error('brood/laying duration changed');
+              await repo.close();return {careStats:true,realCargo:true,noExtraCredit:true,foreignHalf:true,activeReload:true,identicalContinuation:true,broodUnchanged:true};
+            """)
+            print('D2 care:',result)
+            finish_focused()
+            raise SystemExit(0)
+        if '--collectors-only' in sys.argv:
+            result=page("""
+              const {ColonyRepository}=await import('/src/game/persistence/colonyRepository.ts');
+              const {captureColony,serializeColony}=await import('/src/game/persistence/colonySession.ts');
+              await scene.persistenceReady;const a=scene.saveSession,g=a.simulation;g.clock.setPaused(true);
+              g.restoreProgression({highestPopulation:500});scene.update(0,0);scene.updateEconomyHud();scene.workforcePanel.open();
+              if(!document.querySelector('[data-role=workforce-summary]').textContent.includes('Sammlerinnen: 15 Einheiten · 105 px/s'))throw Error('collector stats missing');
+              scene.workforcePanel.dialog.close();g.clock.setPaused(false);
+              for(let n=0;n<2000&&!g.gathering.getCollectors().some(w=>(w.load?.amount??0)>5);n++)g.advance(.05);
+              g.clock.setPaused(true);if(!g.gathering.getCollectors().some(w=>(w.load?.amount??0)>5))throw Error('no developed live cargo');
+              g.moveWorkers('building','building','gathering',1);g.clock.setPaused(false);g.advance(.01);g.clock.setPaused(true);
+              const foreign=[...g.gathering.exportState().workers.values()].find(w=>w.id.startsWith('builder'));
+              if(!foreign||foreign.efficiency!==.5||g.gathering.carryCapacity!==15)throw Error('foreign collector penalty incorrect');
+              await scene.persistence.manual();const repo=new ColonyRepository(),b=await repo.load(a.id);
+              if(serializeColony(captureColony(a))!==serializeColony(captureColony(b)))throw Error('developed cargo changed on reload');
+              a.simulation.clock.setPaused(false);b.simulation.clock.setPaused(false);a.simulation.advance(.25);b.simulation.advance(.25);
+              a.simulation.clock.setPaused(true);b.simulation.clock.setPaused(true);
+              if(serializeColony(captureColony(a))!==serializeColony(captureColony(b)))throw Error('developed transport diverged after reload');
+              await repo.close();return {statsVisible:true,developedCargo:true,foreignHalf:true,activeReload:true,identicalContinuation:true};
+            """)
+            print('D2 collectors:',result)
+            finish_focused()
+            raise SystemExit(0)
+        if '--builders-only' in sys.argv:
+            result=page("""
+              const {ColonyRepository}=await import('/src/game/persistence/colonyRepository.ts');
+              const {captureColony,serializeColony}=await import('/src/game/persistence/colonySession.ts');
+              await scene.persistenceReady;scene.gathering.clock.setPaused(true);
+              if(scene.diggingGrade!==0||!scene.upgradeButton.text.endsWith('Oberboden')||scene.upgradeButton.input)throw Error('prototype grade switch remains');
+              const a=scene.saveSession,w=a.world,q=w.landmarks.queenChamberCenter,col=Math.floor(q.x/24),row=Math.floor(q.y/24);let target;
+              for(let r=row-5;r<=row+5&&!target;r++)for(let c=col-7;c<=col+7;c++){
+                const t=w.tiles[r]?.[c];if(t?.terrain==='topsoil'&&t.state!=='open'&&[[c-1,r],[c+1,r],[c,r-1],[c,r+1]].some(([x,y])=>w.tiles[y]?.[x]?.state==='open')){target={column:c,row:r};break;}
+              }
+              if(!target)throw Error('test site missing');w.tiles[target.row][target.column].terrain='compactEarth';scene.excavation.addOrder([target]);scene.excavation.advance(1);
+              if(scene.excavation.getConstructionOrders()[0].blockReason!=='hardness')throw Error('locked terrain was dug');
+              scene.gathering.restoreProgression({highestPopulation:50});scene.update(0,0);
+              if(!scene.upgradeButton.text.endsWith('Kompakte Erde'))throw Error('stage label did not update');
+              for(let n=0;n<1000&&!scene.excavation.getBuilders().some(b=>b.job?.phase==='digging'&&b.job.progress>0);n++)scene.excavation.advance(.02);
+              const progress=scene.excavation.getConstructionOrders()[0].partialDigSeconds;if(!(progress>0))throw Error('unlocked work did not start');
+              scene.gathering.restoreProgression({highestPopulation:150});scene.update(0,0);
+              if(scene.excavation.getConstructionOrders()[0].partialDigSeconds!==progress||!scene.upgradeButton.text.endsWith('Lehm'))throw Error('upgrade lost running work');
+              await scene.persistence.manual();const repo=new ColonyRepository(),b=await repo.load(a.id);
+              if(serializeColony(captureColony(b))!==serializeColony(captureColony(a)))throw Error('running work changed on reload');
+              a.excavation.advance(.5);b.excavation.advance(.5);
+              if(serializeColony(captureColony(b))!==serializeColony(captureColony(a)))throw Error('running work diverged after reload');
+              scene.gathering.restoreProgression({highestPopulation:500});scene.update(0,0);await scene.persistence.manual();
+              const last=await repo.load(a.id);if(last.excavation.diggingGrade!==4||!scene.upgradeButton.text.endsWith('Tiefengestein'))throw Error('deep rock stage lost');
+              await repo.close();return {terrainLocked:true,automaticStages:true,partialWorkKept:true,activeJobReload:true,deepRockSaved:true,noTestSwitch:true};
+            """)
+            print('D2 builders:',result)
+            finish_focused()
+            raise SystemExit(0)
+        if '--progression-only' in sys.argv:
             result=page("""
               const {ColonyRepository}=await import('/src/game/persistence/colonyRepository.ts');
               const {createColonySession,captureColony}=await import('/src/game/persistence/colonySession.ts');
+              function population(session,count){
+                const s=session.simulation,e=s.exportWorkforceState();
+                for(const w of s.workforce.getWorkers())if(w.id.startsWith('progress-')){s.workforce.removeWorker(w.id);e.states.delete(w.id);}
+                for(let i=s.workforce.size;i<count;i++){
+                  const id=`progress-${i}`;s.workforce.addWorker(id,'combat');e.states.set(id,{engine:'parked',position:{...session.world.landmarks.nestChamberCenter}});
+                }
+                s.restoreWorkforceState(e);
+              }
+              await scene.persistenceReady;scene.gathering.clock.setPaused(true);
+              population(scene.saveSession,49);scene.updateEconomyHud();scene.workforcePanel.open();
+              const text=document.querySelector('[data-role=workforce-summary]').textContent;
+              if(!text.includes('Kolonie 50 (inkl. Königin)')||!text.includes('Höchststand 50')||!text.includes('Entwicklungsstufe 1/4'))throw Error('progress UI missing: '+text);
+              await scene.persistence.manual();scene.workforcePanel.dialog.close();
+              const liveRepo=new ColonyRepository(),reloaded=await liveRepo.load(scene.saveSession.id);
+              if(reloaded.simulation.getProgression().highestPopulation!==50)throw Error('live save lost milestone');await liveRepo.close();
+              const repo=new ColonyRepository('anthive-progress-test'),a=createColonySession({id:'progress-a',name:'A'});
+              await repo.save(a,{backupSlot:1});const early=await repo.readBackup(a.id,1);
+              population(a,49);a.simulation.getProgression();population(a,10);await repo.save(a);
+              await repo.restoreBackup(a.id,1,a.revision,()=>true);
+              let loaded=await repo.load(a.id);if(loaded.simulation.getProgression().highestPopulation!==50)throw Error('backup lost peak');
+              const raw=await new Promise((resolve,reject)=>{const r=indexedDB.open('anthive-progress-test');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
+              const row=await repo.readRow(a.id);
+              await new Promise((resolve,reject)=>{const tx=raw.transaction('colonies','readwrite');tx.objectStore('colonies').put({...row,payload:'broken'});tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);});raw.close();
+              await repo.restoreBackup(a.id,1,loaded.revision,()=>true);loaded=await repo.load(a.id);
+              if(loaded.simulation.getProgression().highestPopulation!==50)throw Error('corrupt main restore lost durable peak');
+              const imported=await repo.importNew(early,'Imported');
+              if((await repo.load(imported.id)).simulation.getProgression().highestPopulation!==11)throw Error('import inherited unrelated peak');
+              await repo.replaceImported(a.id,early,loaded.revision,()=>true);
+              if((await repo.load(a.id)).simulation.getProgression().highestPopulation!==11)throw Error('replacement did not take source history');
+              await repo.close();return {ui:true,liveReload:true,backupKeepsPeak:true,corruptMainKeepsPeak:true,importIsolated:true,replacementUsesSource:true};
+            """)
+            print('D2 progression:',result)
+            finish_focused()
+            raise SystemExit(0)
+        if '--migration-only' in sys.argv:
+            migration_code="""
+              const {ColonyRepository}=await import('/src/game/persistence/colonyRepository.ts');
+              const {createColonySession,captureColony}=await import('/src/game/persistence/colonySession.ts');
+              const results=[];for(const oldSchema of SCHEMA_VERSIONS){
+              const databaseName='anthive-migration-test-'+oldSchema;
               const a=createColonySession({id:'legacy',name:'Alter Stand'});a.simulation.advance(130);
-              const old=captureColony(a);old.schemaVersion=1;delete old.encoding;old.revision=1;
+              const old=captureColony(a);old.schemaVersion=oldSchema;if(oldSchema<7){delete old.state.royal;delete old.state.construction.minimumAreas.queen;}delete old.state.queen.additionalQueens;for(const e of [...old.state.queen.eggs,...old.state.queen.buffer])delete e.sourceQueenId;for(const r of old.state.broodSupply.rooms.values())delete r.royal;
+              if(oldSchema<6){delete old.state.queen.developmentLevel;delete old.state.broodSupply.developmentLevel;}else{old.state.queen.developmentLevel=4;old.state.broodSupply.developmentLevel=4;}
+              if(oldSchema<5)delete old.state.gathering.developmentLevel;else old.state.gathering.developmentLevel=4;
+              if(oldSchema<4)delete old.state.construction.developmentLevel;
+              if(old.schemaVersion<3)delete old.state.progression;else{old.state.progression.highestPopulation=500;old.state.construction.grade=oldSchema>=4?4:3;if(oldSchema>=4)old.state.construction.developmentLevel=4;}
+              if(old.schemaVersion===1)delete old.encoding;old.revision=1;
               const payload=JSON.stringify(old,(_k,v)=>v instanceof Map?{$map:[...v]}:v instanceof Set?{$set:[...v]}:v);
               const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(payload)),checksum=[...new Uint8Array(bytes)].map(n=>n.toString(16).padStart(2,'0')).join('');
-              const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('anthive-migration-test',1);r.onupgradeneeded=()=>r.result.createObjectStore('colonies',{keyPath:'id'});r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
+              const db=await new Promise((resolve,reject)=>{const r=indexedDB.open(databaseName,1);r.onupgradeneeded=()=>r.result.createObjectStore('colonies',{keyPath:'id'});r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
               const savedAt=new Date().toISOString();
               await new Promise((resolve,reject)=>{const tx=db.transaction('colonies','readwrite');tx.objectStore('colonies').put({id:'legacy',name:'Alter Stand',revision:1,savedAt,gameDay:0,antCount:10,payload,checksum,backups:{1:{slot:1,payload,checksum,revision:1,savedAt}}});tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);});db.close();
-              const repo=new ColonyRepository('anthive-migration-test'),loaded=await repo.load('legacy');
-              if(captureColony(loaded).schemaVersion!==2||(await repo.readRow('legacy')).payload!==payload)throw Error('load changed original');
+              const repo=new ColonyRepository(databaseName),loaded=await repo.load('legacy');
+              if(captureColony(loaded).schemaVersion!==8||(await repo.readRow('legacy')).payload!==payload)throw Error('load changed original');
+              if(old.schemaVersion>=3&&(loaded.simulation.getProgression().highestPopulation!==500||loaded.excavation.diggingGrade!==4||loaded.simulation.gathering.carryCapacity!==15))throw Error('legacy progress/development lost');
               const add=IDBObjectStore.prototype.add;IDBObjectStore.prototype.add=function(...args){const r=add.apply(this,args);if(this.name==='recoveryCopies')this.transaction.abort();return r;};
               let failed=false;try{await repo.save(loaded);}catch{failed=true;}finally{IDBObjectStore.prototype.add=add;}
               if(!failed||(await repo.readRow('legacy')).payload!==payload||(await repo.listRecoveryCopies('legacy')).length)throw Error('failed migration replaced original');
               await repo.save(loaded);const copies=await repo.listRecoveryCopies('legacy'),row=await repo.readRow('legacy');
-              if(JSON.parse(row.payload).schemaVersion!==2||copies.length!==1||copies[0].reason!=='migration'||row.backups[1].payload!==payload)throw Error('migration publication/protection');
+              if(JSON.parse(row.payload).schemaVersion!==8||copies.length!==1||copies[0].reason!=='migration'||row.backups[1].payload!==payload)throw Error('migration publication/protection');
               const check=await repo.readRecoveryCopy('legacy',copies[0].id);
-              if(check.schemaVersion!==2||check.state.clock.elapsedSeconds!==old.state.clock.elapsedSeconds)throw Error('old protection unreadable');
+              if(check.schemaVersion!==8||check.state.clock.elapsedSeconds!==old.state.clock.elapsedSeconds)throw Error('old protection unreadable');
               const row2=await repo.readRow('legacy'),future=JSON.parse(row2.payload);future.encoding='future-codec';
               const futurePayload=JSON.stringify(future),futureBytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(futurePayload));
               const futureHash=[...new Uint8Array(futureBytes)].map(n=>n.toString(16).padStart(2,'0')).join('');
-              const raw=await new Promise((resolve,reject)=>{const r=indexedDB.open('anthive-migration-test');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
+              const raw=await new Promise((resolve,reject)=>{const r=indexedDB.open(databaseName);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
               await new Promise((resolve,reject)=>{const tx=raw.transaction('colonies','readwrite');tx.objectStore('colonies').put({...row2,payload:futurePayload,checksum:futureHash});tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);});raw.close();
               let futureRefused=false;try{await repo.save(loaded);}catch{futureRefused=true;}
               if(!futureRefused||(await repo.readRow('legacy')).payload!==futurePayload)throw Error('future codec overwritten');
               let futureRestoreRefused=false;try{await repo.restoreBackup('legacy',1,loaded.revision,()=>true);}catch{futureRestoreRefused=true;}
               if(!futureRestoreRefused||(await repo.readRow('legacy')).payload!==futurePayload)throw Error('restore overwrote unsupported original');
-              await repo.close();return {readOnlyMigration:true,abortPreserved:true,originalProtected:true,backupUnchanged:true,futureRefused:true};
-            """)
+              await repo.close();results.push({schema:oldSchema,readOnlyMigration:true,abortPreserved:true,originalProtected:true,backupUnchanged:true,futureRefused:true});
+              }return results;
+            """
+            schemas=range(1,8) if '--all-save-schemas' in sys.argv else [7 if '--schema7-migration' in sys.argv else 6 if '--schema6-migration' in sys.argv else 5 if '--schema5-migration' in sys.argv else 4 if '--schema4-migration' in sys.argv else 3 if '--schema3-migration' in sys.argv else 2 if '--schema2-migration' in sys.argv else 1]
+            result=[]
+            for version in schemas:
+                result.extend(page(migration_code.replace('SCHEMA_VERSIONS',json.dumps([version]))))
+                print('Migration schema passed:',version,flush=True)
             print('D1 migration:',result)
             finish_focused()
             raise SystemExit(0)
@@ -1500,3 +1754,5 @@ finally:
         browser.wait(timeout=10)
     server.terminate()
     server.wait(timeout=10)
+    if browser_log is not None:
+        browser_log.close()

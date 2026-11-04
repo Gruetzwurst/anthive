@@ -116,9 +116,12 @@ export class WorkforcePanel {
   open(): void { if (!this.dialog.open) this.dialog.showModal(); }
   destroy(): void { this.dialog.close(); this.dialog.remove(); }
 
-  update(workers: WorkforceSnapshot[]): void {
+  update(workers: WorkforceSnapshot[],progression?:{population:number;highestPopulation:number;level:number;nextMilestone:number|null},gathering?:{carryCapacity:number;speed:number},care?:{carryCapacity:number;speed:number}): void {
     this.workers = workers;
     this.summary.textContent = `${workers.length} Arbeiterinnen · ${workers.filter(worker => worker.resting).length} ruhen · ${workers.filter(worker => worker.pending).length} Wechsel ausstehend`;
+    if(progression)this.summary.textContent+=` · Kolonie ${progression.population} (inkl. ${progression.population-workers.length>1?'Königinnen':'Königin'}) · Höchststand ${progression.highestPopulation} · Entwicklungsstufe ${progression.level}/4${progression.nextMilestone===null?' · alle Meilensteine erreicht':` · nächster Meilenstein ${progression.nextMilestone}`}`;
+    if(gathering)this.summary.textContent+=` · Sammlerinnen: ${gathering.carryCapacity} Einheiten · ${gathering.speed} px/s`;
+    if(care)this.summary.textContent+=` · Brutversorgung: ${care.carryCapacity} Einheiten · ${care.speed} px/s`;
     this.tableBody.replaceChildren();
     for (const specialty of SPECIALIZATIONS) {
       const row = document.createElement('tr');
@@ -136,10 +139,13 @@ export class WorkforcePanel {
 
   private updateQueen(): void {
     const state = this.queenState?.();if (!state) return;
-    this.queenSummary.textContent = `Eierpuffer: ${state.bufferCount} / ${state.bufferCapacity} · zugewiesen: ${state.assignedCount} · Eiablage: ${state.effectiveEggsPerDay.toLocaleString('de-DE', {maximumFractionDigits: 2})} / Spieltag`;
+    this.queenSummary.textContent = `Königinnen: ${state.queenCount} · Eierpuffer: ${state.bufferCount} / ${state.bufferCapacity} · zugewiesen: ${state.assignedCount} · Eiablage: ${state.effectiveEggsPerDay.toLocaleString('de-DE', {maximumFractionDigits: 2})} / Spieltag`;
     this.queenSummary.textContent += ` · Eier ${state.stageCounts.egg} · Larven ${state.stageCounts.larva} · Puppen ${state.stageCounts.pupa} · geschlüpft ${state.bornCount} · Brutverluste ${state.lostCount} · Pflegeabdeckung ${Math.round(state.careFactor * 100)} % · Pflegekapazität ${state.careCapacity.toLocaleString('de-DE', {maximumFractionDigits: 1})} Bruttiere`;
-    this.queenSummary.textContent += ' · Pflegerin: 10 Plätze (100 % Leistung), fachfremde Hilfe: 5 Plätze (50 % Leistung). Volle Abdeckung kann bei kleiner Brut mit beiden erreicht werden.';
+    this.queenSummary.textContent += ` · Pflegerin: ${state.broodPerNurse.toLocaleString('de-DE')} Plätze (100 % Leistung), fachfremde Hilfe: ${(state.broodPerNurse*WORKFORCE_CONFIG.foreignWorkEfficiency).toLocaleString('de-DE')} Plätze (50 % Leistung). Volle Abdeckung kann bei kleiner Brut mit beiden erreicht werden.`;
     this.broodRooms.replaceChildren();
+    if(state.queens.length>1)for(const [i,q]of state.queens.entries()){
+      const row=document.createElement('p');row.textContent=`Königin ${i+1}: Eierpuffer ${q.bufferCount} / ${q.bufferCapacity} · ${q.operational?'betriebsbereit':'Kammer nicht erreichbar'}`;this.broodRooms.append(row);
+    }
     const stocks = new Map(this.larvalSupply?.().map(room=>[room.id,room]) ?? []);
     for (const [index, room] of state.chambers.entries()) {
       const row = document.createElement('p');row.textContent = `${SPECIALTY_LABELS[room.specialization]} · Kammer ${index + 1}: ${room.occupied} / ${room.capacity} Brutplätze · ${room.operational ? 'betriebsbereit' : 'nicht erreichbar oder noch nicht nutzbar'}`;

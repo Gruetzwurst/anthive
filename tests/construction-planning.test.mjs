@@ -29,5 +29,6 @@ test('known furnishing costs are only configurable estimates and tunnels cost ze
  for(const type of ['brood-gathering','brood-building','brood-care','brood-combat'])assert.equal(constructionMaterialEstimate(type,20),60);
  assert.equal(constructionMaterialEstimate('rest',16),32);
  assert.equal(constructionMaterialEstimate('tunnel',99),0);
- assert.throws(()=>constructionMaterialEstimate('queen',10));
+ assert.equal(constructionMaterialEstimate('queen',44),132);
+ assert.throws(()=>constructionMaterialEstimate('unknown-room',10));
 });

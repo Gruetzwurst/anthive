@@ -3,15 +3,16 @@ import type {LarvalLoss} from './larvalShortageSystem.ts';
 import type {WorldPoint} from '../world/worldTypes.ts';
 import type {GatheringNavigation} from '../world/collectorNavigation.ts';
 import type {ResourceAmount} from './resourceTypes.ts';
-import type {BroodRoom,QueenSystem} from './queenSystem.ts';
+import type {BroodRoom} from './queenSystem.ts';
+import type {EggTransport} from './eggTransport.ts';
 import type {ResourceSystem} from './resourceSystem.ts';
-import {LARVAL_SUPPLY_CONFIG} from './simulationConfig.ts';
+import {LARVAL_SUPPLY_CONFIG,CARE_DEVELOPMENT} from './simulationConfig.ts';
 import type {LarvalSupplyConfig} from './simulationConfig.ts';
 import {nonNegativeFinite, positiveFinite} from './validation.ts';
 
 type Kind = 'food' | 'water';
 const KINDS: Kind[] = ['food', 'water'], EPS = 1e-9;
-export type LarvalRoom = BroodRoom & {larvae: number};
+export type LarvalRoom = BroodRoom & {larvae: number;royal?:boolean};
 type Stock = {amount: number; target: number; capacity: number; refilling: boolean; consumed: number; unmet: number};
 type Room = LarvalRoom & Record<Kind, Stock>;
 type Job = {kind: 'pickup' | 'delivery' | 'return' | 'eggPickup' | 'eggDelivery'; phase: 'walking' | 'interaction';
@@ -24,9 +25,10 @@ const empty = (): Stock => ({amount: 0, target: 0, capacity: 0, refilling: false
 /** Small private larval reservoirs and physical nurse deliveries, not general stores. */
 export class BroodSupplySystem {
   /** Complete internal state, detached from the live simulation; not a HUD snapshot. */
-  exportState() { return structuredClone({ config: this.config, rooms: this.rooms, nurses: this.nurses, drops: this.drops, withdrawn: this.withdrawn, returned: this.returned, shortage: this.shortage.exportState() }); }
+  exportState() { return structuredClone({ developmentLevel:this.stage,config: this.config, rooms: this.rooms, nurses: this.nurses, drops: this.drops, withdrawn: this.withdrawn, returned: this.returned, shortage: this.shortage.exportState() }); }
   restoreState(state: ReturnType<BroodSupplySystem['exportState']>): void {
     const copy = structuredClone(state);
+    this.stage=copy.developmentLevel;
     this.config = copy.config;
     this.rooms = copy.rooms;
     this.nurses = copy.nurses;
@@ -40,13 +42,20 @@ export class BroodSupplySystem {
   private resources: ResourceSystem;
   private navigation: GatheringNavigation;
   private config: LarvalSupplyConfig;
+  private stage=0;
+  get developmentStage():number{return this.stage;}
+  get carryCapacity():number{return this.config.carryCapacity/LARVAL_SUPPLY_CONFIG.carryCapacity*CARE_DEVELOPMENT[this.stage].carryCapacity;}
+  get speed():number{return this.config.speed;}
+  setDevelopmentLevel(level:number):void{
+    if(!Number.isInteger(level)||level<0||level>=CARE_DEVELOPMENT.length)throw new RangeError('Invalid nurse development stage');this.stage=level;
+  }
   private rooms = new Map<string, Room>();
   private nurses = new Map<string, Nurse>();
   private drops: Drop[] = [];
   private withdrawn = {food: 0, water: 0};
   private returned = {food: 0, water: 0};
-  private eggTransport?: QueenSystem;
-  setEggTransport(queen:QueenSystem):void {this.eggTransport=queen;}
+  private eggTransport?: EggTransport;
+  setEggTransport(queen:EggTransport):void {this.eggTransport=queen;}
   constructor(resources: ResourceSystem, navigation: GatheringNavigation, config: LarvalSupplyConfig = LARVAL_SUPPLY_CONFIG) {
     for (const key of ['reserveDays','carryCapacity','speed','interactionSeconds','retrySeconds','maxStepSeconds'] as const) positiveFinite(config[key], key);
     for (const kind of KINDS) nonNegativeFinite(config.perLarvaPerDay[kind], kind);
@@ -64,28 +73,30 @@ export class BroodSupplySystem {
       let room = this.rooms.get(definition.id);
       if (!room) {room = {...definition, food: empty(), water: empty()};this.rooms.set(room.id, room);}
       Object.assign(room, {id:definition.id,specialization:definition.specialization,larvae:definition.larvae,capacity:definition.capacity,
-        operational:definition.operational,position:definition.position?{...definition.position}:undefined});
+        royal:definition.royal??false,operational:definition.operational,position:definition.position?{...definition.position}:undefined});
       for (const kind of KINDS) {
-        room[kind].target = definition.larvae * this.config.perLarvaPerDay[kind] * this.config.reserveDays;
-        room[kind].capacity = definition.capacity * this.config.perLarvaPerDay[kind] * this.config.reserveDays;
+        room[kind].target = definition.larvae * (definition.royal?2:1) * this.config.perLarvaPerDay[kind] * this.config.reserveDays;
+        room[kind].capacity = definition.capacity * (definition.royal?2:1) * this.config.perLarvaPerDay[kind] * this.config.reserveDays;
         this.refreshRefill(room[kind]);
       }
     }
   }
   private refreshShortage(): void {
-    for (const room of this.rooms.values()) this.shortage.observe(room.id, room.operational ? room.larvae : 0,
+    for (const room of this.rooms.values()) this.shortage.observe(room.id, room.operational&&!room.royal ? room.larvae : 0,
       room.food.amount > EPS || this.config.perLarvaPerDay.food === 0 ? 1 : 0,
       room.water.amount > EPS || this.config.perLarvaPerDay.water === 0 ? 1 : 0);
   }
   nextEventDays(): number {
     this.refreshShortage();let next = this.shortage.nextEventDays();
     for (const room of this.rooms.values()) if (room.operational && room.larvae) for (const kind of KINDS) {
-      const rate = room.larvae * this.config.perLarvaPerDay[kind];
+      const rate = room.larvae * (room.royal?2:1) * this.config.perLarvaPerDay[kind];
       if (rate > 0 && room[kind].amount > EPS) next = Math.min(next, room[kind].amount / rate);
     }
     return next;
   }
-  progress(roomId: string, days: number, care: number): number {return this.shortage.progress(roomId, days, care);}
+  progress(roomId: string, days: number, care: number): number {
+    const room=this.rooms.get(roomId);if(room?.royal)return days*(KINDS.every(k=>room[k].amount>EPS||this.config.perLarvaPerDay[k]===0)?care:0);
+    return this.shortage.progress(roomId, days, care);}
   private refreshRefill(stock: Stock): void {
     if (stock.target <= EPS || stock.amount >= stock.target-EPS) stock.refilling = false;
     else if (stock.amount <= stock.target * this.config.refillFraction + EPS) stock.refilling = true;
@@ -110,7 +121,7 @@ export class BroodSupplySystem {
       const step = Math.min(remaining, this.nextEventDays());
       losses.push(...this.shortage.advance(step));
       for (const room of this.rooms.values()) if (room.operational) for (const kind of KINDS) {
-        const requested = room.larvae * this.config.perLarvaPerDay[kind] * step;
+        const requested = room.larvae * (room.royal?2:1) * this.config.perLarvaPerDay[kind] * step;
         const amount = Math.min(room[kind].amount, requested);
         room[kind].amount -= amount;room[kind].consumed += amount;room[kind].unmet += requested - amount;this.refreshRefill(room[kind]);
       }
@@ -181,7 +192,7 @@ export class BroodSupplySystem {
       for (const store of this.resources.listStores()) {
         if (store.resource!==resource || store.status!=='operational' || !store.reachable) continue;
         const reserved = [...this.nurses.values()].reduce((s,n) => s+(!n.load && n.job?.kind==='pickup' && n.job.storeId===store.id?n.job.amount:0),0);
-        const amount = Math.min(this.config.carryCapacity,need,store.amount-reserved);if (amount<=EPS) continue;
+        const amount = Math.min(this.carryCapacity,need,store.amount-reserved);if (amount<=EPS) continue;
         const path = this.navigation.findPath(nurse.position,store.position), delivery = this.navigation.findPath(store.position,room.position);
         if (path && delivery) choices.push({room,resource,storeId:store.id,amount,path,coverage:(stock.amount+inFlight)/stock.target,cost:this.travel(path)+this.travel(delivery)});
       }
@@ -232,7 +243,10 @@ export class BroodSupplySystem {
         const job=nurse.job!;
         if (job.phase==='walking') {
           const target=job.path[job.index];if (!target) {job.phase='interaction';continue;}
-          if (!this.navigation.canMove(nurse.position,target)) {nurse.job=null;nurse.retry=this.config.retrySeconds;break;}
+          if (!this.navigation.canMove(nurse.position,target)) {
+            if(job.kind==='eggPickup'&&job.eggId)this.eggTransport?.releaseEgg(job.eggId,nurse.id,nurse.position);
+            nurse.job=null;nurse.retry=this.config.retrySeconds;break;
+          }
           const speed=this.config.speed*Math.min(this.navigation.speedFactor?.(nurse.position)??1,this.navigation.speedFactor?.(target)??1);
           const length=distance(nurse.position,target),spent=Math.min(remaining,length/speed),fraction=length>0?Math.min(1,spent*speed/length):1;
           nurse.position.x+=(target.x-nurse.position.x)*fraction;nurse.position.y+=(target.y-nurse.position.y)*fraction;remaining-=spent;

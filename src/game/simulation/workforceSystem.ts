@@ -45,6 +45,7 @@ export class WorkforceSystem {
     return { ...worker };
   }
   getWorkers(): WorkforceWorker[] { return [...this.workers.values()].map(worker => ({ ...worker })); }
+  get size():number {return this.workers.size;}
   removeWorker(id: string): void { this.workers.delete(id); }
 
   moveWorkers(specialization: Specialization, from: WorkAssignment, to: WorkAssignment, count: number): void {

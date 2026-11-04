@@ -1,9 +1,11 @@
-import {QUEEN_CONFIG, BROOD_CONFIG} from './simulationConfig.ts';
+import {QUEEN_CONFIG, BROOD_CONFIG,CARE_DEVELOPMENT} from './simulationConfig.ts';
 import type {QueenConfig, BroodConfig} from './simulationConfig.ts';
 import {SPECIALIZATIONS} from './workforceSystem.ts';
 import type {Specialization} from './workforceSystem.ts';
 import {nonNegativeFinite, positiveFinite} from './validation.ts';
 import type {WorldPoint} from '../world/worldTypes.ts';
+import {ROYAL_STAGE_DAYS} from './royalBroodSystem.ts';
+import type {RoyalEgg,RoyalBroodSystem} from './royalBroodSystem.ts';
 
 export type EggQuotas = Record<Specialization, number>;
 export type BroodRoom = {id: string; specialization: Specialization; capacity: number; operational: boolean; position?: WorldPoint};
@@ -11,16 +13,18 @@ export type BirthEvent = {id: string; eggId: string; specialization: Specializat
 type ActiveStage = 'egg' | 'larva' | 'pupa';
 type Stage = ActiveStage | 'adult' | 'dead';
 export type LarvalEnvironment = {syncRooms: (rooms: readonly (BroodRoom & {larvae:number})[]) => void; nextEventDays: () => number; progress: (roomId:string, days:number, care:number) => number};
-type Egg = {id: string; targetSpecialization: Specialization; chamberId: string | null; stage: Stage; stageProgressDays: number;
+type ExtraQueen={id:string;roomId:string;position:WorldPoint;progress:number;credits:EggQuotas;operational:boolean};
+type Egg = {sourceQueenId:string;id: string; targetSpecialization: Specialization; chamberId: string | null; stage: Stage; stageProgressDays: number;
   arrived:boolean;carrierId:string|null;carried:boolean;origin:WorldPoint|null};
 const EPS = 1e-9;
 
 /** Queen, individual brood stages and atomic allocation share one event timeline. */
 export class QueenSystem {
   /** Complete internal state, detached from the live simulation; not a HUD snapshot. */
-  exportState() { return structuredClone({ config: this.config, quotas: this.quotas, credits: this.credits, rooms: this.rooms, eggs: this.eggs, buffer: this.buffer, progress: this.progress, eggFactor: this.eggFactor, broodConfig: this.broodConfig, births: this.births, effectiveNurses: this.effectiveNurses, queenOrigin: this.queenOrigin }); }
+  exportState() { return structuredClone({ additionalQueens:this.additionalQueens,developmentLevel:this.stage,config: this.config, quotas: this.quotas, credits: this.credits, rooms: this.rooms, eggs: this.eggs, buffer: this.buffer, progress: this.progress, eggFactor: this.eggFactor, broodConfig: this.broodConfig, births: this.births, effectiveNurses: this.effectiveNurses, queenOrigin: this.queenOrigin }); }
   restoreState(state: ReturnType<QueenSystem['exportState']>): void {
     const copy = structuredClone(state);
+    this.additionalQueens=copy.additionalQueens;this.stage=copy.developmentLevel;
     this.config = copy.config;
     this.quotas = copy.quotas;
     this.credits = copy.credits;
@@ -47,6 +51,27 @@ export class QueenSystem {
   private broodConfig: BroodConfig;
   private births: BirthEvent[] = [];
   private effectiveNurses = 0;
+  private stage=0;
+  private additionalQueens=new Map<string,ExtraQueen>();
+  private royal?:RoyalBroodSystem;
+  setRoyalBrood(royal:RoyalBroodSystem):void{this.royal=royal;}
+  get queenCount():number{return 1+this.additionalQueens.size;}
+  getQueens(){return [{id:'queen-1',roomId:'starting-queen',position:this.queenOrigin?{...this.queenOrigin}:null,progress:this.progress,operational:true},...[...this.additionalQueens.values()].map(q=>({...q,position:{...q.position},credits:{...q.credits}}))];}
+  addQueen(id:string,roomId:string,position:WorldPoint):void{
+    if(this.additionalQueens.has(id))return;
+    this.additionalQueens.set(id,{id,roomId,position:{...position},progress:0,credits:{gathering:0,building:0,care:0,combat:0},operational:true});
+  }
+  setQueenOperational(id:string,operational:boolean):void{const q=this.additionalQueens.get(id);if(q)q.operational=operational;}
+
+  layRoyalEgg(id:string,roomId:string):RoyalEgg{
+    if(!this.queenOrigin)throw new Error('Königinnen-Ei benötigt eine lebende Quellkönigin im Nest.');
+    return {stage:'egg',stageProgressDays:0,id,roomId,sourceQueenId:'queen-1',position:{...this.queenOrigin},carrierId:null,carried:false,arrived:false};
+  }
+  get developmentStage():number{return this.stage;}
+  get broodPerNurse():number{return this.broodConfig.broodPerNurse/BROOD_CONFIG.broodPerNurse*CARE_DEVELOPMENT[this.stage].broodPerNurse;}
+  setDevelopmentLevel(level:number):void{
+    if(!Number.isInteger(level)||level<0||level>=CARE_DEVELOPMENT.length)throw new RangeError('Invalid care development stage');this.stage=level;
+  }
   private queenOrigin: WorldPoint | null = null;
 
   requireEggTransport(origin:WorldPoint):void {
@@ -98,12 +123,14 @@ export class QueenSystem {
     // Reapplying unchanged controls must not reset fractional fairness credits.
     if (SPECIALIZATIONS.every(kind => quotas[kind] === this.quotas[kind])) return;
     this.quotas = {...quotas};this.credits = {gathering: 0, building: 0, care: 0, combat: 0};
+    for(const q of this.additionalQueens.values())q.credits={gathering:0,building:0,care:0,combat:0};
   }
 
-  private bufferFactor(): number {
-    if (this.buffer.length >= this.config.bufferCapacity) return 0;
+  private bufferFactor(sourceQueenId='queen-1'): number {
+    const count=this.buffer.filter(e=>e.sourceQueenId===sourceQueenId).length;
+    if (count >= this.config.bufferCapacity) return 0;
     let factor = 1;
-    for (const level of this.config.bufferSlowdown) if (this.buffer.length / this.config.bufferCapacity >= level.fill) factor = level.factor;
+    for (const level of this.config.bufferSlowdown) if (count / this.config.bufferCapacity >= level.fill) factor = level.factor;
     return factor;
   }
 
@@ -139,26 +166,27 @@ export class QueenSystem {
     this.buffer = waiting;
   }
 
-  private nextTarget(): Specialization {
+  private nextTarget(credits=this.credits): Specialization {
     let best: Specialization | null = null;
     for (const kind of SPECIALIZATIONS) {
-      this.credits[kind] += this.quotas[kind];
-      if (this.quotas[kind] > 0 && (best === null || this.credits[kind] > this.credits[best] + EPS)) best = kind;
+      credits[kind] += this.quotas[kind];
+      if (this.quotas[kind] > 0 && (best === null || credits[kind] > credits[best] + EPS)) best = kind;
     }
-    this.credits[best!] -= 100;return best!;
+    credits[best!] -= 100;return best!;
   }
 
   private developing(): Egg[] {
     return this.eggs.filter(egg => egg.arrived && egg.chamberId && egg.stage !== 'adult' && egg.stage !== 'dead' && this.rooms.get(egg.chamberId)?.operational);
   }
-  get hasDevelopingBrood(): boolean {return this.eggs.some(egg => egg.arrived && egg.chamberId && egg.stage !== 'adult' && egg.stage !== 'dead' && this.rooms.get(egg.chamberId)?.operational);}
+  get hasDevelopingBrood(): boolean {return !!this.royal?.hasDevelopingBrood || this.eggs.some(egg => egg.arrived && egg.chamberId && egg.stage !== 'adult' && egg.stage !== 'dead' && this.rooms.get(egg.chamberId)?.operational);}
   getLarvalRooms() {
     const larvae = new Map<string,number>();
     for (const egg of this.eggs) if (egg.chamberId && egg.stage==='larva') larvae.set(egg.chamberId,(larvae.get(egg.chamberId)??0)+1);
-    return [...this.rooms.values()].map(room => ({...room, position:room.position?{...room.position}:undefined, larvae:larvae.get(room.id)??0}));
+    return [...[...this.rooms.values()].map(room => ({...room, position:room.position?{...room.position}:undefined, larvae:larvae.get(room.id)??0})),...this.royal?.getLarvalRooms()??[]];
   }
   private careFactor(count: number): number {
-    return count ? Math.max(this.broodConfig.minimumCareFactor, Math.min(1, this.effectiveNurses * this.broodConfig.broodPerNurse / count)) : 1;
+    count+=2*(this.royal?.getDevelopingBrood().length??0);
+    return count ? Math.max(this.broodConfig.minimumCareFactor, Math.min(1, this.effectiveNurses * this.broodPerNurse / count)) : 1;
   }
   loseLarvae(roomId: string, count: number): void {
     if (!Number.isInteger(count) || count < 0) throw new RangeError('Invalid larval loss count');
@@ -177,9 +205,12 @@ export class QueenSystem {
     while (remaining > EPS) {
       const rate = this.config.eggsPerGameDay * eggFactor * this.bufferFactor();
       const developing = this.developing(), factor = this.careFactor(developing.length);
+      const royals=this.royal?.getDevelopingBrood()??[],demand=developing.length+royals.length*2;
+      const royalCare=demand?Math.min(1,this.effectiveNurses*this.broodPerNurse/demand):1;
+      const extraRates=[...this.additionalQueens.values()].map(q=>({q,rate:q.operational?this.config.eggsPerGameDay*eggFactor*this.bufferFactor(q.id):0}));
       const untilEgg = rate > 0 ? (1 - this.progress) / rate : Infinity;
       environment?.syncRooms(this.getLarvalRooms());
-      let step = Math.min(remaining, untilEgg, environment?.nextEventDays() ?? Infinity);
+      let step = Math.min(remaining, untilEgg, ...extraRates.map(({q,rate})=>rate>0?(1-q.progress)/rate:Infinity), environment?.nextEventDays() ?? Infinity);
       const increment = (egg: Egg, days: number) => egg.stage === 'larva' && environment
         ? environment.progress(egg.chamberId!, days, factor) : days * factor;
       for (const egg of developing) {
@@ -192,9 +223,19 @@ export class QueenSystem {
           step = high;
         }
       }
+      const royalIncrement=(egg:RoyalEgg,days:number)=>egg.stage==='larva'&&environment?environment.progress(egg.roomId,days,royalCare):days*royalCare;
+      for(const egg of royals){
+        const needed=Math.max(0,ROYAL_STAGE_DAYS[egg.stage as keyof typeof ROYAL_STAGE_DAYS]-egg.stageProgressDays);
+        if(royalIncrement(egg,step)<needed)continue;
+        let low=0,high=step;
+        for(let i=0;i<48;i++){const middle=(low+high)/2;if(royalIncrement(egg,middle)<needed)low=middle;else high=middle;}
+        step=high;
+      }
+      const royalIncrements=royals.map(egg=>royalIncrement(egg,step));
       const increments = developing.map(egg => increment(egg, step));
       if (step>0) onBroodInterval?.(step);
       this.progress += step * rate;
+      for(const {q,rate:extraRate}of extraRates)q.progress+=step*extraRate;
       for (const [index, egg] of developing.entries()) egg.stageProgressDays += increments[index];
       remaining = Math.max(0, remaining - step);
       for (const egg of developing) {
@@ -207,28 +248,42 @@ export class QueenSystem {
           this.births.push({id: `born-${egg.id}`, eggId: egg.id, chamberId: egg.chamberId!, specialization: room.specialization, position: room.position ? {...room.position} : undefined});
         }
       }
+      for(const [index,egg]of royals.entries())this.royal!.advanceDevelopment(egg.id,royalIncrements[index]);
       this.allocate();
       if (rate > 0 && this.progress >= 1 - EPS) {
         this.progress = 0;
-        const egg: Egg = {id: `egg-${this.eggs.length + 1}`, targetSpecialization: this.nextTarget(), chamberId: null, stage: 'egg', stageProgressDays: 0,
-          arrived:!this.queenOrigin,carrierId:null,carried:false,origin:this.queenOrigin?{...this.queenOrigin}:null};
-        this.eggs.push(egg);this.buffer.push(egg);this.allocate();
+        this.layWorkerEgg('queen-1',this.queenOrigin,this.credits);
       }
+      for(const {q,rate:extraRate}of extraRates)if(extraRate>0&&q.progress>=1-EPS){q.progress=0;this.layWorkerEgg(q.id,q.position,q.credits);}
+
     }
+  }
+
+  private layWorkerEgg(sourceQueenId:string,origin:WorldPoint|null,credits:EggQuotas):void{
+    const egg:Egg={id:`egg-${this.eggs.length+1}`,sourceQueenId,targetSpecialization:this.nextTarget(credits),chamberId:null,stage:'egg',stageProgressDays:0,
+      arrived:!origin,carrierId:null,carried:false,origin:origin?{...origin}:null};
+    this.eggs.push(egg);this.buffer.push(egg);this.allocate();
   }
 
   get snapshot() {
     const counts = this.occupied(), bufferRateFactor = this.bufferFactor(), developing = this.developing();
+    const queens=this.getQueens().map(q=>{
+      const rate=q.operational?this.config.eggsPerGameDay*this.eggFactor*this.bufferFactor(q.id):0;
+      return {...q,bufferCount:this.buffer.filter(e=>e.sourceQueenId===q.id).length,bufferCapacity:this.config.bufferCapacity,
+        effectiveEggsPerDay:rate,daysUntilNextEgg:rate>0?(1-q.progress)/rate:null};
+    });
+    const nextEgg=Math.min(...queens.map(q=>q.daysUntilNextEgg??Infinity));
     const bornCount = this.eggs.filter(egg => egg.stage === 'adult').length;
     const lostCount = this.eggs.filter(egg => egg.stage === 'dead').length;
     const stageCounts = {egg: 0, larva: 0, pupa: 0};
     for (const egg of this.eggs) if (egg.arrived && egg.chamberId && egg.stage !== 'adult' && egg.stage !== 'dead') stageCounts[egg.stage]++;
     return {
-      laidEggs: this.eggs.length, bufferCount: this.buffer.length, bufferCapacity: this.config.bufferCapacity,
+      queenCount:this.queenCount,queens,
+      laidEggs: this.eggs.length, bufferCount: this.buffer.length, bufferCapacity: this.config.bufferCapacity*this.queenCount,
       assignedCount: this.eggs.length - this.buffer.length - bornCount - lostCount, bornCount, lostCount, stageCounts, layingProgress: this.progress,
-      careCapacity: this.effectiveNurses * this.broodConfig.broodPerNurse, careFactor: this.careFactor(developing.length),
-      eggFactor: this.eggFactor, bufferRateFactor, effectiveEggsPerDay: this.config.eggsPerGameDay * this.eggFactor * bufferRateFactor,
-      daysUntilNextEgg: this.config.eggsPerGameDay*this.eggFactor*bufferRateFactor>0 ? (1-this.progress)/(this.config.eggsPerGameDay*this.eggFactor*bufferRateFactor) : null,
+      broodPerNurse:this.broodPerNurse,careCapacity: this.effectiveNurses * this.broodPerNurse, careFactor: this.careFactor(developing.length),
+      eggFactor: this.eggFactor, bufferRateFactor, effectiveEggsPerDay: queens.reduce((sum,q)=>sum+q.effectiveEggsPerDay,0),
+      daysUntilNextEgg: Number.isFinite(nextEgg)?nextEgg:null,
       quotas: {...this.quotas},
       eggs: this.eggs.map(egg => ({...egg, origin:egg.origin?{...egg.origin}:null,specialization: egg.arrived && egg.chamberId ? this.rooms.get(egg.chamberId)!.specialization : null,
         developmentProgress: egg.stage === 'adult' ? 1 : egg.stage === 'dead' ? 0 : egg.stageProgressDays / this.broodConfig.stageDays[egg.stage]})),

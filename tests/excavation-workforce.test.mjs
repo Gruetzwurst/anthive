@@ -16,7 +16,7 @@ function fixture(terrain='topsoil',capacity=20) {
  world.storageChambers=[{id:'material',resource:'buildingMaterial',position:point(0),areaTiles:capacity/8}];
  let excavation, simulation;
  simulation=createWorkforceSimulation(world, resources=>{
-  excavation=new ExcavationSystem(world,resources,EXCAVATION_CONFIG,{...CHAMBER_CONFIG.minimumArea,food:1});excavation.setDiggingGrade(3);excavation.addBuilder('builder-0',point(2));
+  excavation=new ExcavationSystem(world,resources,EXCAVATION_CONFIG,{...CHAMBER_CONFIG.minimumArea,food:1});excavation.setDiggingGrade(4);excavation.addBuilder('builder-0',point(2));
   return {workers:()=>excavation.getBuilders(),addWorker:(id,pos)=>excavation.addBuilder(id,pos),removeWorker:id=>excavation.removeBuilder(id),retireWorker:id=>excavation.removeBuilder(id),
    advanceWorkers:(seconds,factor)=>excavation.advance(seconds,factor,id=>simulation.workforce.getWorker(id).assignment==='building',id=>simulation.workforce.efficiency(id,'building'))};
  });

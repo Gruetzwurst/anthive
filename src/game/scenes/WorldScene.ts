@@ -53,6 +53,8 @@ import {startingFurnishingOrders} from '../world/chamberFurnishingLayout';
 import type {FurnishingVisualOrder} from '../world/chamberFurnishingLayout';
 import { ChamberFurnishingRenderer } from '../world/ChamberFurnishingRenderer';
 import { BroodRenderer } from '../world/BroodRenderer';
+import { ViewportGraphics } from '../world/ViewportGraphics';
+import type {WorldTile} from '../world/worldTypes';
 
 const COLORS = {
   ...TERRAIN_PALETTE,
@@ -106,6 +108,7 @@ export class WorldScene extends Phaser.Scene {
   private overviewRefreshSeconds = 0;
   private sourceReachability = new Map<string, boolean>();
   private renderedDroppedLoads = new Set<string>();
+  private royalEggGraphics?:Phaser.GameObjects.Graphics;
   private foodMarkers?: Phaser.GameObjects.Graphics;
   private foodStockLabel?: Phaser.GameObjects.Text;
   private materialStockLabel?: Phaser.GameObjects.Text;
@@ -130,7 +133,7 @@ export class WorldScene extends Phaser.Scene {
   init(data:{session?:ColonySession}={}):void {
     this.saveSession=data.session??createColonySession({id:crypto.randomUUID(),name:'Neue Kolonie'});
     this.ants=[];this.builderWorkers=[];this.materialPiles=new Map();this.constructionLabels=new Map();
-    this.sourceReachability=new Map();this.renderedDroppedLoads=new Set();this.draftCells=[];this.previewCells=[];this.dugCells=[];
+    this.sourceReachability=new Map();this.renderedDroppedLoads=new Set();this.royalEggGraphics=undefined;this.draftCells=[];this.previewCells=[];this.dugCells=[];
     this.constructionSignature='';this.constructionNotice='';this.constructionNoticeSeconds=0;this.overviewRefreshSeconds=0;
     this.foodMarkers=undefined;this.foodStockLabel=undefined;this.waterStockLabel=undefined;this.materialStockLabel=undefined;
     this.dragMode='none';this.planning=false;this.dragMoved=false;this.digStart=null;this.lastBrushCell=null;
@@ -197,6 +200,10 @@ export class WorldScene extends Phaser.Scene {
     this.panWhileDrawing(this.panFrameTime ? Math.min((now-this.panFrameTime)/1000,.25) : 0);
     this.panFrameTime=now;
     if(!this.leaving)this.gathering.advance(delta / 1000);
+    this.saveSession!.syncConstruction();
+    if(this.diggingGrade!==this.excavation.diggingGrade){
+      this.diggingGrade=this.excavation.diggingGrade;this.updateUpgradeLabel();this.renderDigPreview();
+    }
     this.persistence?.tick(now,this.gathering.clock.exportState().paused);
     const changedCells = this.excavation.drainChangedCells();
     for (const cell of changedCells) { this.dugCells.push(cell); this.renderExcavatedTiles(cell); }
@@ -223,8 +230,9 @@ export class WorldScene extends Phaser.Scene {
       ant.body.setPosition(state.position.x, state.position.y);
       const carried = state.load ?? collectors.get(ant.id)?.load;
       ant.load.setVisible(!!state.eggId || (carried?.amount ?? 0) > 0);
-      ant.load.setFillStyle(state.eggId?0xfff2cf:carried?.resource === 'water' ? 0x71d0d5 : 0xe3aa4e);
-      ant.load.setDisplaySize(state.eggId?5:6,state.eggId?8:5);
+      const royal=state.eggId?.startsWith('royal-');
+      ant.load.setFillStyle(royal?0xf5dca0:state.eggId?0xfff2cf:carried?.resource === 'water' ? 0x71d0d5 : 0xe3aa4e);
+      ant.load.setDisplaySize(royal?7:state.eggId?5:6,royal?10:state.eggId?8:5);
     });
     this.ants = this.ants.filter(ant => visibleWorkers.has(ant.id));
     this.foodStockLabel?.setText(`NAHRUNG: ${this.gathering.resources.getStore('food-store').amount.toFixed(1)}`);
@@ -301,13 +309,27 @@ export class WorldScene extends Phaser.Scene {
   private renderBrood(delta:number):void {
     this.broodRefreshMs+=delta;if(this.broodRefreshMs<100)return;
     const elapsed=this.broodRefreshMs;this.broodRefreshMs=0;
+    const royal=this.saveSession!.royal.getEggs();
+    if(royal.length||this.royalEggGraphics){
+      const graphics=this.royalEggGraphics??=this.add.graphics().setDepth(7);graphics.clear();
+      for(const egg of royal){
+        if(egg.carried)continue;const p=egg.position;graphics.lineStyle(1,0xc69a45);
+        if(egg.stage==='adult'){
+          graphics.fillStyle(0x1b1512).fillEllipse(p.x-15,p.y,30,19).strokeEllipse(p.x-15,p.y,30,19).fillEllipse(p.x+5,p.y,16,12).fillCircle(p.x+17,p.y-1,6);
+          for(const x of [-3,4,10]){graphics.lineBetween(p.x+x,p.y+3,p.x+x-8,p.y+12);graphics.lineBetween(p.x+x,p.y-4,p.x+x-8,p.y-12);}
+          graphics.lineBetween(p.x+20,p.y-5,p.x+27,p.y-12).lineBetween(p.x+22,p.y-2,p.x+31,p.y-6);
+        }else if(egg.stage==='larva'){
+          graphics.fillStyle(0xe9d9a6);for(let i=0;i<4;i++)graphics.fillCircle(p.x-6+i*4,p.y+Math.sin(i)*2,4).strokeCircle(p.x-6+i*4,p.y+Math.sin(i)*2,4);
+        }else graphics.fillStyle(egg.stage==='pupa'?0xb99462:0xf5dca0).fillEllipse(p.x,p.y,egg.stage==='pupa'?11:7,egg.stage==='pupa'?17:10).strokeEllipse(p.x,p.y,egg.stage==='pupa'?11:7,egg.stage==='pupa'?17:10);
+      }
+    }
     const rooms=new Map((this.saveSession!.world.broodChambers??[]).map(room=>[room.id,room.cells]));
     for(const order of this.excavation.getConstructionOrders())if(order.type.startsWith('brood-'))rooms.set(`built-${order.id}`,order.cells);
     this.broodRenderer.update(elapsed,this.gathering.queen.snapshot,rooms,this.gathering.broodSupply.getRooms(),TILE_SIZE,this.gathering.clock.secondsPerGameDay);
   }
 
   private updateEconomyHud(): void {
-    this.workforcePanel.update(this.gathering.getWorkers());
+    this.workforcePanel.update(this.gathering.getWorkers(),this.gathering.getProgression(),{carryCapacity:this.gathering.gathering.carryCapacity,speed:this.gathering.gathering.speed},{carryCapacity:this.gathering.broodSupply.carryCapacity,speed:this.gathering.broodSupply.speed});
     this.updateConstruction();
     this.economyHud.update(buildEconomyOverview(this.gathering, {
       otherWorkerCount: this.gathering.getWorkers().filter(worker => worker.actualWork !== 'gathering').length,
@@ -320,8 +342,7 @@ export class WorldScene extends Phaser.Scene {
     graphics.fillStyle(COLORS.sky, 1);
     graphics.fillRect(0, 0, worldSize.width, worldSize.height);
 
-    worldMap.forEach((row, rowIndex) => {
-      row.forEach((cell, columnIndex) => {
+    const drawTile=(graphics:Phaser.GameObjects.Graphics,cell:WorldTile,columnIndex:number,rowIndex:number)=>{
         const visualKey = terrainDefinitions[cell.terrain].visualKey;
         if (visualKey === 'sky') return;
 
@@ -379,8 +400,17 @@ export class WorldScene extends Phaser.Scene {
 
         graphics.fillStyle(COLORS.open, 1);
         graphics.fillRect(x, y, TILE_SIZE, TILE_SIZE);
-      });
-    });
+    };
+    const chunkTiles=16;
+    for(let row=0;row<worldMap.length;row+=chunkTiles){
+      for(let column=0;column<worldMap[0].length;column+=chunkTiles){
+        const bounds=new Phaser.Geom.Rectangle(column*TILE_SIZE,row*TILE_SIZE,chunkTiles*TILE_SIZE,chunkTiles*TILE_SIZE);
+        this.add.existing(new ViewportGraphics(this,bounds,chunk=>{
+          for(let r=row;r<Math.min(row+chunkTiles,worldMap.length);r++)
+            for(let c=column;c<Math.min(column+chunkTiles,worldMap[r].length);c++)drawTile(chunk,worldMap[r][c],c,r);
+        }));
+      }
+    }
 
     drawWorldTileArt(this, worldMap, TILE_SIZE);
 
@@ -558,7 +588,7 @@ export class WorldScene extends Phaser.Scene {
     }).setScrollFactor(0).setDepth(10);
 
     this.upgradeButton = this.add
-      .text(622, 329, 'GRABKRAFT · TEST 0', {
+      .text(622, 329, '', {
         color: COLORS.text,
         fontFamily: 'system-ui, sans-serif',
         fontSize: '10px',
@@ -567,20 +597,8 @@ export class WorldScene extends Phaser.Scene {
       })
       .setOrigin(1, 0)
       .setScrollFactor(0)
-      .setDepth(10)
-      .setInteractive({ useHandCursor: true });
-
-    this.upgradeButton.on(
-      Phaser.Input.Events.POINTER_DOWN,
-      (_pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
-        event.stopPropagation();
-        this.diggingGrade = (this.diggingGrade + 1) % 4;
-        this.updateUpgradeLabel();
-        this.excavation.setDiggingGrade(this.diggingGrade);
-        this.digStatus?.setText(`Test-Grabkraft ${this.diggingGrade}: Grabaufträge prüfen jetzt härtere Schichten.`);
-        this.renderDigPreview();
-      },
-    );
+      .setDepth(10);
+    this.updateUpgradeLabel();
   }
 
   private createBuilderWorker(id: string, position: { x: number; y: number }): void {
@@ -606,7 +624,8 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private updateUpgradeLabel(): void {
-    this.upgradeButton?.setText(`GRABKRAFT · TEST ${this.diggingGrade}`);
+    const terrain=['Oberboden','Kompakte Erde','Lehm','Steinschicht','Tiefengestein'][this.diggingGrade];
+    this.upgradeButton?.setText(`GRABKRAFT · ${terrain}`);
   }
 
   private frameWorld(): void {
@@ -843,7 +862,16 @@ export class WorldScene extends Phaser.Scene {
 
   private updateConstruction(): void {
     const orders = this.excavation.getConstructionOrders();
-    this.constructionPanel.update(orders);
+    const royalStatus=new Map(this.saveSession!.royal.getEggs().map(e=>{
+      const stage={egg:'Königinnen-Ei',larva:'Königinnenlarve',pupa:'Königinnenpuppe',adult:'Königin'}[e.stage];
+      const phaseDays={egg:.2,larva:.6,pupa:.4,adult:1}[e.stage];
+      const queen=this.gathering.queen.snapshot.queens.find(q=>q.roomId===e.roomId);
+      const status=e.stage==='adult'?`Königin · ${(queen?.effectiveEggsPerDay??0)>0?'eigene Eiablage aktiv':'Eiablage pausiert'} · Eierpuffer ${queen?.bufferCount??0} / ${queen?.bufferCapacity??0}`
+        :e.arrived?`${stage} · ${Math.floor(e.stageProgressDays/phaseDays*100)} % · 2 Pflegeplätze · Entwicklung bei voller Versorgung insgesamt 12 Minuten`
+        :e.carried?'Königinnen-Ei wird transportiert.':'Königinnen-Ei wartet auf Abholung.';
+      return [Number(e.roomId.slice(6)),status] as const;
+    }));
+    this.constructionPanel.update(orders,this.excavation.queenSlotsAvailable,royalStatus);
     const storeIds = new Map(this.excavation.chambers.getChambers().filter(room => room.storeId).map(room => [room.id, room.storeId!]));
     setSmoothRoomArt(this,worldMap,worldMap.flatMap((tiles,row)=>tiles.flatMap((tile,column)=>tile.state==='open'?[{column,row}]:[])));
     this.furnishingRenderer.update([...this.startingFurnishings.map(room=>({...room,stock:room.storeId?this.gathering.resources.getStore(room.storeId):undefined})), ...orders.filter(order => order.status !== 'cancelled').map(order => ({...order,

@@ -19,6 +19,7 @@ export type ColonyWorkerAdapter = {
   restingInChambers?: () => number;
   effectiveNurses?: () => number;
   birthWorker?: (birth: BirthEvent) => void;
+  observePopulation?:()=>void;
 };
 export type DroppedResourceLoad = { id: string; position: WorldPoint; load: ResourceAmount };
 const noOtherWorkers: ColonyWorkerAdapter = {
@@ -85,12 +86,13 @@ export function createColonySimulation(
             activeWorkers: collectors.length + other.length - resting,
             restingWorkers: resting,
             restingInChambers: workers.restingInChambers?.() ?? 0,
-            queens: 1, // The existing queen is counted separately from workers.
+            queens: queen.queenCount,
           });
           queen.advance(gameDays, eggFactor, broodRooms(), (workers.effectiveNurses?.() ?? 0) * factor,
             days=>{for (const loss of broodSupply.consume(days,queen.getLarvalRooms())) queen.loseLarvae(loss.roomId,loss.count);}, broodSupply);
           broodSupply.syncRooms(queen.getLarvalRooms());
           if (workers.birthWorker) for (const birth of queen.drainBirths()) workers.birthWorker(birth);
+          workers.observePopulation?.();
           // Stable IDs make the provisional loss selection deterministic; never
           // include the queen or create replacement workers automatically.
           const candidates = [...collectors.map(worker => ({ id: worker.id, collector: true,

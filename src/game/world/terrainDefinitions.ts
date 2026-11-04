@@ -7,7 +7,7 @@ export type TerrainDefinition = {
 };
 
 // The new layers reuse the prototype's existing diggable-terrain flag. They do
-// not define separate hardness values; digging grades remain depth-based.
+// use terrain-based development permissions, defined in simulationConfig.
 export const terrainDefinitions: Record<TerrainKind, TerrainDefinition> = {
   air: { displayName: 'Luft', visualKey: 'sky', diggable: false },
   surface: { displayName: 'Oberfläche', visualKey: 'surface', diggable: false },

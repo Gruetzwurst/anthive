@@ -31,14 +31,16 @@ export class BroodRenderer {
     if(state.laidEggs>this.laid)this.layingUntil=this.time+700;this.laid=state.laidEggs;
     const seconds=state.daysUntilNextEgg===null?null:Math.max(0,Math.ceil(state.daysUntilNextEgg*secondsPerDay));
     this.status.setText(seconds===null?`Eiablage pausiert · ${state.bufferCount} warten`:`Nächstes Ei ${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')} · ${state.bufferCount} warten`);
-    const visible=new Set<string>(),indices=new Map<string,number>();let queenIndex=0;this.pulse.clear();
+    const visible=new Set<string>(),indices=new Map<string,number>();const queenIndices=new Map<string,number>();this.pulse.clear();
     if(this.layingUntil>this.time){this.queen.setRotation(Math.sin((this.layingUntil-this.time)/90)*.04);this.pulse.lineStyle(1,0xf4d38b,.65).strokeEllipse(this.origin.x-45,this.origin.y+1,34,23);}else this.queen.setRotation(0);
     for(const egg of state.eggs){
       if(egg.stage==='adult' || egg.stage==='dead' || egg.carried)continue;
       let position:WorldPoint|null=null;
       if(!egg.arrived){
         const at=egg.origin??this.origin;
-        position=Math.hypot(at.x-this.origin.x,at.y-this.origin.y)<1?queenEggSlot(this.origin,queenIndex++):at;
+        const origin=state.queens.find(q=>q.id===egg.sourceQueenId)?.position??this.origin;
+        const index=queenIndices.get(egg.sourceQueenId)??0;queenIndices.set(egg.sourceQueenId,index+1);
+        position=Math.hypot(at.x-origin.x,at.y-origin.y)<1?queenEggSlot(origin,index):at;
       }else if(egg.chamberId){const index=indices.get(egg.chamberId)??0;indices.set(egg.chamberId,index+1);position=broodSlot(rooms.get(egg.chamberId)??[],index,tileSize);}
       if(!position)continue;visible.add(egg.id);
       let visual=this.bodies.get(egg.id);

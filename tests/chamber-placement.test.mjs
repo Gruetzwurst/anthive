@@ -14,7 +14,7 @@ function fixture() {
 }
 test('all eight chamber types provide exact square templates, matching free costs and capacity area',()=>{
  assert.equal(typeof placement.squareTemplate,'function');
- for(const type of placement.PLAN_TYPES.filter(t=>t!=='tunnel')) {
+ for(const type of placement.PLAN_TYPES.filter(t=>t!=='tunnel'&&t!=='queen')) {
   const sides=type.startsWith('brood-')?[5,7,9]:[4,6,8];
   for(const [i,size] of ['small','medium','large'].entries()) {
    const cells=placement.squareTemplate(type,size,cell(7,9));

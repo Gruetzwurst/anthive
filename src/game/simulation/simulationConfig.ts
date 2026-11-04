@@ -50,6 +50,24 @@ export type AdultSupplyConfig = typeof ADULT_SUPPLY_CONFIG;
 
 // B1 user-selected provisional efficiency for explicitly assigned foreign work.
 export const WORKFORCE_CONFIG = { foreignWorkEfficiency: 0.5 };
+export const COLONY_MILESTONES = [50,150,250,500] as const;
+export const CARE_DEVELOPMENT = [
+  {broodPerNurse:10,carryCapacity:5},{broodPerNurse:11,carryCapacity:6},
+  {broodPerNurse:12,carryCapacity:8},{broodPerNurse:13,carryCapacity:10},
+  {broodPerNurse:15,carryCapacity:12},
+] as const;
+export const GATHERING_DEVELOPMENT = [
+  {carryCapacity:5,speed:78},{carryCapacity:7,speed:84},{carryCapacity:9,speed:91},
+  {carryCapacity:12,speed:98},{carryCapacity:15,speed:105},
+] as const;
+export const BUILDER_DEVELOPMENT = [
+  {digDurationFactor:1,furnishingSeconds:2},
+  {digDurationFactor:.85,furnishingSeconds:1.8},
+  {digDurationFactor:.65,furnishingSeconds:1.5},
+  {digDurationFactor:.45,furnishingSeconds:1.2},
+  {digDurationFactor:.25,furnishingSeconds:.8},
+] as const;
+export const TERRAIN_DIGGING_GRADES = {air:0,surface:0,soil:0,topsoil:0,compactEarth:1,clay:2,stone:3,stoneLayer:3,deepRock:4} as const;
 
 // B2 editable test values. Deep rock: user selected highest + lowest existing
 // values in each column (30+6 seconds, 4+1 material) on 2026-10-22.
@@ -76,7 +94,7 @@ export const CONSTRUCTION_CONFIG = {
   furnishingSecondsPerUnit: 2,
   materialPerTile: {
     tunnel: 0, food: 2, water: 2, buildingMaterial: 2,
-    'brood-gathering': 3, 'brood-building': 3, 'brood-care': 3, 'brood-combat': 3, rest: 2,
+    'brood-gathering': 3, 'brood-building': 3, 'brood-care': 3, 'brood-combat': 3, rest: 2,queen:3,
   },
   noticeSeconds: 4,
 };
@@ -85,7 +103,7 @@ export const CONSTRUCTION_CONFIG = {
 export const CHAMBER_CONFIG = {
   minimumArea: {
     tunnel: 1, food: 12, water: 12, buildingMaterial: 12,
-    'brood-gathering': 20, 'brood-building': 20, 'brood-care': 20, 'brood-combat': 20, rest: 16,
+    'brood-gathering': 20, 'brood-building': 20, 'brood-care': 20, 'brood-combat': 20, rest: 16,queen:44,
   },
   broodPlacesPerTile: 2,
   restPlacesPerTile: 2,

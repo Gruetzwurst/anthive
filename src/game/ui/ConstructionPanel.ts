@@ -31,6 +31,9 @@ export class ConstructionPanel {
   private toggle = document.createElement('button');
   private cancel = document.createElement('button');
   private orders: ConstructionOrderSnapshot[] = [];
+  private typeSelect=document.createElement('select');
+  private royalStatus=new Map<number,string>();
+  private beginButton?:HTMLButtonElement;
   private selectedId: number | null = null;
   private listSignature = '';
 
@@ -40,30 +43,33 @@ export class ConstructionPanel {
     const close = this.button('Schließen', 'close-construction', () => this.dialog.close());
     const header = document.createElement('div'); header.className = 'workforce-header'; header.append(heading, close);
     const form = document.createElement('form'); form.className = 'construction-form';
-    const type = document.createElement('select'); type.name = 'chamberType';
+    const type = this.typeSelect; type.name = 'chamberType';
     for (const value of PLAN_TYPES) type.add(new Option(value === 'tunnel' ? PLAN_LABELS[value] : `${PLAN_LABELS[value]} · ab ${CHAMBER_CONFIG.minimumArea[value]} Kacheln`, value));
     const size = document.createElement('select'); size.name = 'chamberSize';
     for (const [value, title] of [['free', 'Frei zeichnen'], ['small', 'Klein'], ['medium', 'Mittel'], ['large', 'Groß']]) size.add(new Option(title, value));
     const sizeLabel = document.createElement('label'); sizeLabel.append('Form und Größe', size);
     const refreshSizes = () => {
       size.disabled = type.value === 'tunnel'; if (size.disabled) size.value = 'free';
+      if(type.value==='queen'&&['medium','large'].includes(size.value))size.value='small';
       const sides = type.value.startsWith('brood-') ? CHAMBER_BUILD_CONFIG.broodSides : CHAMBER_BUILD_CONFIG.standardSides;
       for (const option of [...size.options]) if (option.value !== 'free') {
+        option.hidden=option.disabled=type.value==='queen'&&option.value!=='small';
+        if(type.value==='queen'){option.textContent='Vorlage · 11×4';continue;}
         const side = sides[option.value as keyof typeof sides];
         option.textContent = `${option.value === 'small' ? 'Klein' : option.value === 'medium' ? 'Mittel' : 'Groß'} · ${side}×${side}`;
       }
     };
     type.addEventListener('change', refreshSizes); refreshSizes();
     const label = document.createElement('label'); label.append('Neuen Plan zeichnen', type);
-    const begin = this.button('Zeichnen', 'draw-plan', () => {}); begin.type = 'submit';
-    const refreshBegin = () => { begin.textContent = size.value === 'free' ? 'Zeichnen' : 'Platzieren'; };
+    const begin = this.beginButton=this.button('Zeichnen', 'draw-plan', () => {}); begin.type = 'submit';
+    const refreshBegin = () => { begin.textContent = size.value === 'free' ? 'Zeichnen' : 'Platzieren';begin.disabled=type.selectedOptions[0]?.disabled??false; };
     size.addEventListener('change', refreshBegin); type.addEventListener('change', refreshBegin);
     form.append(label, sizeLabel, begin);
     form.addEventListener('submit', event => {
       event.preventDefault(); this.actions.start(type.value as PlanType, size.value as TemplateSize); this.dialog.close();
     });
     const explanation = document.createElement('p'); explanation.className = 'workforce-note';
-    explanation.textContent = 'Klein, Mittel und Groß als Quadrat auf der Karte platzieren oder mit Frei selbst zeichnen. Pinsel und Rechteck bleiben kombinierbar. Erst Bestätigen erteilt den Auftrag. Nach dem Aushub werden Kammern mit echtem Baumaterial eingerichtet. Ihr geplanter Typ bleibt fest.';
+    explanation.textContent = 'Klein, Mittel und Groß als Quadrat auf der Karte platzieren oder mit Frei selbst zeichnen. Königinnenkammern haben eine 11×4-Vorlage oder freie Form ab44 Kacheln. Pinsel und Rechteck bleiben kombinierbar. Erst Bestätigen erteilt den Auftrag. Nach dem Aushub werden Kammern mit echtem Baumaterial eingerichtet. Ihr geplanter Typ bleibt fest.';
     this.list.className = 'construction-list'; this.list.dataset.role = 'construction-orders';
     this.details.dataset.role = 'construction-detail'; this.details.setAttribute('aria-live', 'polite');
     this.feedback.setAttribute('role', 'status');
@@ -109,8 +115,12 @@ export class ConstructionPanel {
     if (feedback) this.draftStatus.textContent = feedback;
     else if (count !== undefined) this.draftStatus.textContent = `${count} Kacheln · Werkzeuge kombinierbar`;
   }
-  update(orders: ConstructionOrderSnapshot[]): void {
+  update(orders: ConstructionOrderSnapshot[],queenSlots=0,royalStatus=new Map<number,string>()): void {
     this.orders = orders;
+    this.royalStatus=royalStatus;
+    const queen=[...this.typeSelect.options].find(o=>o.value==='queen');
+    if(queen){queen.disabled=queenSlots===0;queen.textContent=`Königinnenkammer · ab44 Kacheln · ${queenSlots?'freier Königinnenplatz':'kein freier Platz (50/150/500/1000)'}`;}
+    if(this.beginButton)this.beginButton.disabled=this.typeSelect.selectedOptions[0]?.disabled??false;
     const signature = orders.map(order => `${order.id}:${order.status}:${order.blockReason}:${order.excavated}`).join('|');
     if (signature !== this.listSignature || !this.list.childNodes.length) {
       this.listSignature = signature; this.list.replaceChildren();
@@ -133,9 +143,10 @@ export class ConstructionPanel {
       order.status === 'furnished' ? PLAN_LABELS[order.type] : `#${order.id} ${PLAN_LABELS[order.type]} · ${constructionStatusLabel(order)}`,
       `Aushub: ${order.excavated} / ${order.total} Kacheln${order.partialDigSeconds > 0 ? ` · ${order.partialDigSeconds.toFixed(1)} s angegraben` : ''}`,
       order.type === 'tunnel' ? 'Einrichtung: nicht erforderlich' : `Einrichtung: ${order.materialUsed} / ${order.materialRequired} Einheiten${order.status === 'furnished' ? ' · fertig eingerichtet' : ''}`,
-      order.type === 'tunnel' ? 'Kapazität: keine' : `Kapazität: ${order.operational ? order.capacity : 0} / ${chamberCapacity(order.type, order.total)} ${order.type.startsWith('brood-') ? 'Brutplätze' : order.type === 'rest' ? 'Ruheplätze' : 'Einheiten'} · ${order.operational ? 'betriebsbereit' : 'noch nicht nutzbar'}`,
+      order.type === 'tunnel' ? 'Kapazität: keine' : `Kapazität: ${order.operational ? order.capacity : 0} / ${chamberCapacity(order.type, order.total)} ${order.type==='queen'?'Königinnenplatz':order.type.startsWith('brood-') ? 'Brutplätze' : order.type === 'rest' ? 'Ruheplätze' : 'Einheiten'} · ${order.operational ? 'betriebsbereit' : 'noch nicht nutzbar'}`,
       order.type === 'tunnel' ? 'Baumaterial für Einrichtung: 0' : `Baumaterial für Einrichtung: ${order.materialRequired} benötigt · ${order.materialUsed} eingesetzt · ${order.materialAtSite} an Baustelle · ${order.materialInTransit} unterwegs · ${Math.max(0, order.materialRequired - order.materialUsed - order.materialAtSite - order.materialInTransit)} noch zu liefern`,
     ]) { const paragraph = document.createElement('p'); paragraph.textContent = text; this.details.append(paragraph); }
+    if(order.type==='queen'&&this.royalStatus.has(order.id)){const p=document.createElement('p');p.textContent=this.royalStatus.get(order.id)!;this.details.append(p);}
     this.toggle.textContent = order.paused ? 'Fortsetzen' : 'Pausieren';
     this.toggle.dataset.action = order.paused ? 'resume-order' : 'pause-order';
   }

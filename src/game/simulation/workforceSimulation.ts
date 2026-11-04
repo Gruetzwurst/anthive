@@ -1,4 +1,5 @@
 import { RestSystem } from './restSystem.ts';
+import {COLONY_MILESTONES} from './simulationConfig.ts';
 import type { RestChamber, RestSnapshot } from './restSystem.ts';
 import type { StartingWorld, WorldPoint } from '../world/worldTypes.ts';
 import { createColonySimulation } from './colonySimulation.ts';
@@ -44,13 +45,26 @@ export function createWorkforceSimulation(
   let builders: WorkforceBuilderAdapter;
   let rest: RestSystem;
   const workforce = new WorkforceSystem();
+  let highestPopulation=1;
+  function getProgression(){
+    // Adult queens count alongside workers; developing brood is excluded.
+    const population=workforce.size+simulation.queen.queenCount;
+    highestPopulation=Math.max(highestPopulation,population);
+    const level=COLONY_MILESTONES.filter(n=>highestPopulation>=n).length;
+    if(simulation.gathering.developmentStage!==level)simulation.gathering.setDevelopmentLevel(level);
+    if(simulation.queen.developmentStage!==level)simulation.queen.setDevelopmentLevel(level);
+    if(simulation.broodSupply.developmentStage!==level)simulation.broodSupply.setDevelopmentLevel(level);
+    return {population,highestPopulation,level,nextMilestone:COLONY_MILESTONES[level]??null};
+  }
   const states = new Map<string, EngineState>();
   const home = world.landmarks.nestChamberCenter;
   const simulation = createColonySimulation(world, {
+    observePopulation:()=>{getProgression();},
     effectiveNurses: () => workforce.getWorkers().filter(worker => worker.assignment === 'care' && states.get(worker.id)?.engine === 'care')
       .reduce((sum, worker) => sum + workforce.efficiency(worker.id, 'care'), 0),
     birthWorker: birth => {
       workforce.addWorker(birth.id, birth.specialization);
+      getProgression(); // Capture the peak even if deaths occur in the same simulation step.
       states.set(birth.id, {engine: 'parked', position: {...birth.position ?? home}});
       reconcile();
     },
@@ -188,7 +202,12 @@ export function createWorkforceSimulation(
   }
 
   return {
-    ...simulation, workforce, getWorkers,
+    ...simulation, workforce, getWorkers,getProgression,
+    exportProgression:()=>({highestPopulation:getProgression().highestPopulation}),
+    restoreProgression(state:{highestPopulation:number}){
+      if(!Number.isSafeInteger(state.highestPopulation)||state.highestPopulation<workforce.size+simulation.queen.queenCount)throw new Error('Ungültiger Koloniehöchststand.');
+      highestPopulation=state.highestPopulation;
+    },
     exportWorkforceState: () => structuredClone({states, rest: rest.exportState()}),
     restoreWorkforceState(state: {states: Map<string, EngineState>; rest: ReturnType<RestSystem['exportState']>}) {
       states.clear(); for (const [id, value] of structuredClone(state.states)) states.set(id, value);
@@ -201,8 +220,10 @@ export function createWorkforceSimulation(
       reconcile();
     },
     advance(realSeconds: number) {
+      getProgression();
       const step = simulation.advance(realSeconds);
       reconcile();
+      getProgression();
       return step;
     },
   };

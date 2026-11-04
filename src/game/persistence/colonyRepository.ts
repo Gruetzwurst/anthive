@@ -11,7 +11,7 @@ export type ColonyMetadata={id:string;name:string;revision:number;savedAt:string
 type Backup={slot:BackupSlot;payload:string;checksum:string;savedAt:string;revision:number};
 export type RecoveryMetadata={id:string;colonyId:string;name:string;revision:number;savedAt:string;originalSavedAt:string;reason:'restore'|'replace'|'migration';gameDay:number;antCount:number};
 type Recovery=RecoveryMetadata & {payload:string;checksum:string};
-type Row=ColonyMetadata & {payload:string;checksum:string;backups?:Partial<Record<BackupSlot,Backup>>;timing?:ColonySave['persistenceTiming']};
+type Row=ColonyMetadata & {payload:string;checksum:string;backups?:Partial<Record<BackupSlot,Backup>>;timing?:ColonySave['persistenceTiming'];highestPopulation?:number};
 function metadataFor(row:Row):ColonyMetadata{
  const {payload:_payload,checksum:_checksum,backups,timing:_timing,...metadata}=row;
  return {...metadata,backupCount:Object.keys(backups??{}).length};
@@ -53,14 +53,14 @@ export class ColonyRepository {
     save.revision++;
     const payload=serializeColony(save),savedAt=new Date().toISOString();
     const digest=await checksum(payload);
-    const row:Row={timing:structuredClone(save.persistenceTiming),checksum:digest,id:save.id,name:save.name,revision:save.revision,savedAt,gameDay:save.state.clock.elapsedSeconds/save.state.clock.secondsPerGameDay,antCount:save.state.workforce.workers.size,payload};
+    const row:Row={highestPopulation:save.state.progression.highestPopulation,timing:structuredClone(save.persistenceTiming),checksum:digest,id:save.id,name:save.name,revision:save.revision,savedAt,gameDay:save.state.clock.elapsedSeconds/save.state.clock.secondsPerGameDay,antCount:save.state.workforce.workers.size,payload};
     if(options.backupSlot!==undefined&&![1,2,3].includes(options.backupSlot))throw new Error('Ungültiger Backupplatz.');
     let migration:Recovery|undefined;
     const original=await this.readRow(save.id);
     if(original){
       let header:any;try{header=JSON.parse(original.payload);}catch{throw new Error('Vorhandener Spielstand ist nicht lesbar. Bitte exportieren oder eine Sicherung wiederherstellen.');}
-      if(header.format!=='anthive-colony'||![1,2].includes(header.schemaVersion)||header.rulesVersion!==1||(header.schemaVersion===2&&header.encoding!=='map-set-v1'))throw new Error('Vorhandene Spielstandversion wird nicht unterstützt. Original bleibt erhalten.');
-      if(header.schemaVersion===1){
+      if(header.format!=='anthive-colony'||![1,2,3,4,5,6,7,8].includes(header.schemaVersion)||header.rulesVersion!==1||(header.schemaVersion>=2&&header.encoding!=='map-set-v1'))throw new Error('Vorhandene Spielstandversion wird nicht unterstützt. Original bleibt erhalten.');
+      if(header.schemaVersion<8){
         const old=await this.snapshotFrom(original,save.id,original.revision);
         migration={id:crypto.randomUUID(),colonyId:save.id,name:old.name,revision:original.revision,savedAt,originalSavedAt:original.savedAt,reason:'migration',gameDay:original.gameDay,antCount:original.antCount,payload:original.payload,checksum:original.checksum};
       }
@@ -211,9 +211,9 @@ export class ColonyRepository {
     let header:any;try{header=JSON.parse(previous.payload);}catch{}
     if(header&&typeof header==='object'&&(
       header.format!==undefined&&header.format!=='anthive-colony'||
-      header.schemaVersion!==undefined&&![1,2].includes(header.schemaVersion)||
+      header.schemaVersion!==undefined&&![1,2,3,4,5,6,7,8].includes(header.schemaVersion)||
       header.rulesVersion!==undefined&&header.rulesVersion!==1||
-      header.schemaVersion===2&&header.encoding!==undefined&&header.encoding!=='map-set-v1'
+      header.schemaVersion>=2&&header.encoding!==undefined&&header.encoding!=='map-set-v1'
     ))throw new Error('Unbekannte Spielstandversion oder Kodierung. Original bleibt erhalten; bitte aktualisieren oder als neue Kolonie importieren.');
     let current:ColonySave|undefined;
     try{current=await this.snapshotFrom(previous,id,previous.revision);}catch{/* A corrupt main save is not a trustworthy protection copy. */}
@@ -226,11 +226,12 @@ export class ColonyRepository {
       // A separately committed timer survives damaged payload bytes when available.
       if(previous.timing){try{const probe=structuredClone(source);probe.persistenceTiming=previous.timing;parseColony(serializeColony(probe));if(previous.timing.activeSeconds>=timing.activeSeconds)timing=previous.timing;}catch{}}
     }
-    const target:RestoreTarget={id,name:previous.name,revision:previous.revision,persistenceTiming:timing};
+    const retainedPeak=current?.state.progression.highestPopulation??(typeof previous.highestPopulation==='number'&&Number.isSafeInteger(previous.highestPopulation)&&previous.highestPopulation>=1?previous.highestPopulation:undefined);
+    const target:RestoreTarget={id,name:previous.name,revision:previous.revision,persistenceTiming:timing,highestPopulation:retainedPeak};
     const save=reason==='restore'?prepareBackupRestore(source,target):prepareReplacement(source,target);
     restoreColony(save); // Refuse a snapshot that cannot build the actual model.
     const payload=serializeColony(save),digest=await checksum(payload),savedAt=new Date().toISOString();
-    const row:Row={id,name:save.name,revision:save.revision,savedAt,lastPlayedAt:previous.lastPlayedAt,gameDay:save.state.clock.elapsedSeconds/save.state.clock.secondsPerGameDay,antCount:save.state.workforce.workers.size,
+    const row:Row={highestPopulation:save.state.progression.highestPopulation,id,name:save.name,revision:save.revision,savedAt,lastPlayedAt:previous.lastPlayedAt,gameDay:save.state.clock.elapsedSeconds/save.state.clock.secondsPerGameDay,antCount:save.state.workforce.workers.size,
       payload,checksum:digest,timing:structuredClone(save.persistenceTiming),backups:reason==='restore'?previous.backups:{}};
     const protection:Recovery|undefined=current?{id:crypto.randomUUID(),colonyId:id,name:current.name,revision:current.revision,savedAt,originalSavedAt:previous.savedAt,reason,
       gameDay:current.state.clock.elapsedSeconds/current.state.clock.secondsPerGameDay,antCount:current.state.workforce.workers.size,payload:previous.payload,checksum:previous.checksum}:undefined;

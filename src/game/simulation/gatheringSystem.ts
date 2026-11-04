@@ -2,7 +2,7 @@ import type { WorldPoint } from '../world/worldTypes.ts';
 import type { GatheringNavigation } from '../world/collectorNavigation.ts';
 import type { ResourceAmount, ResourceStore } from './resourceTypes.ts';
 import { ResourceSystem } from './resourceSystem.ts';
-import { GATHERING_CONFIG } from './simulationConfig.ts';
+import { GATHERING_CONFIG,GATHERING_DEVELOPMENT } from './simulationConfig.ts';
 import type { GatheringConfig } from './simulationConfig.ts';
 import { nonNegativeFinite, positiveFinite } from './validation.ts';
 
@@ -32,17 +32,26 @@ const pathLength = (path: WorldPoint[]) => path.reduce((sum, point, index) => su
 
 export class GatheringSystem {
   /** Complete internal state, detached from the live simulation; not a HUD snapshot. */
-  exportState() { return structuredClone({ config: this.config, workers: this.workers, currentPriority: this.currentPriority }); }
+  exportState() { return structuredClone({ developmentLevel:this.stage,config: this.config, workers: this.workers, currentPriority: this.currentPriority }); }
   restoreState(state: ReturnType<GatheringSystem['exportState']>): void {
     const copy = structuredClone(state);
     this.config = copy.config;
     this.workers = copy.workers;
     this.currentPriority = copy.currentPriority;
+    this.stage = copy.developmentLevel;
   }
 
   private resources: ResourceSystem;
   private navigation: GatheringNavigation;
   private config: GatheringConfig;
+  private stage=0;
+  get developmentStage():number{return this.stage;}
+  get carryCapacity():number{return this.config.carryCapacity/GATHERING_CONFIG.carryCapacity*GATHERING_DEVELOPMENT[this.stage].carryCapacity;}
+  get speed():number{return this.config.speed/GATHERING_CONFIG.speed*GATHERING_DEVELOPMENT[this.stage].speed;}
+  setDevelopmentLevel(level:number):void{
+    if(!Number.isInteger(level)||level<0||level>=GATHERING_DEVELOPMENT.length)throw new RangeError('Invalid collector development stage');
+    this.stage=level; // Existing cargo, paths and reservations remain unchanged.
+  }
   private workers = new Map<string, Worker>();
   private currentPriority: GatheringPriority = 'balanced';
 
@@ -156,13 +165,13 @@ export class GatheringSystem {
       if ((source.resource !== 'food' && source.resource !== 'water') || !needed.has(source.resource)) continue;
       const reserved = [...this.workers.values()].filter(other => other !== worker && other.sourceId === source.id && !other.load)
         .reduce((sum, other) => sum + other.expected, 0);
-      const available = source.kind === 'unlimited' ? this.config.carryCapacity
+      const available = source.kind === 'unlimited' ? this.carryCapacity
         : source.recoveryDaysLeft > 0 ? 0 : Math.max(0, source.amount - reserved);
       if (available <= 1e-9) continue;
       for (const access of this.navigation.sourceAccessPoints(source)) {
         const path = this.navigation.findPath(worker.position, access);
         if (!path) continue;
-        const delivery = this.chooseStore(worker, access, source.resource, Math.min(available, this.config.carryCapacity));
+        const delivery = this.chooseStore(worker, access, source.resource, Math.min(available, this.carryCapacity));
         if (!delivery) continue;
         choices.push({ sourceId: source.id, path, delivery, demand: this.demand(source.resource, worker),
           score: this.travelSeconds(path) + delivery.score });
@@ -178,7 +187,7 @@ export class GatheringSystem {
   }
 
   private travelSeconds(path: WorldPoint[]): number {
-    return this.navigation.travelSeconds?.(path, this.config.speed) ?? pathLength(path) / this.config.speed;
+    return this.navigation.travelSeconds?.(path, this.speed) ?? pathLength(path) / this.speed;
   }
 
   private startPath(worker: Worker, path: WorldPoint[], phase: 'toSource' | 'toStore' | 'returning'): void {
@@ -260,7 +269,7 @@ export class GatheringSystem {
           continue;
         }
         const length = distance(worker.position, target);
-        const speed = this.config.speed * Math.min(this.navigation.speedFactor?.(worker.position) ?? 1, this.navigation.speedFactor?.(target) ?? 1);
+        const speed = this.speed * Math.min(this.navigation.speedFactor?.(worker.position) ?? 1, this.navigation.speedFactor?.(target) ?? 1);
         const spent = Math.min(remaining, length / speed);
         const fraction = length > 0 ? Math.min(1, spent * speed / length) : 1;
         worker.position.x += (target.x - worker.position.x) * fraction;

@@ -6,13 +6,13 @@ import type {ResourceAmount} from './resourceTypes.ts';
 import type {BroodRoom} from './queenSystem.ts';
 import type {EggTransport} from './eggTransport.ts';
 import type {ResourceSystem} from './resourceSystem.ts';
-import {LARVAL_SUPPLY_CONFIG,CARE_DEVELOPMENT} from './simulationConfig.ts';
+import {LARVAL_SUPPLY_CONFIG,CARE_DEVELOPMENT,QUEEN_SUPPLY_CONFIG} from './simulationConfig.ts';
 import type {LarvalSupplyConfig} from './simulationConfig.ts';
 import {nonNegativeFinite, positiveFinite} from './validation.ts';
 
 type Kind = 'food' | 'water';
 const KINDS: Kind[] = ['food', 'water'], EPS = 1e-9;
-export type LarvalRoom = BroodRoom & {larvae: number;royal?:boolean};
+export type LarvalRoom = BroodRoom & {larvae: number;royal?:boolean;adultQueen?:boolean};
 type Stock = {amount: number; target: number; capacity: number; refilling: boolean; consumed: number; unmet: number};
 type Room = LarvalRoom & Record<Kind, Stock>;
 type Job = {kind: 'pickup' | 'delivery' | 'return' | 'eggPickup' | 'eggDelivery'; phase: 'walking' | 'interaction';
@@ -73,13 +73,21 @@ export class BroodSupplySystem {
       let room = this.rooms.get(definition.id);
       if (!room) {room = {...definition, food: empty(), water: empty()};this.rooms.set(room.id, room);}
       Object.assign(room, {id:definition.id,specialization:definition.specialization,larvae:definition.larvae,capacity:definition.capacity,
-        royal:definition.royal??false,operational:definition.operational,position:definition.position?{...definition.position}:undefined});
+        adultQueen:definition.adultQueen??false,royal:definition.royal??false,operational:definition.operational,position:definition.position?{...definition.position}:undefined});
       for (const kind of KINDS) {
-        room[kind].target = definition.larvae * (definition.royal?2:1) * this.config.perLarvaPerDay[kind] * this.config.reserveDays;
-        room[kind].capacity = definition.capacity * (definition.royal?2:1) * this.config.perLarvaPerDay[kind] * this.config.reserveDays;
+        room[kind].target = this.dailyDemand(definition,kind) * this.config.reserveDays;
+        room[kind].capacity = (definition.adultQueen?QUEEN_SUPPLY_CONFIG.perDay[kind]:definition.capacity*(definition.royal?2:1)*this.config.perLarvaPerDay[kind]) * this.config.reserveDays;
         this.refreshRefill(room[kind]);
       }
     }
+    // Initialise derived shortage entries before a checkpoint, not on a later render.
+    this.refreshShortage();
+  }
+  private dailyDemand(room:LarvalRoom,kind:Kind):number{
+    return room.adultQueen?QUEEN_SUPPLY_CONFIG.perDay[kind]:room.larvae*(room.royal?2:1)*this.config.perLarvaPerDay[kind];
+  }
+  queenSupplyFactor(roomId:string):number{
+    const room=this.rooms.get(roomId);return room?.adultQueen&&room.operational&&KINDS.every(k=>room[k].amount>EPS)?1:0;
   }
   private refreshShortage(): void {
     for (const room of this.rooms.values()) this.shortage.observe(room.id, room.operational&&!room.royal ? room.larvae : 0,
@@ -88,8 +96,8 @@ export class BroodSupplySystem {
   }
   nextEventDays(): number {
     this.refreshShortage();let next = this.shortage.nextEventDays();
-    for (const room of this.rooms.values()) if (room.operational && room.larvae) for (const kind of KINDS) {
-      const rate = room.larvae * (room.royal?2:1) * this.config.perLarvaPerDay[kind];
+    for (const room of this.rooms.values()) if ((room.operational||room.adultQueen) && (room.larvae||room.adultQueen)) for (const kind of KINDS) {
+      const rate = this.dailyDemand(room,kind);
       if (rate > 0 && room[kind].amount > EPS) next = Math.min(next, room[kind].amount / rate);
     }
     return next;
@@ -120,8 +128,8 @@ export class BroodSupplySystem {
     while (remaining > 1e-10) {
       const step = Math.min(remaining, this.nextEventDays());
       losses.push(...this.shortage.advance(step));
-      for (const room of this.rooms.values()) if (room.operational) for (const kind of KINDS) {
-        const requested = room.larvae * (room.royal?2:1) * this.config.perLarvaPerDay[kind] * step;
+      for (const room of this.rooms.values()) if (room.operational||room.adultQueen) for (const kind of KINDS) {
+        const requested = this.dailyDemand(room,kind) * step;
         const amount = Math.min(room[kind].amount, requested);
         room[kind].amount -= amount;room[kind].consumed += amount;room[kind].unmet += requested - amount;this.refreshRefill(room[kind]);
       }

@@ -1,3 +1,4 @@
+import {withoutQueenFeeding} from './helpers/legacyQueenSupply.mjs';
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {createColonySession,captureColony,restoreColony,parseColony,serializeColony} from '../src/game/persistence/colonySession.ts';
@@ -47,9 +48,9 @@ test('progression survives complete save roundtrip and stays isolated between co
 test('schema1 and schema2 derive only known adult population without mutating original',()=>{
  const a=createColonySession({id:'old',name:'Old'});population(a,49);
  for(const schemaVersion of [1,2]){
-  const old=captureColony(a);old.schemaVersion=schemaVersion;delete old.state.progression;delete old.state.construction.developmentLevel;delete old.state.gathering.developmentLevel;delete old.state.queen.developmentLevel;delete old.state.broodSupply.developmentLevel;if(schemaVersion===1)delete old.encoding;
+  const old=withoutQueenFeeding(captureColony(a));old.schemaVersion=schemaVersion;delete old.state.progression;delete old.state.construction.developmentLevel;delete old.state.gathering.developmentLevel;delete old.state.queen.developmentLevel;delete old.state.broodSupply.developmentLevel;if(schemaVersion===1)delete old.encoding;
   delete old.state.royal;const before=structuredClone(old),migrated=parseColony(wire(old));
-  assert.equal(migrated.schemaVersion,8);assert.equal(migrated.state.progression.highestPopulation,50);assert.deepEqual(old,before);
+  assert.equal(migrated.schemaVersion,9);assert.equal(migrated.state.progression.highestPopulation,50);assert.deepEqual(old,before);
  }
 });
 test('invalid or missing current progression is rejected rather than repaired',()=>{

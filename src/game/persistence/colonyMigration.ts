@@ -1,16 +1,17 @@
+import {emptyQueenSupplyRoom} from '../simulation/queenSupply.ts';
 import type {ColonySave} from './colonySession.ts';
 import {validateColonyState} from './validateColonyState.ts';
 import {newPersistenceTiming,BACKUP_INTERVALS} from './persistenceController.ts';
 import {COLONY_MILESTONES,TERRAIN_DIGGING_GRADES,CHAMBER_CONFIG} from '../simulation/simulationConfig.ts';
 
-export const CURRENT_SAVE_SCHEMA=8;
+export const CURRENT_SAVE_SCHEMA=9;
 export const SAVE_ENCODING='map-set-v1';
 /** Explicit supported step only. Never mutates old data, writes storage or guesses offline time. */
 export function migrateColonySave(input:unknown):{save:ColonySave;migrated:boolean;fromVersion:number}{
  if(!input||typeof input!=='object'||Array.isArray(input))throw new Error('Ungültiger Spielstand.');
  const source=input as Record<string,any>,version=source.schemaVersion;
- if(source.format!=='anthive-colony'||source.rulesVersion!==1||![1,2,3,4,5,6,7,8].includes(version))throw new Error('Nicht unterstützte Spielstand- oder Regelversion. Originaldaten bleiben erhalten.');
- if(version===8){validateColonyState(input);return {save:input,migrated:false,fromVersion:8};}
+ if(source.format!=='anthive-colony'||source.rulesVersion!==1||![1,2,3,4,5,6,7,8,9].includes(version))throw new Error('Nicht unterstützte Spielstand- oder Regelversion. Originaldaten bleiben erhalten.');
+ if(version===9){validateColonyState(input);return {save:input,migrated:false,fromVersion:9};}
  if(version>=2?source.encoding!==SAVE_ENCODING:source.encoding!==undefined&&source.encoding!==SAVE_ENCODING)throw new Error('Nicht unterstützte Spielstand-Kodierung.');
  const copy=structuredClone(source);
  // Known step1→2: explicit codec and legacy persistence timers.
@@ -55,6 +56,7 @@ export function migrateColonySave(input:unknown):{save:ColonySave;migrated:boole
  }
  // Step7→8: pending royal eggs have not developed; no invented elapsed time.
  const queen=copy.state.queen,royal=copy.state.royal;
+ if(version<8){
  if(queen.additionalQueens!==undefined&&(!(queen.additionalQueens instanceof Map)||queen.additionalQueens.size))throw new Error('Unbekannte zusätzliche Königinnen im alten Format.');
  queen.additionalQueens=new Map();
  if(!Array.isArray(queen.eggs)||!Array.isArray(queen.buffer)||!(royal?.eggs instanceof Map))throw new Error('Ungültige alte Brut.');
@@ -68,7 +70,23 @@ export function migrateColonySave(input:unknown):{save:ColonySave;migrated:boole
  }
  if(!(supply.rooms instanceof Map))throw new Error('Alte Larvenkammern fehlen.');
  for(const room of supply.rooms.values()){if(room.royal!==undefined&&room.royal!==false)throw new Error('Unbekannte alte königliche Versorgung.');room.royal=false;}
- copy.schemaVersion=8;
+ }
+ // Step8→9: retain existing queens, eggs and cargo; start new private stocks empty.
+ if(!(supply.rooms instanceof Map)||!(queen.additionalQueens instanceof Map))throw new Error('Königinnenversorgung fehlt.');
+ for(const room of supply.rooms.values()){
+  if(room.adultQueen!==undefined&&room.adultQueen!==false)throw new Error('Unbekannte alte Königinnenvorräte.');room.adultQueen=false;
+ }
+ // Schema7 had no royal larval reservoirs; schema8 may not have advanced yet.
+ for(const r of royal.rooms.values())if(!supply.rooms.has(r.id)){
+  const larvae=[...royal.eggs.values()].some((e:any)=>e.roomId===r.id&&e.arrived&&e.stage==='larva')?1:0;
+  const stock=()=>({amount:0,target:larvae*2,capacity:2,refilling:!!larvae,consumed:0,unmet:0});
+  supply.rooms.set(r.id,{id:r.id,specialization:'care',capacity:1,operational:r.operational,position:{...r.position},larvae,royal:true,adultQueen:false,food:stock(),water:stock()});
+ }
+ const queens=[{id:'queen-1',position:queen.queenOrigin,operational:true},...queen.additionalQueens.values()];
+ for(const q of queens){if(!q.position)throw new Error('Königinnenort fehlt.');const room=emptyQueenSupplyRoom(q);if(supply.rooms.has(room.id))throw new Error('Unerwarteter alter Königinnenvorrat.');supply.rooms.set(room.id,room);}
+ if(!(supply.shortage?.rooms instanceof Map))throw new Error('Pflegeversorgungshistorie fehlt.');
+ for(const room of supply.rooms.values())if((room.adultQueen||room.royal)&&!supply.shortage.rooms.has(room.id))supply.shortage.rooms.set(room.id,{larvae:0,coverage:1,shortageDays:0,severeDays:0,nonSevereDays:0,restoredDays:0,recoveryStart:1,lossCredit:0,losses:0,warnings:0});
+ copy.schemaVersion=9;
  // Check every old job before releasing newly locked prototype work. Otherwise
  // dropping such a job could conceal corrupt progress, durations or references.
  validateColonyState(copy,version<4);

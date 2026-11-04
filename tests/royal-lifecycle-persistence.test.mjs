@@ -1,3 +1,4 @@
+import {withoutQueenFeeding} from './helpers/legacyQueenSupply.mjs';
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {createColonySession,captureColony,restoreColony,serializeColony,parseColony} from '../src/game/persistence/colonySession.ts';
@@ -23,15 +24,16 @@ function roundtrip(a){const save=captureColony(a),b=restoreColony(parseColony(se
 test('real nurses supply royal larvae at twice the daily rate, with conserved stock and no royal deaths',()=>{
  const a=fixture();advance(a,.2);assert.equal(a.royal.getEggs()[0].stage,'larva');
  advance(a,20);assert.equal(a.royal.getEggs()[0].stageProgressDays,0);assert.equal(a.simulation.broodSupply.shortage.get(a.royal.getEggs()[0].roomId).losses,0);
- feed(a);const before=a.simulation.broodSupply.balance;advance(a,.1);const after=a.simulation.broodSupply.balance;
- for(const k of ['food','water']){assert.ok(Math.abs(after[k].consumed-before[k].consumed-.1)<1e-7);assert.ok(Math.abs(after[k].withdrawn-after[k].atChambers-after[k].carried-after[k].consumed-after[k].dropped-after[k].returned)<1e-7);}
+ feed(a);const before=a.simulation.broodSupply.balance,beforeRoyal=a.simulation.broodSupply.getRooms().find(r=>r.royal);advance(a,.1);const after=a.simulation.broodSupply.balance;
+ for(const k of ['food','water']){assert.ok(Math.abs(a.simulation.broodSupply.getRooms().find(r=>r.royal)[k].consumed-beforeRoyal[k].consumed-.1)<1e-7);assert.ok(Math.abs(after[k].withdrawn-after[k].atChambers-after[k].carried-after[k].consumed-after[k].dropped-after[k].returned)<1e-7);}
  assert.ok(Math.abs(a.royal.getEggs()[0].stageProgressDays-.1)<1e-7);
 });
 test('egg, larva, pupa and adult queen persist exactly, then new queen eggs resume from her own chamber',()=>{
  let a=fixture();advance(a,.1);a=roundtrip(a);advance(a,.1);feed(a);advance(a,.3);a=roundtrip(a);
- advance(a,.3);assert.equal(a.royal.getEggs()[0].stage,'pupa');a=roundtrip(a);advance(a,.4);assert.equal(a.simulation.queen.queenCount,2);a=roundtrip(a);
+ advance(a,.3);assert.equal(a.royal.getEggs()[0].stage,'pupa');a=roundtrip(a);advance(a,.4);assert.equal(a.simulation.queen.queenCount,2);a=roundtrip(a);feed(a);
  assert.equal(a.simulation.getProgression().population,a.simulation.workforce.size+2);
- const q=a.simulation.queen;q.advance(.1,1,q.snapshot.chambers,1);a=roundtrip(a);a.simulation.queen.advance(.1,1,a.simulation.queen.snapshot.chambers,1);
+ const q=a.simulation.queen;q.advance(.1,1,q.snapshot.chambers,1);a=roundtrip(a);const previous=withoutQueenFeeding(captureColony(a));previous.schemaVersion=8;const migratedAdult=restoreColony(previous);assert.deepEqual(migratedAdult.simulation.queen.exportState(),a.simulation.queen.exportState());assert.equal(migratedAdult.simulation.queen.queenCount,2);
+ a.simulation.queen.advance(.1,1,a.simulation.queen.snapshot.chambers,1);
  const eggs=a.simulation.queen.snapshot.eggs;assert.equal(eggs.length,2);const extra=eggs.find(e=>e.sourceQueenId!=='queen-1');assert.ok(extra);assert.deepEqual(extra.origin,a.royal.getEggs()[0].position);roundtrip(a);
 });
 test('unreachable royal chambers pause development and adult laying without duplicate queens',()=>{
@@ -42,18 +44,19 @@ test('unreachable royal chambers pause development and adult laying without dupl
  a.simulation.queen.advance(.4,1,a.simulation.queen.snapshot.chambers,1);assert.ok(a.simulation.queen.snapshot.eggs.every(e=>e.sourceQueenId==='queen-1'));
 });
 test('schema7 royal eggs migrate without advancing time or modifying original and reject forged lifecycle data',()=>{
- const a=fixture(),old=captureColony(a);old.schemaVersion=7;delete old.state.queen.additionalQueens;
+ const a=fixture(),old=withoutQueenFeeding(captureColony(a));old.schemaVersion=7;delete old.state.queen.additionalQueens;
+ for(const r of old.state.royal.rooms.values()){old.state.broodSupply.rooms.delete(r.id);old.state.broodSupply.shortage.rooms.delete(r.id);}
  for(const e of old.state.queen.eggs)delete e.sourceQueenId;
  for(const e of old.state.royal.eggs.values()){delete e.stage;delete e.stageProgressDays;}
  for(const r of old.state.broodSupply.rooms.values())delete r.royal;
  const original=structuredClone(old),wire=JSON.stringify(old,(_k,v)=>v instanceof Map?{$map:[...v]}:v instanceof Set?{$set:[...v]}:v),loaded=parseColony(wire);
- assert.equal(loaded.schemaVersion,8);assert.deepEqual(old,original);assert.equal(loaded.state.royal.eggs.values().next().value.stage,'egg');assert.equal(loaded.state.royal.eggs.values().next().value.stageProgressDays,0);
+ assert.equal(loaded.schemaVersion,9);assert.deepEqual(old,original);assert.equal(loaded.state.royal.eggs.values().next().value.stage,'egg');assert.equal(loaded.state.royal.eggs.values().next().value.stageProgressDays,0);
  roundtrip(restoreColony(loaded));const bad=structuredClone(old);bad.state.queen.additionalQueens=new Map([['fake',{}]]);assert.throws(()=>restoreColony(bad));
 });
 test('save validation rejects missing or forged adults, sources and impossible royal development',()=>{
  const a=fixture();advance(a,.2);feed(a);advance(a,1);const save=captureColony(a);
  for(const mutate of [s=>s.state.queen.additionalQueens.clear(),s=>s.state.royal.eggs.values().next().value.stage='egg',s=>s.state.royal.eggs.values().next().value.stageProgressDays=-1,s=>s.state.queen.additionalQueens.values().next().value.roomId='fake']){const bad=structuredClone(save);mutate(bad);assert.throws(()=>restoreColony(bad));}
- a.simulation.queen.advance(.2,1,a.simulation.queen.snapshot.chambers,1);const bad=captureColony(a);bad.state.queen.eggs[0].sourceQueenId='fake';assert.throws(()=>restoreColony(bad));
+ feed(a);a.simulation.queen.advance(.2,1,a.simulation.queen.snapshot.chambers,1);const bad=captureColony(a);bad.state.queen.eggs[0].sourceQueenId='fake';assert.throws(()=>restoreColony(bad));
 });
 test('queen birth records the population peak before same-step worker starvation losses',()=>{
  const a=fixture();advance(a,.2);feed(a);advance(a,.6);advance(a,.3999);

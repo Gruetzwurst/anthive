@@ -1,3 +1,4 @@
+import {queenSupplyRoomId} from '../simulation/queenSupply.ts';
 import {redistributeEggQuotas} from './eggQuotaDistribution.ts';
 import { SPECIALIZATIONS, WORK_ASSIGNMENTS } from '../simulation/workforceSystem.ts';
 import type { Specialization, WorkAssignment } from '../simulation/workforceSystem.ts';
@@ -143,10 +144,10 @@ export class WorkforcePanel {
     this.queenSummary.textContent += ` · Eier ${state.stageCounts.egg} · Larven ${state.stageCounts.larva} · Puppen ${state.stageCounts.pupa} · geschlüpft ${state.bornCount} · Brutverluste ${state.lostCount} · Pflegeabdeckung ${Math.round(state.careFactor * 100)} % · Pflegekapazität ${state.careCapacity.toLocaleString('de-DE', {maximumFractionDigits: 1})} Bruttiere`;
     this.queenSummary.textContent += ` · Pflegerin: ${state.broodPerNurse.toLocaleString('de-DE')} Plätze (100 % Leistung), fachfremde Hilfe: ${(state.broodPerNurse*WORKFORCE_CONFIG.foreignWorkEfficiency).toLocaleString('de-DE')} Plätze (50 % Leistung). Volle Abdeckung kann bei kleiner Brut mit beiden erreicht werden.`;
     this.broodRooms.replaceChildren();
-    if(state.queens.length>1)for(const [i,q]of state.queens.entries()){
-      const row=document.createElement('p');row.textContent=`Königin ${i+1}: Eierpuffer ${q.bufferCount} / ${q.bufferCapacity} · ${q.operational?'betriebsbereit':'Kammer nicht erreichbar'}`;this.broodRooms.append(row);
-    }
     const stocks = new Map(this.larvalSupply?.().map(room=>[room.id,room]) ?? []);
+    if(state.queens.length>1)for(const [i,q]of state.queens.entries()){
+      const row=document.createElement('p');row.textContent=`Königin ${i+1}: Eierpuffer ${q.bufferCount} / ${q.bufferCapacity} · ${q.operational?'betriebsbereit':'Kammer nicht erreichbar'}`;const stock=stocks.get(queenSupplyRoomId(q.id));if(stock)row.textContent+=` · Nahrung ${stock.food.amount.toFixed(1)} / ${stock.food.capacity} · Wasser ${stock.water.amount.toFixed(1)} / ${stock.water.capacity} · Bedarf je 5 / Spieltag`;this.broodRooms.append(row);
+    }
     for (const [index, room] of state.chambers.entries()) {
       const row = document.createElement('p');row.textContent = `${SPECIALTY_LABELS[room.specialization]} · Kammer ${index + 1}: ${room.occupied} / ${room.capacity} Brutplätze · ${room.operational ? 'betriebsbereit' : 'nicht erreichbar oder noch nicht nutzbar'}`;
       const brood = state.eggs.filter(egg => egg.chamberId === room.id && egg.arrived);

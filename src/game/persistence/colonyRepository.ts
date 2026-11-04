@@ -59,8 +59,8 @@ export class ColonyRepository {
     const original=await this.readRow(save.id);
     if(original){
       let header:any;try{header=JSON.parse(original.payload);}catch{throw new Error('Vorhandener Spielstand ist nicht lesbar. Bitte exportieren oder eine Sicherung wiederherstellen.');}
-      if(header.format!=='anthive-colony'||![1,2,3,4,5,6,7,8].includes(header.schemaVersion)||header.rulesVersion!==1||(header.schemaVersion>=2&&header.encoding!=='map-set-v1'))throw new Error('Vorhandene Spielstandversion wird nicht unterstützt. Original bleibt erhalten.');
-      if(header.schemaVersion<8){
+      if(header.format!=='anthive-colony'||![1,2,3,4,5,6,7,8,9].includes(header.schemaVersion)||header.rulesVersion!==1||(header.schemaVersion>=2&&header.encoding!=='map-set-v1'))throw new Error('Vorhandene Spielstandversion wird nicht unterstützt. Original bleibt erhalten.');
+      if(header.schemaVersion<9){
         const old=await this.snapshotFrom(original,save.id,original.revision);
         migration={id:crypto.randomUUID(),colonyId:save.id,name:old.name,revision:original.revision,savedAt,originalSavedAt:original.savedAt,reason:'migration',gameDay:original.gameDay,antCount:original.antCount,payload:original.payload,checksum:original.checksum};
       }
@@ -211,7 +211,7 @@ export class ColonyRepository {
     let header:any;try{header=JSON.parse(previous.payload);}catch{}
     if(header&&typeof header==='object'&&(
       header.format!==undefined&&header.format!=='anthive-colony'||
-      header.schemaVersion!==undefined&&![1,2,3,4,5,6,7,8].includes(header.schemaVersion)||
+      header.schemaVersion!==undefined&&![1,2,3,4,5,6,7,8,9].includes(header.schemaVersion)||
       header.rulesVersion!==undefined&&header.rulesVersion!==1||
       header.schemaVersion>=2&&header.encoding!==undefined&&header.encoding!=='map-set-v1'
     ))throw new Error('Unbekannte Spielstandversion oder Kodierung. Original bleibt erhalten; bitte aktualisieren oder als neue Kolonie importieren.');

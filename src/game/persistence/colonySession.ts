@@ -27,7 +27,7 @@ export function createColonySession(identity: {id:string; name:string}, savedWor
       broodChambers:()=>excavation.chambers.getChambers().filter(r=>r.type.startsWith('brood-')).map(r=>({id:`built-${r.id}`,specialization:r.type.slice(6) as Specialization,capacity:r.capacity,operational:r.operational,position:{x:(r.cells[0].column+.5)*world.dimensions.tileSize,y:(r.cells[0].row+.5)*world.dimensions.tileSize}})),
       advanceWorkers:(seconds:number,factor:number)=>{syncConstruction();excavation.advance(seconds,factor,id=>simulation.workforce.getWorker(id).assignment==='building',id=>simulation.workforce.efficiency(id,'building'));},
     };
-  },PLAYABLE_COLONY_CONFIG.simulationConfig,undefined,{...PLAYABLE_COLONY_CONFIG,restoring:!!savedWorld});
+  },PLAYABLE_COLONY_CONFIG.simulationConfig,undefined,{...PLAYABLE_COLONY_CONFIG,restoring:!!savedWorld,physicalQueenSupply:true});
   const royal=new RoyalBroodSystem(simulation.queen,()=>simulation.getProgression().highestPopulation,world.dimensions.tileSize);
   simulation.queen.setRoyalBrood(royal);
   excavation.setQueenLimitProvider(()=>royal.maxQueens);
@@ -36,6 +36,7 @@ export function createColonySession(identity: {id:string; name:string}, savedWor
     const level=simulation.getProgression().level;
     if(force||excavation.developmentStage!==level||excavation.diggingGrade!==level)excavation.setDevelopmentLevel(level);
     royal.syncRooms(excavation.chambers.getChambers().filter(r=>r.type==='queen'));
+    simulation.broodSupply.syncRooms(simulation.queen.getLarvalRooms());
   }
   syncConstruction();
   return {id:identity.id,name:identity.name,world,simulation,excavation,royal,syncConstruction,revision:0,persistenceTiming:newPersistenceTiming()};
@@ -55,7 +56,7 @@ function canonicalCopy<T>(value:T):T {
 export function captureColony(session:ColonySession) {
   session.syncConstruction();
   const s=session.simulation,e=session.excavation;
-  return canonicalCopy({format:'anthive-colony' as const,schemaVersion:8 as const,encoding:'map-set-v1' as const,rulesVersion:1 as const,
+  return canonicalCopy({format:'anthive-colony' as const,schemaVersion:9 as const,encoding:'map-set-v1' as const,rulesVersion:1 as const,
     id:session.id,name:session.name,revision:session.revision,persistenceTiming:session.persistenceTiming,world:session.world,
     state:{royal:session.royal.exportState(),progression:s.exportProgression(),clock:s.clock.exportState(),resources:s.resources.exportState(),gathering:s.gathering.exportState(),
       workforce:s.workforce.exportState(),engines:s.exportWorkforceState(),queen:s.queen.exportState(),

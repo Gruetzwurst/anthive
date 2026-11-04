@@ -430,3 +430,10 @@ den bestehenden Versorgungsregeln alle2 Minuten eigene normale Eier in ihrer
 Kammer, mit eigenem Puffer/Fortschritt und gemeinsamen Berufsquoten. Pflegerinnen
 bringen diese Eier in die spezialisierten Brutkammern. Schema8 migriert1–7
 mit dem bestehenden atomaren Originalschutz; keine Offline-Entwicklung.
+
+Erwachsene Königinnen werden jetzt physisch von Pflegerinnen versorgt. Jede
+verbraucht5 Nahrung und5 Wasser je Spieltag aus ihrem eigenen Kammervorrat
+(Kapazität je10). Fehlt eine Ressource, pausiert ihre Eiablage. Neue Vorräte
+starten leer und werden tatsächlich beliefert. Kein doppelter Verbrauch aus
+dem allgemeinen Lager; individuelle Countdown- und Vorratsanzeigen an jeder
+Königin. Schema9 erhält alte Spielstände über Migration1–8 mit Originalschutz.

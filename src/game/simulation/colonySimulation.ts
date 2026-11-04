@@ -32,12 +32,13 @@ export function createColonySimulation(
   workers: ColonyWorkerAdapter = noOtherWorkers,
   config: SimulationConfig = SIMULATION_CONFIG,
   supplyConfig: AdultSupplyConfig = ADULT_SUPPLY_CONFIG,
-  lifecycle: {queenConfig?: QueenConfig; broodConfig?: BroodConfig; restoring?:boolean} = {},
+  lifecycle: {queenConfig?: QueenConfig; broodConfig?: BroodConfig; restoring?:boolean;physicalQueenSupply?:boolean} = {},
 ) {
   const simulation = createGatheringSimulation(world, config, undefined, !lifecycle.restoring);
   const supply = new AdultSupplySystem(simulation.resources, supplyConfig);
   const queen = new QueenSystem(lifecycle.queenConfig, lifecycle.broodConfig);
   const broodSupply = new BroodSupplySystem(simulation.resources,simulation.navigation);
+  if(lifecycle.physicalQueenSupply)queen.setPhysicalSupply(id=>broodSupply.queenSupplyFactor(id));
   let topology = -1, startingRooms: BroodRoom[] = [];
   const broodRooms = (includeAdditional = true): BroodRoom[] => {
     if (topology !== simulation.traffic.topologyRevision) {
@@ -86,7 +87,7 @@ export function createColonySimulation(
             activeWorkers: collectors.length + other.length - resting,
             restingWorkers: resting,
             restingInChambers: workers.restingInChambers?.() ?? 0,
-            queens: queen.queenCount,
+            queens: lifecycle.physicalQueenSupply?0:queen.queenCount, // Physical queens consume their delivered chamber stock below.
           });
           queen.advance(gameDays, eggFactor, broodRooms(), (workers.effectiveNurses?.() ?? 0) * factor,
             days=>{for (const loss of broodSupply.consume(days,queen.getLarvalRooms())) queen.loseLarvae(loss.roomId,loss.count);}, broodSupply);

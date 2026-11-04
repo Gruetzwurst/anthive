@@ -4,6 +4,7 @@ import {SPECIALIZATIONS} from './workforceSystem.ts';
 import type {Specialization} from './workforceSystem.ts';
 import {nonNegativeFinite, positiveFinite} from './validation.ts';
 import type {WorldPoint} from '../world/worldTypes.ts';
+import {queenSupplyRoomId} from './queenSupply.ts';
 import {ROYAL_STAGE_DAYS} from './royalBroodSystem.ts';
 import type {RoyalEgg,RoyalBroodSystem} from './royalBroodSystem.ts';
 
@@ -54,6 +55,10 @@ export class QueenSystem {
   private stage=0;
   private additionalQueens=new Map<string,ExtraQueen>();
   private royal?:RoyalBroodSystem;
+  private physicalSupply?: (roomId:string)=>number;
+  setPhysicalSupply(provider:(roomId:string)=>number):void{this.physicalSupply=provider;}
+  private supplyFactor(id:string):number{return this.physicalSupply?.(queenSupplyRoomId(id))??1;}
+
   setRoyalBrood(royal:RoyalBroodSystem):void{this.royal=royal;}
   get queenCount():number{return 1+this.additionalQueens.size;}
   getQueens(){return [{id:'queen-1',roomId:'starting-queen',position:this.queenOrigin?{...this.queenOrigin}:null,progress:this.progress,operational:true},...[...this.additionalQueens.values()].map(q=>({...q,position:{...q.position},credits:{...q.credits}}))];}
@@ -182,7 +187,7 @@ export class QueenSystem {
   getLarvalRooms() {
     const larvae = new Map<string,number>();
     for (const egg of this.eggs) if (egg.chamberId && egg.stage==='larva') larvae.set(egg.chamberId,(larvae.get(egg.chamberId)??0)+1);
-    return [...[...this.rooms.values()].map(room => ({...room, position:room.position?{...room.position}:undefined, larvae:larvae.get(room.id)??0})),...this.royal?.getLarvalRooms()??[]];
+    return [...[...this.rooms.values()].map(room => ({...room, position:room.position?{...room.position}:undefined, larvae:larvae.get(room.id)??0})),...this.royal?.getLarvalRooms()??[],...this.physicalSupply?this.getQueens().filter(q=>q.position).map(q=>({id:queenSupplyRoomId(q.id),specialization:'care' as const,capacity:1,operational:q.operational,position:{...q.position!},larvae:0,adultQueen:true})):[]];
   }
   private careFactor(count: number): number {
     count+=2*(this.royal?.getDevelopingBrood().length??0);
@@ -203,11 +208,11 @@ export class QueenSystem {
     this.syncRooms(rooms);this.eggFactor = eggFactor;this.allocate();
     let remaining = gameDays;
     while (remaining > EPS) {
-      const rate = this.config.eggsPerGameDay * eggFactor * this.bufferFactor();
+      const rate = this.config.eggsPerGameDay * eggFactor * this.bufferFactor() * this.supplyFactor('queen-1');
       const developing = this.developing(), factor = this.careFactor(developing.length);
       const royals=this.royal?.getDevelopingBrood()??[],demand=developing.length+royals.length*2;
       const royalCare=demand?Math.min(1,this.effectiveNurses*this.broodPerNurse/demand):1;
-      const extraRates=[...this.additionalQueens.values()].map(q=>({q,rate:q.operational?this.config.eggsPerGameDay*eggFactor*this.bufferFactor(q.id):0}));
+      const extraRates=[...this.additionalQueens.values()].map(q=>({q,rate:q.operational?this.config.eggsPerGameDay*eggFactor*this.bufferFactor(q.id)*this.supplyFactor(q.id):0}));
       const untilEgg = rate > 0 ? (1 - this.progress) / rate : Infinity;
       environment?.syncRooms(this.getLarvalRooms());
       let step = Math.min(remaining, untilEgg, ...extraRates.map(({q,rate})=>rate>0?(1-q.progress)/rate:Infinity), environment?.nextEventDays() ?? Infinity);
@@ -268,7 +273,7 @@ export class QueenSystem {
   get snapshot() {
     const counts = this.occupied(), bufferRateFactor = this.bufferFactor(), developing = this.developing();
     const queens=this.getQueens().map(q=>{
-      const rate=q.operational?this.config.eggsPerGameDay*this.eggFactor*this.bufferFactor(q.id):0;
+      const rate=q.operational?this.config.eggsPerGameDay*this.eggFactor*this.bufferFactor(q.id)*this.supplyFactor(q.id):0;
       return {...q,bufferCount:this.buffer.filter(e=>e.sourceQueenId===q.id).length,bufferCapacity:this.config.bufferCapacity,
         effectiveEggsPerDay:rate,daysUntilNextEgg:rate>0?(1-q.progress)/rate:null};
     });

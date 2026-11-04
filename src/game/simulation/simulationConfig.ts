@@ -48,6 +48,10 @@ export const ADULT_SUPPLY_CONFIG = {
 };
 export type AdultSupplyConfig = typeof ADULT_SUPPLY_CONFIG;
 
+// Playable queens consume physically delivered private stock, separately from
+// the legacy direct-store adult model above (whose queen count is then zero).
+export const QUEEN_SUPPLY_CONFIG={perDay:{food:5,water:5},reserveDays:2};
+
 // B1 user-selected provisional efficiency for explicitly assigned foreign work.
 export const WORKFORCE_CONFIG = { foreignWorkEfficiency: 0.5 };
 export const COLONY_MILESTONES = [50,150,250,500] as const;

@@ -40,7 +40,7 @@ export function createWorkforceSimulation(
   builderSource: WorkforceBuilderAdapter | ((resources: ResourceSystem, traffic: TunnelTrafficSystem) => WorkforceBuilderAdapter),
   config?: SimulationConfig,
   supplyConfig?: AdultSupplyConfig,
-  options: {eggTransport:boolean; startingCareWorkers?:number; queenConfig?:QueenConfig; broodConfig?:BroodConfig; restoring?:boolean} = {eggTransport:true},
+  options: {eggTransport:boolean; startingCareWorkers?:number; queenConfig?:QueenConfig; broodConfig?:BroodConfig; restoring?:boolean;physicalQueenSupply?:boolean} = {eggTransport:true},
 ) {
   let builders: WorkforceBuilderAdapter;
   let rest: RestSystem;

@@ -525,6 +525,7 @@ try:
                   const r=b.getRooms().find(r=>r.royal);if(!r||r.food.amount<.6||r.water.amount<.6)throw Error('no real royal larval deliveries');
                   advance(.6);if(a.royal.getEggs()[0].stage!=='pupa')throw Error('royal larva did not develop after6min');
                   advance(.4);if(q.queenCount!==2||g.getProgression().population!==g.workforce.size+2)throw Error('new adult queen missing/not counted');
+                  a.syncConstruction();for(let i=0;i<5000;i++)b.advanceWorkers(.1);
                   q.setQuotas({gathering:100,building:0,care:0,combat:0});q.advance(.2,1,q.snapshot.chambers,1);
                   const egg=q.snapshot.eggs.find(e=>e.sourceQueenId!=='queen-1');
                   if(!egg||JSON.stringify(egg.origin)!==JSON.stringify(a.royal.getEggs()[0].position))throw Error('new queen did not lay in own chamber');
@@ -532,13 +533,17 @@ try:
                   if(!q.snapshot.eggs.find(e=>e.id===egg.id).arrived)throw Error('new queen normal egg not physically delivered');
                   scene.renderBrood(100);scene.updateConstruction();scene.updateEconomyHud();scene.update(0,0);
                   if(!document.querySelector('[data-role=queen-summary]').textContent.includes('Königinnen: 2'))throw Error('queen summary missing');
+                  const labels=scene.broodRenderer.queenLabels;
+                  if(labels.size!==2)throw Error('missing per-queen countdown labels');
+                  for(const queen of q.snapshot.queens){const label=labels.get(queen.id);if(!label||!label.text.startsWith('Nächstes Ei ')||label.x!==queen.position.x-108||label.y!==queen.position.y+28)throw Error('queen countdown not at own chamber');}
+
                   const {ColonyRepository}=await import('/src/game/persistence/colonyRepository.ts');
                   const {captureColony,serializeColony}=await import('/src/game/persistence/colonySession.ts');
                   await scene.persistence.manual();const repo=new ColonyRepository(),loaded=await repo.load(a.id);
                   if(loaded.simulation.queen.queenCount!==2||loaded.royal.getEggs()[0].stage!=='adult')throw Error('adult queen reload lost');
                   const check=JSON.parse(serializeColony(captureColony(loaded))),live=JSON.parse(serializeColony(captureColony(a)));
                   if(JSON.stringify(check)!==JSON.stringify(live))throw Error('adult queen continuation checkpoint changed');
-                  await repo.close();return {phases2_6_4:true,realLarvalDelivery:true,adultCount:true,ownSource:true,normalEggTransport:true,adultReload:true,queenHud:true};
+                  await repo.close();return {phases2_6_4:true,realLarvalDelivery:true,adultCount:true,ownSource:true,normalEggTransport:true,adultReload:true,queenHud:true,individualCountdowns:true};
                 """)
                 print('D2 royal lifecycle:',lifecycle,flush=True)
             screenshot('anthive-d2-royal-room.png')
@@ -670,7 +675,7 @@ try:
               const results=[];for(const oldSchema of SCHEMA_VERSIONS){
               const databaseName='anthive-migration-test-'+oldSchema;
               const a=createColonySession({id:'legacy',name:'Alter Stand'});a.simulation.advance(130);
-              const old=captureColony(a);old.schemaVersion=oldSchema;if(oldSchema<7){delete old.state.royal;delete old.state.construction.minimumAreas.queen;}delete old.state.queen.additionalQueens;for(const e of [...old.state.queen.eggs,...old.state.queen.buffer])delete e.sourceQueenId;for(const r of old.state.broodSupply.rooms.values())delete r.royal;
+              const {withoutQueenFeeding}=await import('/tests/helpers/legacyQueenSupply.mjs');const old=withoutQueenFeeding(captureColony(a));old.schemaVersion=oldSchema;if(oldSchema<7){delete old.state.royal;delete old.state.construction.minimumAreas.queen;}if(oldSchema<8){delete old.state.queen.additionalQueens;for(const e of [...old.state.queen.eggs,...old.state.queen.buffer])delete e.sourceQueenId;}for(const r of old.state.broodSupply.rooms.values())delete r.royal;
               if(oldSchema<6){delete old.state.queen.developmentLevel;delete old.state.broodSupply.developmentLevel;}else{old.state.queen.developmentLevel=4;old.state.broodSupply.developmentLevel=4;}
               if(oldSchema<5)delete old.state.gathering.developmentLevel;else old.state.gathering.developmentLevel=4;
               if(oldSchema<4)delete old.state.construction.developmentLevel;
@@ -682,15 +687,15 @@ try:
               const savedAt=new Date().toISOString();
               await new Promise((resolve,reject)=>{const tx=db.transaction('colonies','readwrite');tx.objectStore('colonies').put({id:'legacy',name:'Alter Stand',revision:1,savedAt,gameDay:0,antCount:10,payload,checksum,backups:{1:{slot:1,payload,checksum,revision:1,savedAt}}});tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error);});db.close();
               const repo=new ColonyRepository(databaseName),loaded=await repo.load('legacy');
-              if(captureColony(loaded).schemaVersion!==8||(await repo.readRow('legacy')).payload!==payload)throw Error('load changed original');
+              if(captureColony(loaded).schemaVersion!==9||(await repo.readRow('legacy')).payload!==payload)throw Error('load changed original');
               if(old.schemaVersion>=3&&(loaded.simulation.getProgression().highestPopulation!==500||loaded.excavation.diggingGrade!==4||loaded.simulation.gathering.carryCapacity!==15))throw Error('legacy progress/development lost');
               const add=IDBObjectStore.prototype.add;IDBObjectStore.prototype.add=function(...args){const r=add.apply(this,args);if(this.name==='recoveryCopies')this.transaction.abort();return r;};
               let failed=false;try{await repo.save(loaded);}catch{failed=true;}finally{IDBObjectStore.prototype.add=add;}
               if(!failed||(await repo.readRow('legacy')).payload!==payload||(await repo.listRecoveryCopies('legacy')).length)throw Error('failed migration replaced original');
               await repo.save(loaded);const copies=await repo.listRecoveryCopies('legacy'),row=await repo.readRow('legacy');
-              if(JSON.parse(row.payload).schemaVersion!==8||copies.length!==1||copies[0].reason!=='migration'||row.backups[1].payload!==payload)throw Error('migration publication/protection');
+              if(JSON.parse(row.payload).schemaVersion!==9||copies.length!==1||copies[0].reason!=='migration'||row.backups[1].payload!==payload)throw Error('migration publication/protection');
               const check=await repo.readRecoveryCopy('legacy',copies[0].id);
-              if(check.schemaVersion!==8||check.state.clock.elapsedSeconds!==old.state.clock.elapsedSeconds)throw Error('old protection unreadable');
+              if(check.schemaVersion!==9||check.state.clock.elapsedSeconds!==old.state.clock.elapsedSeconds)throw Error('old protection unreadable');
               const row2=await repo.readRow('legacy'),future=JSON.parse(row2.payload);future.encoding='future-codec';
               const futurePayload=JSON.stringify(future),futureBytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(futurePayload));
               const futureHash=[...new Uint8Array(futureBytes)].map(n=>n.toString(16).padStart(2,'0')).join('');
@@ -703,7 +708,7 @@ try:
               await repo.close();results.push({schema:oldSchema,readOnlyMigration:true,abortPreserved:true,originalProtected:true,backupUnchanged:true,futureRefused:true});
               }return results;
             """
-            schemas=range(1,8) if '--all-save-schemas' in sys.argv else [7 if '--schema7-migration' in sys.argv else 6 if '--schema6-migration' in sys.argv else 5 if '--schema5-migration' in sys.argv else 4 if '--schema4-migration' in sys.argv else 3 if '--schema3-migration' in sys.argv else 2 if '--schema2-migration' in sys.argv else 1]
+            schemas=range(1,9) if '--all-save-schemas' in sys.argv else [8 if '--schema8-migration' in sys.argv else 7 if '--schema7-migration' in sys.argv else 6 if '--schema6-migration' in sys.argv else 5 if '--schema5-migration' in sys.argv else 4 if '--schema4-migration' in sys.argv else 3 if '--schema3-migration' in sys.argv else 2 if '--schema2-migration' in sys.argv else 1]
             result=[]
             for version in schemas:
                 result.extend(page(migration_code.replace('SCHEMA_VERSIONS',json.dumps([version]))))

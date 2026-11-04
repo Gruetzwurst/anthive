@@ -122,3 +122,21 @@ zusammen auf `codex/c4-brood-shortage` gesichert. Die Hinweise „lokal“ in de
 vorherigen Paketberichten beschreiben deren damaligen Abschlussstand.
 Aktuellen Commit und Synchronisierung über `git log -1` und `git status -sb`
 prüfen; letzter vollständiger Testlauf359/359, Build und Browserprüfung grün.
+
+Neue lokale Ergänzung nach GitHub-Commit1402314: individuelle Countdown-/
+Pufferanzeige bei jeder erwachsenen Königin.7 gezielte Tests, Build und Browser
+inklusive beider Labels erfolgreich. Noch nicht committet/gepusht. Bericht:
+`docs/2026-11-04-KOENIGINNEN-COUNTDOWNS.md`.
+Königinnenversorgung durch Pflegerinnen und höherer Verbrauch sind aktuell nur
+Nutzerideen zur Diskussion; noch keine Balance-/Versorgungsänderung umgesetzt.
+
+Weitere Nutzerfreigabe04.11.2026 umgesetzt: echte Königinnenversorgung durch
+Pflegerinnen, je5 Nahrung und5 Wasser/Spieltag, privater Vorrat je10. Fehlende
+Ressource pausiert individuelle Eiablage. Keine Doppelabbuchung aus globalem
+Lager, keine Gratisvorräte bei Migration1–8 nach Schema9. Neuere Freigabe ersetzt
+den vorherigen Diskussionsstatus. Technische Prüfung/9 Persistenztests/Build
+und unabhängiger Review erfolgreich; auf zusätzliche Balancetests und den
+vollständigen Gesamtlauf gemäß Nutzerwunsch verzichtet. Neuer Stand lokal,
+noch nicht gepusht. Bericht: `docs/2026-11-04-KOENIGINNEN-VERSORGUNG.md`.
+Browserprüfung für den neuen Versorgungsstand ebenfalls erfolgreich, inklusive
+beider Countdown-Anzeigen, Aufzucht/eigener Eiablage/Transport und Reload.

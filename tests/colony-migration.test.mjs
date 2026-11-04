@@ -1,16 +1,17 @@
+import {withoutQueenFeeding} from './helpers/legacyQueenSupply.mjs';
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {createColonySession,captureColony,serializeColony,parseColony,restoreColony} from '../src/game/persistence/colonySession.ts';
 import {migrateColonySave} from '../src/game/persistence/colonyMigration.ts';
-function legacy(save){const copy=structuredClone(save);copy.schemaVersion=1;delete copy.encoding;delete copy.state.progression;delete copy.state.royal;delete copy.state.construction.minimumAreas.queen;delete copy.state.construction.developmentLevel;delete copy.state.gathering.developmentLevel;delete copy.state.queen.developmentLevel;delete copy.state.broodSupply.developmentLevel;return copy;}
+function legacy(save){const copy=withoutQueenFeeding(structuredClone(save));copy.schemaVersion=1;delete copy.encoding;delete copy.state.progression;delete copy.state.royal;delete copy.state.construction.minimumAreas.queen;delete copy.state.construction.developmentLevel;delete copy.state.gathering.developmentLevel;delete copy.state.queen.developmentLevel;delete copy.state.broodSupply.developmentLevel;return copy;}
 const wire=s=>JSON.stringify(s,(_k,v)=>v instanceof Map?{$map:[...v]}:v instanceof Set?{$set:[...v]}:v);
 test('known schema1 migrates on a copy, preserving all simulation state and existing timers',()=>{
  const a=createColonySession({id:'old',name:'Alt'});a.simulation.advance(130);
  const original=legacy(captureColony(a)),before=structuredClone(original),result=migrateColonySave(original);
- assert.equal(result.migrated,true);assert.equal(result.fromVersion,1);assert.equal(result.save.schemaVersion,8);assert.equal(result.save.encoding,'map-set-v1');
- const {progression,...state}=structuredClone(result.save.state);delete state.royal;delete state.construction.minimumAreas.queen;delete state.construction.developmentLevel;delete state.gathering.developmentLevel;delete state.queen.developmentLevel;delete state.broodSupply.developmentLevel;assert.equal(progression.highestPopulation,original.state.workforce.workers.size+1);
+ assert.equal(result.migrated,true);assert.equal(result.fromVersion,1);assert.equal(result.save.schemaVersion,9);assert.equal(result.save.encoding,'map-set-v1');
+ const {progression,...state}=withoutQueenFeeding(structuredClone(result.save)).state;delete state.royal;delete state.construction.minimumAreas.queen;delete state.construction.developmentLevel;delete state.gathering.developmentLevel;delete state.queen.developmentLevel;delete state.broodSupply.developmentLevel;assert.equal(progression.highestPopulation,original.state.workforce.workers.size+1);
  assert.deepEqual(state,original.state);assert.deepEqual(result.save.persistenceTiming,original.persistenceTiming);assert.deepEqual(original,before);
- const b=restoreColony(parseColony(wire(original)));a.simulation.advance(.37);b.simulation.advance(.37);assert.deepEqual(captureColony(b),captureColony(a));
+ const b=restoreColony(parseColony(wire(original)));const c=restoreColony(parseColony(wire(original)));c.simulation.advance(.37);b.simulation.advance(.37);assert.deepEqual(captureColony(b),captureColony(c));
 });
 test('known D1.1 saves without timer initialize future intervals without offline catchup',()=>{
  const s=legacy(captureColony(createColonySession({id:'old',name:'Alt'})));s.state.clock.elapsedSeconds=420;delete s.persistenceTiming;

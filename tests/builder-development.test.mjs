@@ -1,3 +1,4 @@
+import {withoutQueenFeeding} from './helpers/legacyQueenSupply.mjs';
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {createStartingWorld,terrainAtDepth,surfaceRow} from '../src/game/world/worldGenerator.ts';
@@ -72,7 +73,7 @@ test('running developed work roundtrips and continues with identical material ac
  assert.deepEqual(captureColony(b),save);a.excavation.advance(1);b.excavation.advance(1);assert.deepEqual(captureColony(b),captureColony(a));
 });
 test('schema3 prototype digging preserves partial work while newly locked jobs wait for the milestone',()=>{
- const {a,target}=activeColony(),old=captureColony(a);old.schemaVersion=3;delete old.state.construction.developmentLevel;delete old.state.gathering.developmentLevel;delete old.state.queen.developmentLevel;delete old.state.broodSupply.developmentLevel;
+ const {a,target}=activeColony(),old=withoutQueenFeeding(captureColony(a));old.schemaVersion=3;delete old.state.construction.developmentLevel;delete old.state.gathering.developmentLevel;delete old.state.queen.developmentLevel;delete old.state.broodSupply.developmentLevel;
  old.state.progression.highestPopulation=11;old.state.construction.grade=3;
  delete old.state.royal;
  const before=structuredClone(old),progress=a.excavation.getConstructionOrders()[0].partialDigSeconds,b=restoreColony(parseColony(wire(old)));

@@ -1,3 +1,4 @@
+import {queenSupplyRoomId} from '../simulation/queenSupply.ts';
 import {captureColony,createColonySession} from './colonySession.ts';
 import type {ColonySave} from './colonySession.ts';
 import {COLONY_MILESTONES,TERRAIN_DIGGING_GRADES,GATHERING_DEVELOPMENT,CARE_DEVELOPMENT} from '../simulation/simulationConfig.ts';
@@ -48,7 +49,7 @@ function shape(value:any,example:any,path='state'):void {
 export function validateColonyState(input:unknown,legacyDigJobs=false):asserts input is ColonySave {
  walk(input);
  const x=input as any;
- if(!record(x)||x.format!=='anthive-colony'||x.schemaVersion!==8||x.encoding!=='map-set-v1'||x.rulesVersion!==1)fail('Format/Version');
+ if(!record(x)||x.format!=='anthive-colony'||x.schemaVersion!==9||x.encoding!=='map-set-v1'||x.rulesVersion!==1)fail('Format/Version');
  if(typeof x.id!=='string'||!x.id.trim()||typeof x.name!=='string'||!x.name.trim()||!Number.isSafeInteger(x.revision)||x.revision<0)fail('Koloniezuordnung');
  const timing=x.persistenceTiming;
  if(!record(timing)||!finite(timing.activeSeconds)||!finite(timing.lastAutosaveActiveSeconds)||Number(timing.lastAutosaveActiveSeconds)>Number(timing.activeSeconds)||!record(timing.backupDue)||![1,2,3].every(k=>finite((timing.backupDue as any)[k],1)))fail('Speicherzeit');
@@ -197,9 +198,16 @@ export function validateColonyState(input:unknown,legacyDigJobs=false):asserts i
    }
  }
  map(v.broodSupply.rooms);map(v.broodSupply.shortage.rooms);map(v.chambers.chambers);
- for(const [id,r]of v.broodSupply.rooms){if(r.id!==id||typeof r.royal!=='boolean'||r.royal!==royalRooms.has(id)||r.royal&&(r.capacity!==1||r.larvae!==([...royalEggs.values()].some(e=>e.roomId===id&&e.arrived&&e.stage==='larva')?1:0)))fail('Larvenkammer');for(const k of ['food','water']){
+ for(const [id,r]of v.broodSupply.rooms){if(r.id!==id||typeof r.royal!=='boolean'||r.royal!==royalRooms.has(id)||typeof r.adultQueen!=='boolean'||r.royal&&(r.capacity!==1||r.larvae!==([...royalEggs.values()].some(e=>e.roomId===id&&e.arrived&&e.stage==='larva')?1:0)))fail('Larvenkammer');for(const k of ['food','water']){
   const stock=r[k];if(!record(stock)||['amount','capacity','target','consumed','unmet'].some(key=>!finite(stock[key]))||Number(stock.amount)>Number(stock.capacity)+1e-8||typeof stock.refilling!=='boolean')fail('Larvenvorrat');
  }}
+ const expectedQueens=new Map([['queen-1',{position:q.queenOrigin,operational:true}],...q.additionalQueens.entries()]);
+ const expectedSupply=new Map([...expectedQueens].map(([id,queen]:any)=>[queenSupplyRoomId(id),queen]));
+ for(const [id,room]of v.broodSupply.rooms)if(room.adultQueen){
+  const queen=expectedSupply.get(id);if(!queen||room.royal||room.larvae!==0||room.capacity!==1||comparable(room.position)!==comparable(queen.position)||room.operational!==queen.operational)fail('Königinnenvorrat');
+  for(const k of ['food','water'])if(room[k].capacity!==10||room[k].target!==10)fail('Königinnenvorratsgröße');
+ }
+ for(const id of expectedSupply.keys())if(!v.broodSupply.rooms.get(id)?.adultQueen)fail('Königinnenvorrat fehlt');
  for(const [id,s]of v.broodSupply.shortage.rooms){if(!v.broodSupply.rooms.has(id)||['larvae','coverage','shortageDays','severeDays','nonSevereDays','restoredDays','recoveryStart','lossCredit','losses','warnings'].some(key=>!finite(s[key]))||s.coverage>1||s.recoveryStart>1||s.lossCredit>1+1e-8||!Number.isInteger(s.larvae))fail('Larvenmangelzustand');}
  for(const resource of ['food','water']){
   let accounted=v.broodSupply.returned[resource];

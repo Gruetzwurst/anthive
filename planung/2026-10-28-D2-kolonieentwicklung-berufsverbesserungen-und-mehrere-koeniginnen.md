@@ -2,6 +2,10 @@
 
 ## Neuere Nutzerbeschlüsse04.11.2026 (Vorrang vor älteren Tabellen)
 
+- Erwachsene Königinnen werden durch echte Pflegerinnenlieferungen versorgt,
+  je5 Nahrung und5 Wasser pro Spieltag; eigener Vorrat je10, ohne Ressource
+  individuelle Eiablage pausiert. Keine zusätzlichen Balancetests gewünscht.
+
 - Zusätzlicher Königinnenplatz testweise ab50 Koloniemitgliedern; die bisherigen
   Schwellen150/500/1000 bleiben erhalten, insgesamt2/3/4/5 inklusive Startkönigin.
 - Normale Entwicklung bleibt bei bestätigten6 Echtzeitminuten(1/3/2 Minuten),
@@ -159,4 +163,3 @@ Nur Larven verbrauchen Nahrung/Wasser direkt. Eine Königinnenlarve benötigt w�
 **Personalziel:** Bei einer langfristigen Kolonie von **1.000 Ameisen** sollen ungefähr **mindestens 50 Brutpflegerinnen sinnvoll beschäftigt** werden können, nicht nur 6–12. Ihre **bereits bestehenden echten Aufgaben** – Eiertransport von Königinnenkammern, Nahrungs-/Wassertransport in Brutkammern und Pflege – sollen dazu ausreichen; **keine künstlichen Pflichtjobs** hinzufügen. Keine harte Mindestbesetzung von 50 erzwingen. Bisheriger 10/12/15/18/20- bzw. zuletzt diskutierter 10/11/12/14/16-Kapazitätsplan ist **nicht als finale Balance freigegeben**; erst die tatsächlich messbare Pflege-/Transportarbeit und die Bevölkerungsentwicklung mit 1–4 Königinnen testen. Die reine Langfrist-Eierproduktionsrate steigt durch längere Entwicklungszeit nicht automatisch: bei 4 Königinnen theoretisch 20 Eier pro Tag, nach Anlaufphase ebenso viele Schlüpflinge pro Tag unter Idealbedingungen. Allerdings steigt die gleichzeitige Gesamtbrut von ~120 bei 6 Tagen auf ~200 bei 10 Tagen; die Zahl aktiver Larven von ~60 auf ~100, bei vollem Gleichgewicht und 20 Eiern/Tag. Bei 0,5 Nahrung + 0,5 Wasser je Larve und Tag steigt der Tagesbedarf damit auf etwa 50 Nahrung + 50 Wasser (vorher ~30 + 30). Diese Zahlen sind grobe Gleichgewichtsrechnungen **ohne** Arbeitswege, Raumbeschränkungen, Pflege-/Ressourcenmangel und Königinnen-Sonderbrut.
 
 **Unbedingt vor D2-Codex-Auftrag prüfen:** C5 auf Grundwert 6 Tage abschließen/mit neuen Zielwerten vergleichend simulieren; frühe Zeit bis 50/150/250/500 und 1.000 Ameisen, Brutkammerflächen, reale Transporte, Larvenverbrauch, Wachstum mit mehr Königinnen, 50 sinnvoll beschäftigte Pflegerinnen, Performance und Risiken einer Sackgasse bei Versorgungsmangel. Auf neuen Zielwert im D2-Plan an vielen Stellen achten: Frühere Tabellen mit **6 normalen / 12 Königinnen-Tagen** bilden den bisherigen Implementierungsstand, nicht den neueren Zielentwurf.
-

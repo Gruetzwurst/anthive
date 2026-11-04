@@ -2,14 +2,16 @@ import Phaser from 'phaser';
 import type {QueenSnapshot} from '../simulation/queenSystem';
 import type {WorldCellCoordinate,WorldPoint} from './worldTypes';
 import {broodSlot,queenEggSlot} from './broodVisualLayout';
+import {queenSupplyRoomId} from '../simulation/queenSupply.ts';
+import {queenLayingLabels} from './queenLayingLabels.ts';
 
 type Stage=QueenSnapshot['eggs'][number]['stage'];
-type RoomStock={id:string;food:{amount:number;consumed:number};water:{amount:number;consumed:number}};
+type RoomStock={id:string;food:{amount:number;consumed:number;capacity:number};water:{amount:number;consumed:number;capacity:number}};
 export class BroodRenderer {
   private scene:Phaser.Scene;
   private origin:WorldPoint;
   private queen:Phaser.GameObjects.Graphics;
-  private status:Phaser.GameObjects.Text;
+  private queenLabels=new Map<string,Phaser.GameObjects.Text>();
   private bodies=new Map<string,{body:Phaser.GameObjects.Graphics;stage:Stage}>();
   private stockLabels=new Map<string,Phaser.GameObjects.Text>();
   private feeding=new Map<string,number>();
@@ -24,13 +26,19 @@ export class BroodRenderer {
     g.lineStyle(1,0x261b17);for(const x of [-3,4,10]){g.lineBetween(x,3,x-8,12);g.lineBetween(x,-4,x-8,-12);}
     g.lineBetween(20,-5,27,-12);g.lineBetween(22,-2,31,-6);g.fillStyle(0xd8b17b);g.fillCircle(20,-3,1);
     this.queen.setPosition(origin.x-30,origin.y+1);this.pulse=scene.add.graphics().setDepth(7);
-    this.status=scene.add.text(origin.x-108,origin.y+28,'',{fontFamily:'system-ui, sans-serif',fontSize:'8px',color:'#fff0cb',backgroundColor:'#25231e',padding:{x:3,y:2}}).setDepth(8);
   }
   update(delta:number,state:QueenSnapshot,rooms:Map<string,WorldCellCoordinate[]>,stocks:RoomStock[],tileSize:number,secondsPerDay:number):void {
     this.time+=delta;this.queen.setScale(1+Math.sin(this.time/550)*.018,1+Math.sin(this.time/550)*.04);
     if(state.laidEggs>this.laid)this.layingUntil=this.time+700;this.laid=state.laidEggs;
-    const seconds=state.daysUntilNextEgg===null?null:Math.max(0,Math.ceil(state.daysUntilNextEgg*secondsPerDay));
-    this.status.setText(seconds===null?`Eiablage pausiert · ${state.bufferCount} warten`:`Nächstes Ei ${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')} · ${state.bufferCount} warten`);
+    const labels=queenLayingLabels(state.queens,this.origin,secondsPerDay),queenIds=new Set(labels.map(label=>label.id));
+    for(const label of labels){
+      let text=this.queenLabels.get(label.id);
+      if(!text){text=this.scene.add.text(label.position.x,label.position.y,'',{fontFamily:'system-ui, sans-serif',fontSize:'8px',color:'#fff0cb',backgroundColor:'#25231e',padding:{x:3,y:2}}).setDepth(8);this.queenLabels.set(label.id,text);}
+      const stock=stocks.find(room=>room.id===queenSupplyRoomId(label.id));
+      const supply=stock?`\nNahrung ${stock.food.amount.toFixed(1)} / ${stock.food.capacity} · Wasser ${stock.water.amount.toFixed(1)} / ${stock.water.capacity}`:'';
+      text.setPosition(label.position.x,label.position.y).setText(label.text+supply);
+    }
+    for(const [id,text]of this.queenLabels)if(!queenIds.has(id)){text.destroy();this.queenLabels.delete(id);}
     const visible=new Set<string>(),indices=new Map<string,number>();const queenIndices=new Map<string,number>();this.pulse.clear();
     if(this.layingUntil>this.time){this.queen.setRotation(Math.sin((this.layingUntil-this.time)/90)*.04);this.pulse.lineStyle(1,0xf4d38b,.65).strokeEllipse(this.origin.x-45,this.origin.y+1,34,23);}else this.queen.setRotation(0);
     for(const egg of state.eggs){
@@ -67,5 +75,5 @@ export class BroodRenderer {
     }
     for(const [id,label] of this.stockLabels)if(!stockIds.has(id)){label.destroy();this.stockLabels.delete(id);}
   }
-  destroy():void {this.queen.destroy();this.status.destroy();this.pulse.destroy();for(const v of this.bodies.values())v.body.destroy();for(const l of this.stockLabels.values())l.destroy();}
+  destroy():void {this.queen.destroy();for(const label of this.queenLabels.values())label.destroy();this.pulse.destroy();for(const v of this.bodies.values())v.body.destroy();for(const l of this.stockLabels.values())l.destroy();}
 }

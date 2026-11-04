@@ -1,3 +1,4 @@
+import {withoutQueenFeeding} from './helpers/legacyQueenSupply.mjs';
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {QueenSystem} from '../src/game/simulation/queenSystem.ts';
@@ -66,9 +67,9 @@ test('schema5 keeps developed collector cargo but never legitimises oversized ol
  const a=createColonySession({id:'old-care',name:'Old Care'});a.simulation.restoreProgression({highestPopulation:500});
  for(let i=0;i<2000&&!a.simulation.gathering.getCollectors().some(w=>(w.load?.amount??0)>5);i++)a.simulation.advance(.05);
  assert.ok(a.simulation.gathering.getCollectors().some(w=>(w.load?.amount??0)>5));
- const old=captureColony(a);old.schemaVersion=5;delete old.state.queen.developmentLevel;delete old.state.broodSupply.developmentLevel;
+ const old=withoutQueenFeeding(captureColony(a));old.schemaVersion=5;delete old.state.queen.developmentLevel;delete old.state.broodSupply.developmentLevel;
  delete old.state.royal;
- const before=structuredClone(old),migrated=parseColony(wire(old));assert.equal(migrated.schemaVersion,8);assert.equal(migrated.state.queen.developmentLevel,4);assert.deepEqual(migrated.state.gathering,old.state.gathering);assert.deepEqual(old,before);
+ const before=structuredClone(old),migrated=parseColony(wire(old));assert.equal(migrated.schemaVersion,9);assert.equal(migrated.state.queen.developmentLevel,4);assert.deepEqual(migrated.state.gathering,old.state.gathering);assert.deepEqual(old,before);
  const nurse=old.state.broodSupply.nurses.values().next().value;nurse.load={resource:'food',amount:6};old.state.broodSupply.withdrawn.food+=6;
  assert.throws(()=>parseColony(wire(old)),/alte Pflegeladung/);
 });

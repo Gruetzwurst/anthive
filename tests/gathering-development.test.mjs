@@ -1,3 +1,4 @@
+import {withoutQueenFeeding} from './helpers/legacyQueenSupply.mjs';
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {GatheringSystem} from '../src/game/simulation/gatheringSystem.ts';
@@ -58,10 +59,10 @@ test('developed live cargo roundtrips and continues with the identical resource 
  a.simulation.advance(.5);b.simulation.advance(.5);assert.deepEqual(captureColony(b),captureColony(a));
 });
 test('schema4 preserves existing loads and rejects old overloads before raising the carry limit',()=>{
- const a=createColonySession({id:'old',name:'Old'}),old=captureColony(a);old.schemaVersion=4;delete old.state.gathering.developmentLevel;delete old.state.queen.developmentLevel;delete old.state.broodSupply.developmentLevel;
+ const a=createColonySession({id:'old',name:'Old'}),old=withoutQueenFeeding(captureColony(a));old.schemaVersion=4;delete old.state.gathering.developmentLevel;delete old.state.queen.developmentLevel;delete old.state.broodSupply.developmentLevel;
  old.state.progression.highestPopulation=500;old.state.construction.grade=4;old.state.construction.developmentLevel=4;
  delete old.state.royal;
- const before=structuredClone(old),loaded=parseColony(wire(old));assert.equal(loaded.schemaVersion,8);assert.equal(loaded.state.gathering.developmentLevel,4);assert.deepEqual(old,before);
+ const before=structuredClone(old),loaded=parseColony(wire(old));assert.equal(loaded.schemaVersion,9);assert.equal(loaded.state.gathering.developmentLevel,4);assert.deepEqual(old,before);
  const worker=[...old.state.gathering.workers.values()][0];worker.load={resource:'food',amount:6};
  assert.throws(()=>parseColony(wire(old)),'old overload must not become valid through development');
  worker.load=null;worker.expected=6;assert.throws(()=>parseColony(wire(old)));

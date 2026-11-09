@@ -947,6 +947,34 @@ try:
             native_click('[data-action="close-construction"]')
             print('PASS: B3 real touch rectangle, confirmation, scrollable details and cancellation')
 
+        if '--pinch-only' in sys.argv:
+            command('WebDriver:SetWindowRect', {'width':844,'height':480})
+            page("scene.setWorldZoom(1);scene.gathering.clock.setPaused(true);return true;")
+            start_plan('tunnel',touch=True)
+            bounds=page("const r=scene.game.canvas.getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height};")
+            def touch_move(x,y):
+                return {'type':'pointerMove','duration':200,'origin':'viewport','x':round(bounds['x']+x*bounds['w']/640),'y':round(bounds['y']+y*bounds['h']/360)}
+            actions=[]
+            for name,start,end in [('left',270,220),('right',370,420)]:
+                actions.append({'type':'pointer','id':name,'parameters':{'pointerType':'touch'},'actions':[
+                    touch_move(start,200),{'type':'pointerDown','button':0},touch_move(end,200),
+                    {'type':'pause','duration':100},{'type':'pointerUp','button':0}]})
+            command('WebDriver:PerformActions',{'actions':actions})
+            command('WebDriver:ReleaseActions',{})
+            assert page("return scene.cameras.main.zoom===2&&scene.draftCells.length===0&&scene.previewCells.length===0&&!scene.pinchZoom.blocked;"), 'Pinch must zoom without drawing'
+            for action,start,end in zip(actions,[220,420],[270,370]):
+                action['actions'][0]=touch_move(start,200)
+                action['actions'][2]=touch_move(end,200)
+            command('WebDriver:PerformActions',{'actions':actions})
+            command('WebDriver:ReleaseActions',{})
+            assert page("return scene.cameras.main.zoom===1&&scene.draftCells.length===0;"), 'Reverse pinch must zoom out'
+            page("scene.discardDraft();return true;")
+            click(609,293,touch=True)
+            assert page("return scene.cameras.main.zoom===2;"), 'Zoom buttons must still work'
+            print('PASS: native two-finger zoom in/out, no accidental construction, buttons preserved')
+            finish_focused()
+            raise SystemExit(0)
+
         if '--d2-mobile-only' in sys.argv:
             page("await scene.persistenceReady;scene.gathering.clock.setPaused(true);return true;")
             command('WebDriver:SetWindowRect', {'width':844,'height':480})

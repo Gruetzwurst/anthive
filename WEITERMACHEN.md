@@ -2,6 +2,19 @@
 
 Projekt: `/home/paul/Desktop/anthive`.
 
+**Neue lokale Änderung09.11.2026: Zwei-Finger-Zoom.** Auf der Karte mit zwei
+Fingern rein-/rauszoomen, weiterhin scharfe Stufen25/50/100/200%. Laufende
+Zeichnung wird bei Beginn abgebrochen; vorhandene Entwurfsflächen bleiben.
+Bis alle Finger losgelassen sind keine weitere Zeichnung oder Baustellenauswahl.
+365/365 Gesamttests grün; anschließend dritter gezielter Test für Koordinaten/
+HUD-Grenzen ebenfalls grün. Produktionsbuild und Firefox-Browserprüfung mit
+zwei nativen WebDriver-Touchzeigern (rein/raus, keine Baufläche, Zoomknöpfe)
+erfolgreich. Noch nicht auf echtem iPhone geprüft. Nutzer hat Veröffentlichung zum Testen
+in der Web-App beauftragt; aktuellen Push-/Pages-Status über GitHub prüfen.
+Nutzer möchte anschließend Baumenü und Interface gemeinsam planen;
+Kämpferinnen/Gefahrensystem bleiben offen, nichts dazu implementieren.
+Details: `docs/superpowers/specs/2026-11-09-pinch-zoom-design.md`.
+
 **Aktueller Stand09.11.2026: D2.7 technisch abgenommen.**363/363 Tests, Build,
 Browserprüfungen und unabhängiger Review erfolgreich. Zwei Korrekturen lokal:
 Pflegerinnen bleiben nicht mehr auf winzigen Königinnen-Nachlieferungen hängen;

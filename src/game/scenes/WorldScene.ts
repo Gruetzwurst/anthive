@@ -1,3 +1,4 @@
+import {attachPinchZoom} from '../world/pinchZoom';
 import {createAntBody} from '../world/antBodyTexture';
 import {ColonyRepository} from '../persistence/colonyRepository';
 import {PersistenceController} from '../persistence/persistenceController';
@@ -92,6 +93,7 @@ export class WorldScene extends Phaser.Scene {
   private furnishingRenderer!: ChamberFurnishingRenderer;
   private templateSize: TemplateSize = 'free';
   private hudCamera!: Phaser.Cameras.Scene2D.Camera;
+  private pinchZoom?: ReturnType<typeof attachPinchZoom>;
   private zoomLabel!: Phaser.GameObjects.Text;
   private panFrameTime = 0;
   private planning = false;
@@ -679,11 +681,22 @@ export class WorldScene extends Phaser.Scene {
 
   private enableCameraDrag(): void {
     this.input.setDefaultCursor('grab');
+    this.pinchZoom = attachPinchZoom(this.game.canvas, {
+      allowed: (x,y) => x >= 0 && x < 640 && y > (this.economyHud.collapsed ? 34 : 110) && y < 280
+        && !this.workforcePanel.isOpen && !this.constructionPanel.isOpen,
+      zoom: () => this.cameras.main.zoom,
+      setZoom: (value,x,y) => this.setWorldZoom(value,x,y),
+      cancelDrag: () => {
+        this.dragMode = 'none'; this.digStart = null; this.lastBrushCell = null; this.previewCells = [];
+        this.renderDigPreview();
+      },
+    });
     this.input.on(Phaser.Input.Events.POINTER_DOWN, this.startDrag, this);
     this.input.on(Phaser.Input.Events.POINTER_MOVE, this.moveCamera, this);
     this.input.on(Phaser.Input.Events.POINTER_UP, this.stopDrag, this);
     this.input.on(Phaser.Input.Events.POINTER_UP_OUTSIDE, this.stopDrag, this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.pinchZoom?.destroy(); this.pinchZoom = undefined;
       this.input.off(Phaser.Input.Events.POINTER_DOWN, this.startDrag, this);
       this.input.off(Phaser.Input.Events.POINTER_MOVE, this.moveCamera, this);
       this.input.off(Phaser.Input.Events.POINTER_UP, this.stopDrag, this);
@@ -706,7 +719,7 @@ export class WorldScene extends Phaser.Scene {
     this.digStart = null; this.lastBrushCell = null; this.digPreviewGraphics.clear(); this.constructionPanel.hideDraft(); this.input.setDefaultCursor('grab');
   }
   private startDrag(pointer: Phaser.Input.Pointer): void {
-    if (!pointer.isDown || pointer.event?.target !== this.game.canvas || this.workforcePanel.isOpen || this.constructionPanel.isOpen
+    if (this.pinchZoom?.blocked || !pointer.isDown || pointer.event?.target !== this.game.canvas || this.workforcePanel.isOpen || this.constructionPanel.isOpen
       || isEconomyHudPoint(pointer.x, pointer.y, this.economyHud.collapsed) || pointer.y >= 310) return;
     const cell = this.pointerCell(pointer);
     this.dragMoved = false;
@@ -721,7 +734,7 @@ export class WorldScene extends Phaser.Scene {
   }
   private panWhileDrawing(seconds: number): void {
     const pointer=this.input.activePointer;
-    if(!this.planning || this.dragMode!=='dig' || !pointer.isDown || this.drawingTool==='pan'
+    if(this.pinchZoom?.blocked || !this.planning || this.dragMode!=='dig' || !pointer.isDown || this.drawingTool==='pan'
       || this.constructionPanel.isOpen || this.workforcePanel.isOpen)return;
     const velocity=planningEdgePan(pointer.x,pointer.y,this.economyHud.collapsed?34:110);
     if(!velocity.x && !velocity.y)return;
@@ -735,6 +748,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private moveCamera(pointer: Phaser.Input.Pointer): void {
+    if (this.pinchZoom?.blocked) return;
     if (this.planning && this.drawingTool === 'template' && this.templateSize !== 'free'
       && this.dragMode !== 'camera' && !this.constructionPanel.isOpen && !this.workforcePanel.isOpen
       && pointer.y > (this.economyHud.collapsed ? 34 : 110) && pointer.y < 310 && (!this.draftCells.length || pointer.isDown)) {
@@ -764,6 +778,7 @@ export class WorldScene extends Phaser.Scene {
     this.lastPointerX = pointer.x; this.lastPointerY = pointer.y;
   }
   private stopDrag(pointer: Phaser.Input.Pointer): void {
+    if (this.pinchZoom?.blocked) return;
     const insideMap = pointer.x >= 0 && pointer.x < 640 && pointer.y > (this.economyHud.collapsed ? 34 : 110) && pointer.y < 310;
     if (this.dragMode === 'dig' && insideMap) {
       this.draftCells = this.drawingTool === 'template' ? this.previewCells.map(cell => ({...cell})) : mergeSelection(this.draftCells, this.previewCells);

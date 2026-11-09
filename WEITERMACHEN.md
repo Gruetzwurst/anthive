@@ -2,6 +2,24 @@
 
 Projekt: `/home/paul/Desktop/anthive`.
 
+**Aktueller Stand09.11.2026: D2.7 technisch abgenommen.**363/363 Tests, Build,
+Browserprüfungen und unabhängiger Review erfolgreich. Zwei Korrekturen lokal:
+Pflegerinnen bleiben nicht mehr auf winzigen Königinnen-Nachlieferungen hängen;
+Ameisenkörper teilen vorgezeichnete Texturen statt ständig gleicher Vektoren.
+Eiertransport und Wachstum laufen damit wieder, Bedarf/Brutzeiten unverändert.
+Bei1000 Arbeiterinnen im Browser-Stresstest bei200% Zoom149→26ms Render-Median;
+keine Zusage für echte iPhone-Bildraten. Lastproben150/500/1000 mit3/4/5
+Königinnen und identischem Reload erfolgreich. Echte iPhone-Prüfung noch offen.
+Bericht: `docs/D2.7-TECHNISCHE-GESAMTABNAHME-ERGEBNIS.md`.
+
+**Veröffentlichung von D2.7 am09.11.2026 vom Nutzer freigegeben.** Der gesamte
+geprüfte Stand wird auf codex/c4-brood-shortage gesichert; Pages veröffentlicht
+nach erfolgreichem Workflow automatisch die Testseite. Aktuellen Commit/Status
+über git log/git status beziehungsweise GitHub Actions prüfen. main bleibt
+unverändert; dessen Integration ist der nächste gesonderte Schritt.
+Die folgenden älteren Abschnitte sind Verlauf; deren „lokal“- und „nächster
+Schritt“-Angaben werden durch diesen aktuellen Kopfstand ersetzt.
+
 ```bash
 cd /home/paul/Desktop/anthive
 ./start-anthive.sh

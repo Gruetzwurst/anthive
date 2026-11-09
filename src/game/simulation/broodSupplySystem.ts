@@ -105,8 +105,10 @@ export class BroodSupplySystem {
   progress(roomId: string, days: number, care: number): number {
     const room=this.rooms.get(roomId);if(room?.royal)return days*(KINDS.every(k=>room[k].amount>EPS||this.config.perLarvaPerDay[k]===0)?care:0);
     return this.shortage.progress(roomId, days, care);}
-  private refreshRefill(stock: Stock): void {
-    if (stock.target <= EPS || stock.amount >= stock.target-EPS) stock.refilling = false;
+  private refreshRefill(stock: Stock,queenDeliveryCompleted=false): void {
+    // Queen consumption continues during a trip: chasing an exact full target would
+    // otherwise keep a nurse on tiny top-ups forever and starve egg transport.
+    if (stock.target <= EPS || stock.amount >= stock.target-EPS || queenDeliveryCompleted&&stock.amount>stock.target*this.config.refillFraction+EPS) stock.refilling = false;
     else if (stock.amount <= stock.target * this.config.refillFraction + EPS) stock.refilling = true;
   }
   private inTransit(roomId: string, resource: Kind): number {
@@ -232,7 +234,7 @@ export class BroodSupplySystem {
       if (load.amount>EPS) {nurse.load=load;nurse.targetRoomId=job.roomId;this.withdrawn[resource]+=load.amount;}
     } else if (job.kind==='delivery' && nurse.load) {
       const room = this.rooms.get(job.roomId!);
-      if (room?.operational) {const stock=room[resource],amount=Math.min(nurse.load.amount,Math.max(0,stock.capacity-stock.amount));stock.amount+=amount;nurse.load.amount-=amount;this.refreshRefill(stock);}
+      if (room?.operational) {const stock=room[resource],amount=Math.min(nurse.load.amount,Math.max(0,stock.capacity-stock.amount));stock.amount+=amount;nurse.load.amount-=amount;this.refreshRefill(stock,!!room.adultQueen);}
     } else if (job.kind==='return' && nurse.load) {
       const amount=this.resources.depositInStore(job.storeId!,nurse.load);nurse.load.amount-=amount;this.returned[resource]+=amount;
     }

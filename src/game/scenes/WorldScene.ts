@@ -1,3 +1,4 @@
+import {createAntBody} from '../world/antBodyTexture';
 import {ColonyRepository} from '../persistence/colonyRepository';
 import {PersistenceController} from '../persistence/persistenceController';
 import {BrowserColonyWriteLock} from '../persistence/colonyWriteLock';
@@ -448,21 +449,11 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private createAnts(): void {
+    const existing=new Set(this.ants.map(ant=>ant.id));
     for (const collector of this.gathering.getWorkers().filter(worker => worker.actualWork !== 'building')) {
-      if (this.ants.some(ant => ant.id === collector.id)) continue;
+      if (existing.has(collector.id)) continue;
       const body = this.add.container(collector.position.x, collector.position.y).setDepth(4);
-      const shape = this.add.graphics();
-      shape.fillStyle(0x261b17, 1);
-      shape.fillEllipse(-3, 0, 7, 5);
-      shape.fillCircle(1, 0, 2.2);
-      shape.fillCircle(5, -0.5, 2.2);
-      shape.lineStyle(1, 0x261b17, 1);
-      shape.beginPath();
-      shape.moveTo(-3, 1); shape.lineTo(-5, 4);
-      shape.moveTo(0, 1); shape.lineTo(-1, 4);
-      shape.moveTo(2, 1); shape.lineTo(3, 4);
-      shape.moveTo(5, -2); shape.lineTo(7, -4);
-      shape.strokePath();
+      const shape=createAntBody(this);
       body.add(shape);
 
       const load = this.add.ellipse(9, -4, 6, 5, 0xe3aa4e).setVisible(false);
@@ -605,18 +596,7 @@ export class WorldScene extends Phaser.Scene {
     const cell = this.cellAt(position.x, position.y);
     if (!cell) throw new Error('Builder position is outside the world');
     const body = this.add.container(position.x, position.y).setDepth(5);
-    const shape = this.add.graphics();
-    shape.fillStyle(0x261b17, 1);
-    shape.fillEllipse(-3, 0, 8, 6);
-    shape.fillCircle(2, 0, 2.4);
-    shape.fillCircle(6, -0.5, 2.3);
-    shape.lineStyle(1, 0x261b17, 1);
-    shape.beginPath();
-    shape.moveTo(-3, 1); shape.lineTo(-5, 4);
-    shape.moveTo(0, 1); shape.lineTo(-1, 4);
-    shape.moveTo(3, 1); shape.lineTo(4, 1);
-    shape.moveTo(6, -2); shape.lineTo(8, -4);
-    shape.strokePath();
+    const shape=createAntBody(this,true);
     body.add(shape);
     const load = this.createMaterialVisual(position.x, position.y);
     load.removeFromDisplayList(); body.add(load); load.setPosition(8, -6).setVisible(false);

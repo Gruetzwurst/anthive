@@ -445,3 +445,12 @@ jeweilige Version und veröffentlicht nur `dist/` über GitHub Pages. Lokale
 Entwicklung bleibt unter http://localhost:5173/. Spielstände gehören zum
 jeweiligen Browser und zur Adresse; für einen Wechsel Export/Import verwenden.
 Workflow: `.github/workflows/pages.yml`.
+
+
+D2.7 technisch abgenommen (09.11.2026):363 Gesamttests, Build und gezielte
+Browserprüfungen erfolgreich. Pflegerinnen beenden Königinnen-Nachlieferungen
+nach ausreichender Lieferung und übernehmen wieder Eiertransporte. Normale
+Larvenversorgung und alle Verbrauchs-/Brutzeitwerte bleiben erhalten.
+Ameisenkörper verwenden gemeinsam vorgezeichnete Pixel-Art-Texturen; große
+Kolonien müssen dadurch nicht je Tier dieselben Vektorbefehle erneut zeichnen.
+Technische Lastproben/Prüfgrenzen: `docs/D2.7-TECHNISCHE-GESAMTABNAHME-ERGEBNIS.md`.

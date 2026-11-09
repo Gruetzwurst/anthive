@@ -11,7 +11,9 @@ test('historical egg IDs cannot collide with future eggs or duplicate queued bir
  rejectMutations(s,[s=>s.state.queen.eggs[0].id=`egg-${s.state.queen.eggs.length+1}`,s=>{const e=s.state.queen.eggs.find(e=>e.stage==='adult');s.state.queen.births.push({id:`born-${e.id}`,eggId:e.id,chamberId:e.chamberId,specialization:e.targetSpecialization});}]);
 });
 test('every unarrived egg must remain represented in the real buffer',()=>{
- const s=captureColony(fixture(120.001));assert.ok(s.state.queen.buffer.length);
+ const a=fixture();for(const resource of ['food','water'])a.simulation.resources.depositInStore(`${resource}-store`,{resource,amount:100});
+ a.simulation.broodSupply.advanceWorkers(120);a.simulation.advance(120.001);
+ const s=captureColony(a);assert.ok(s.state.queen.buffer.length);
  rejectMutations(s,[s=>s.state.queen.buffer=[]]);
 });
 test('impossible loads and positions are rejected',()=>{

@@ -201,16 +201,18 @@ try:
         if '--menu-only' not in sys.argv and '--import-ui-only' not in sys.argv:
             hook()
         if '--performance-only' in sys.argv:
+            profile_workers=int(next((arg.split('=',1)[1] for arg in sys.argv if arg.startswith('--performance-workers=')),'47'))
             result=page("""
               await scene.persistenceReady;scene.gathering.clock.setPaused(true);
               const g=scene.gathering,engines=g.exportWorkforceState();
-              for(let i=g.getWorkers().length;i<47;i++){
-                const id=`profile-${i}`;g.workforce.addWorker(id,'gathering');
+              for(let i=g.getWorkers().length;i<PROFILE_WORKERS;i++){
+                const id=`profile-${i}`;const collectors=PROFILE_WORKERS>=150?Math.min(200,Math.floor(PROFILE_WORKERS*.4)):PROFILE_WORKERS;
+                const kind=i<collectors?'gathering':i<collectors+20?'care':i<collectors+40?'building':'combat';g.workforce.addWorker(id,kind);
                 engines.states.set(id,{engine:'parked',position:{...scene.saveSession.world.landmarks.nestChamberCenter}});
               }
               g.restoreWorkforceState(engines);g.clock.setPaused(false);
               const start=performance.now();for(let i=0;i<60;i++)g.advance(1/60);
-              const simulationMs=(performance.now()-start)/60;g.clock.setPaused(true);scene.update(0,16);
+              const simulationMs=(performance.now()-start)/60;g.clock.setPaused(true);scene.update(0,16);scene.updateEconomyHud();
               const graphics=scene.children.list.filter(o=>Array.isArray(o.commandBuffer));
               const largest=graphics.reduce((a,b)=>a.commandBuffer.length>b.commandBuffer.length?a:b);
               const samples=[];
@@ -231,11 +233,14 @@ try:
                 const renderer=scene.game.renderer;renderer.preRender();scene.sys.render(renderer);renderer.postRender();
                 visits.push(graphics.filter(o=>o.depth===0&&o.willRender(camera)).reduce((n,o)=>n+o.commandBuffer.length,0));
               }
-              return {workers:g.getWorkers().length,renderer:scene.game.renderer.type,simulationMs,
+              return {workers:g.getWorkers().length,antBodyCount:scene.ants.length,antCommands:scene.ants.reduce((n,a)=>n+(a.body.list[0]?.commandBuffer?.length??0),0),renderer:scene.game.renderer.type,simulationMs,
                 graphics:graphics.map(o=>({commands:o.commandBuffer.length,depth:o.depth})).sort((a,b)=>b.commands-a.commands).slice(0,4),samples,visits};
-            """)
+            """.replace('PROFILE_WORKERS',str(profile_workers)))
             print('Performance:',json.dumps(result))
             screenshot('anthive-performance-zoom.png')
+            if '--ant-cache-regression' in sys.argv:
+                assert result['antBodyCount'] >= profile_workers-40, 'Workers disappeared instead of being rendered'
+                assert result['antCommands'] < 1000, 'Identical ant vector bodies still replay thousands of commands per frame'
             if '--performance-regression' in sys.argv:
                 near=next(s for s in result['samples'] if s['zoom']==2 and not s['hideLargest'])
                 assert near['terrainCommands'] < 50000, 'Offscreen terrain still replays the entire world at close zoom'
@@ -675,7 +680,7 @@ try:
               const results=[];for(const oldSchema of SCHEMA_VERSIONS){
               const databaseName='anthive-migration-test-'+oldSchema;
               const a=createColonySession({id:'legacy',name:'Alter Stand'});a.simulation.advance(130);
-              const {withoutQueenFeeding}=await import('/tests/helpers/legacyQueenSupply.mjs');const old=withoutQueenFeeding(captureColony(a));old.schemaVersion=oldSchema;if(oldSchema<7){delete old.state.royal;delete old.state.construction.minimumAreas.queen;}if(oldSchema<8){delete old.state.queen.additionalQueens;for(const e of [...old.state.queen.eggs,...old.state.queen.buffer])delete e.sourceQueenId;}for(const r of old.state.broodSupply.rooms.values())delete r.royal;
+              const {withoutQueenFeeding}=await import('/tests/helpers/legacyQueenSupply.mjs');const old=withoutQueenFeeding(captureColony(a));old.schemaVersion=oldSchema;if(oldSchema<7){delete old.state.royal;delete old.state.construction.minimumAreas.queen;}if(oldSchema<8){delete old.state.queen.additionalQueens;for(const e of [...old.state.queen.eggs,...old.state.queen.buffer])delete e.sourceQueenId;}if(oldSchema<8)for(const r of old.state.broodSupply.rooms.values())delete r.royal;
               if(oldSchema<6){delete old.state.queen.developmentLevel;delete old.state.broodSupply.developmentLevel;}else{old.state.queen.developmentLevel=4;old.state.broodSupply.developmentLevel=4;}
               if(oldSchema<5)delete old.state.gathering.developmentLevel;else old.state.gathering.developmentLevel=4;
               if(oldSchema<4)delete old.state.construction.developmentLevel;
@@ -941,6 +946,42 @@ try:
             native_click('[data-action="cancel-order"]')
             native_click('[data-action="close-construction"]')
             print('PASS: B3 real touch rectangle, confirmation, scrollable details and cancellation')
+
+        if '--d2-mobile-only' in sys.argv:
+            page("await scene.persistenceReady;scene.gathering.clock.setPaused(true);return true;")
+            command('WebDriver:SetWindowRect', {'width':844,'height':480})
+            time.sleep(.2)
+            click(586,20,touch=True)
+            assert page("return document.querySelector('#workforce-panel').open&&scene.input.manager.activePointer.wasTouch;")
+            assert page("const r=document.querySelector('#workforce-panel').getBoundingClientRect();return r.left>=0&&r.top>=0&&r.right<=innerWidth+1&&r.bottom<=innerHeight+1;")
+            native_click('[data-action="close-workforce"]')
+            check_construction_touch()
+            click(524,293,touch=True)
+            assert page("return scene.cameras.main.zoom===.5&&scene.hudCamera.zoom===1;")
+            click(54,20,touch=True)
+            result=page("""
+              await scene.persistence.flush();const {ColonyRepository}=await import('/src/game/persistence/colonyRepository.ts');
+              const repo=new ColonyRepository(),saved=await repo.load(scene.saveSession.id);await repo.close();
+              if(saved.revision!==scene.saveSession.revision||saved.simulation.queen.queenCount!==1)throw Error('mobile save/reload mismatch');
+              return {touchGroups:true,dialogFits:true,touchConstruction:true,zoom:true,saveReadback:true,id:saved.id,revision:saved.revision};
+            """)
+            command('WebDriver:Refresh', {})
+            for _ in range(150):
+                if page("return !!document.querySelector('#continue-colony')&&!document.querySelector('#continue-colony').disabled;"): break
+                time.sleep(.1)
+            else: raise AssertionError('Mobile saved colony not resumable after refresh')
+            native_click('#continue-colony')
+            for _ in range(150):
+                if page("return !document.querySelector('#colony-menu');"): break
+                time.sleep(.1)
+            else: raise AssertionError('Mobile continue action did not leave menu')
+            hook()
+            assert page("await scene.persistenceReady;return scene.saveSession.id==="+json.dumps(result['id'])+"&&scene.saveSession.revision==="+str(result['revision'])+";")
+            result['sceneReload']=True
+            screenshot('anthive-d27-mobile.png')
+            print('D2.7 mobile:',result)
+            finish_focused()
+            raise SystemExit(0)
 
         if '--food-network-only' in sys.argv:
             result=page("""

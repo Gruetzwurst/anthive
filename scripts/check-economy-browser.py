@@ -951,9 +951,20 @@ try:
             page("await scene.persistenceReady;scene.gathering.clock.setPaused(true);return true;")
             command('WebDriver:SetWindowRect', {'width':844,'height':480})
             time.sleep(.2)
+            assert page("const r=document.querySelector('#game canvas').getBoundingClientRect();return r.left>=-1&&r.top>=-1&&r.right<=innerWidth+1&&r.bottom<=innerHeight+1;"), 'Game must fit inside the visible viewport'
             click(586,20,touch=True)
             assert page("return document.querySelector('#workforce-panel').open&&scene.input.manager.activePointer.wasTouch;")
             assert page("const r=document.querySelector('#workforce-panel').getBoundingClientRect();return r.left>=0&&r.top>=0&&r.right<=innerWidth+1&&r.bottom<=innerHeight+1;")
+            if '--mobile-scroll-regression' in sys.argv:
+                bounds=page("const d=document.querySelector('#workforce-panel'),r=d.getBoundingClientRect();d.scrollTop=0;return {x:r.left+r.width/2,y:r.top+r.height/2,range:d.scrollHeight-d.clientHeight};")
+                assert bounds['range']>0, 'Mobile dialog must exercise actual overflowing content'
+                # Native wheel scrolling is supported by headless Firefox. Its
+                # synthetic touch drags do not reliably implement default panning.
+                command('WebDriver:PerformActions', {'actions':[{'type':'wheel','id':'dialog-wheel','actions':[
+                    {'type':'scroll','duration':200,'origin':'viewport','x':round(bounds['x']),'y':round(bounds['y']),'deltaX':0,'deltaY':240}]}]})
+                command('WebDriver:ReleaseActions', {})
+                time.sleep(.3)
+                assert page("return document.querySelector('#workforce-panel').scrollTop>0&&window.scrollY===0;"), 'Dialog must scroll without moving the document'
             native_click('[data-action="close-workforce"]')
             check_construction_touch()
             click(524,293,touch=True)
@@ -978,6 +989,7 @@ try:
             hook()
             assert page("await scene.persistenceReady;return scene.saveSession.id==="+json.dumps(result['id'])+"&&scene.saveSession.revision==="+str(result['revision'])+";")
             result['sceneReload']=True
+            if '--mobile-scroll-regression' in sys.argv: result['dialogScrollInput']='native wheel'
             screenshot('anthive-d27-mobile.png')
             print('D2.7 mobile:',result)
             finish_focused()

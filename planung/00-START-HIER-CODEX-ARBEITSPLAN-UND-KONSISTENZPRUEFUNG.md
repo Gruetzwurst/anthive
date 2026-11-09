@@ -120,3 +120,24 @@ Diese Prüfung basiert auf den in der Unterhaltung erstellten Entscheidungen, de
 - **Eierzuweisung: AUTOMATISCH nach Spieler-Prozentquoten**, nicht mehr manuell pro Ei. Innerhalb derselben Spezialisierung auf mehrere betriebsbereite Brutkammern **möglichst gleichmäßig** verteilen. Wartende Eier bleiben im Königinnenpuffer. Maßgebliche neuere Datei: [`2026-10-22-automatische-eierzuweisung-und-brutkammerverteilung.md`](2026-10-22-automatische-eierzuweisung-und-brutkammerverteilung.md).
 - **Pflege- und Larvenressourcenmangel: verbindliche MINIMUM-Regel**, d. h. der stärkere Engpass bestimmt das Gesamttempo. Erholung beider Ursachen **getrennt**; z. B. weiterhin 50 % Tempo durch Pflegeunterbesetzung, auch wenn Nahrung/Wasser schon wieder vorhanden sind. Maßgebliche Datei: [`2026-10-22-kombination-pflege-und-ressourcenmangel.md`](2026-10-22-kombination-pflege-und-ressourcenmangel.md).
 - **Reihenfolge unverändert:** Diese beiden Regeln gehören erst in den Königin-/Brut-Entwicklungsabschnitt C, nicht in den ersten Ressourcen-Auftrag A1.
+
+## Aktualisierung 27.10.2026 – D1 Speichern/Laden (nur Planung)
+
+**Neu: D1 ist als separate, vollständige Arbeitszerlegung vorbereitet.** Siehe `planung/2026-10-27-D1-CODEX-ARBEITSPAKETE-NUR-PLANUNG.md` sowie verbindliche Beschlüsse in `planung/2026-10-27-d1-speichern-und-laden-grundentscheidungen.md`.
+
+- Reihenfolge **D1.0 Bestandsaufnahme/Schema → D1.1 Persistenz → D1.2 Autosave/Backups → D1.3 Startmenü/Kolonieverwaltung → D1.4 Export/Import/Restore → D1.5 Migration/Robustheit/Tests**.
+- **WICHTIG: Dies ist noch KEINE Codefreigabe.** Erst den echten lokalen/Remote-Entwicklungsstand und C5-Abschluss prüfen, Arbeitspakete nur nach ausdrücklicher Freigabe implementieren. `main` ist kein verlässlicher Beleg für den neuesten Code.
+- Die folgenden später geplanten Module bleiben **separat**: automatische Ruhekammer-Nutzung, Kammergrößen/Vorlagen, modulare Raumgrafiken und Abstands-Bauvorschau. D1-Speicherstruktur dafür erweiterbar halten, aber nicht als Zusatzauftrag implementieren.
+- Die veraltete Überschrift „D – Viel später“ im ursprünglichen Plan bezieht sich auf spätere Gameplay-Themen (Kampf/Forschung/etc.); **D1 Speichern/Laden ist inzwischen gesondert konkret geplant** und nimmt diese Themen nicht vorweg.
+
+## Aktualisierung 28.10.2026 – D2 Kolonieentwicklung und mehrere Königinnen (nur Planung)
+
+**Neuer verbindlicher Planungsstand:** [`2026-10-28-D2-kolonieentwicklung-berufsverbesserungen-und-mehrere-koeniginnen.md`](2026-10-28-D2-kolonieentwicklung-berufsverbesserungen-und-mehrere-koeniginnen.md).
+
+- **Reihenfolge: C5 abschließen, D1 gesondert freigeben/umsetzen, erst danach D2 in kleinen Paketen nach ausdrücklicher Freigabe.** D2 ist **KEINE CODEFREIGABE**. Lokalen VM-Branch und bestehende Tests vorab prüfen.
+- **Normale Entwicklung ohne Forschungspunkte, ohne künstliche Wartezeit:** Koloniehöchststand 50/150/250/500 schaltet sofort und dauerhaft Verbesserungen für komplette Berufsgruppen frei. Arbeitsfremde Tätigkeit bleibt **50 % effizient**; Straf-Faktoren nicht unbemerkt mehrfach anwenden.
+- **Baumeisterinnen:** Freischaltung der fünf Bodenarten gestaffelt bis Tiefengestein bei 500; am Ende **75 % weniger Grabdauer** (Oberboden 1,5 s/Kachel, Tiefengestein 9 s/Kachel); schrittweise schnellere Kammereinrichtung (Endziel 0,8 s pro Materialeinheit). Bestehende Code-Grabkraft ist noch vierstufig/tiefenbasiert und muss erst bei D2 angepasst werden.
+- **Sammlerinnen:** vorläufig bestätigte Endziele **15 Einheiten Traglast** und **105 px/s** bei 500 Ameisen; Transportketten erst spätere mögliche Schlüsselentwicklung.
+- **Brutpflegerinnen:** Kapazität und Versorgungstraglast als ausdrücklich **offene Balanceentwürfe**; mehrere Königinnen ändern Brutbedarf. Kämpferinnenwerte erst mit Kampfsystem.
+- **Mehrköniginnen-System:** Ab **150 / 500 / 1.000** Ameisen insgesamt **2 / 3 / 4** Königinnen möglich. Neue Königinnen nur über bewusst gebaute, vollständig eingerichtete eigene Königinnenkammer, besonderes Königinnen-Ei und realen Transport durch Brutpflegerinnen; kein Sofortspawn und keine automatische Ersetzung. **Königinnenbrut 2/6/4 = 12 Tage; Königinnenlarve täglich 1 Nahrung + 1 Wasser.** Jede erwachsene Königin legt normale Eier **in ihrer eigenen Königinnenkammer**; Brutpflegerinnen transportieren sie in passende spezialisierte Brutkammern. Bisherige Königinnen bleiben erhalten.
+- **Offene Details nicht durch Codex erfinden:** Königinnenkammer-Abmessungen/Baukosten, Sonder-Ei-Auslöser und Pflegekapazität, Bruteierpuffer über mehrere Königinnen, Gameplay-Vorteile der Tiefe, finale Brutpflege-/Kampfwerte, langfristige Bevölkerungs- und Ressourcenbalance. D1-Speichermodell für spätere D2-Zustände erweiterbar halten.

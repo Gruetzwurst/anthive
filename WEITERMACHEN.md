@@ -12,11 +12,16 @@ keine Zusage für echte iPhone-Bildraten. Lastproben150/500/1000 mit3/4/5
 Königinnen und identischem Reload erfolgreich. Echte iPhone-Prüfung noch offen.
 Bericht: `docs/D2.7-TECHNISCHE-GESAMTABNAHME-ERGEBNIS.md`.
 
-**Veröffentlichung von D2.7 am09.11.2026 vom Nutzer freigegeben.** Der gesamte
-geprüfte Stand wird auf codex/c4-brood-shortage gesichert; Pages veröffentlicht
-nach erfolgreichem Workflow automatisch die Testseite. Aktuellen Commit/Status
-über git log/git status beziehungsweise GitHub Actions prüfen. main bleibt
-unverändert; dessen Integration ist der nächste gesonderte Schritt.
+**Aktuelle Arbeitsbasis: main, Übernahme am09.11.2026 freigegeben.** D2.7
+(Quelle05cebbf) mit dem bisherigen GitHub-main (b08a64d) zusammengeführt.
+Dadurch bleiben auch die bereits dort vorhandenen iPhone-Safe-Area-/Viewport-
+und Dokument-Scroll-Anpassungen erhalten. Spielmodelle und Tests entsprechen
+weiter dem geprüften D2.7-Stand; die Styles vereinen beide Entwicklungsstände.
+363/363 Tests des zusammengeführten Stands, Build, Browser und Review grün.
+GitHub Pages veröffentlicht nach dem main-Push unter demselben Spiel-Link.
+Aktuellen Commit/Veröffentlichungsstatus über git log/git status und Actions
+prüfen. Alte Entwicklungsbranches bleiben als Historie erhalten.
+Bericht: `docs/2026-11-09-MAIN-INTEGRATION.md`.
 Die folgenden älteren Abschnitte sind Verlauf; deren „lokal“- und „nächster
 Schritt“-Angaben werden durch diesen aktuellen Kopfstand ersetzt.
 

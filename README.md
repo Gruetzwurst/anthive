@@ -454,3 +454,9 @@ Larvenversorgung und alle Verbrauchs-/Brutzeitwerte bleiben erhalten.
 Ameisenkörper verwenden gemeinsam vorgezeichnete Pixel-Art-Texturen; große
 Kolonien müssen dadurch nicht je Tier dieselben Vektorbefehle erneut zeichnen.
 Technische Lastproben/Prüfgrenzen: `docs/D2.7-TECHNISCHE-GESAMTABNAHME-ERGEBNIS.md`.
+
+
+Die Übernahme nach main vereint den geprüften D2.7-Stand mit den dort bereits
+vorhandenen iPhone-Anpassungen für dynamische Viewporthöhe, Safe-Area-Abstände
+und festes Dokumentlayout. Die Spieladresse bleibt unverändert. Details und
+Prüfgrenzen: `docs/2026-11-09-MAIN-INTEGRATION.md`.

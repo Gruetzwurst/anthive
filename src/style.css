@@ -12,7 +12,8 @@ html,
 body {
   width: 100%;
   margin: 0;
-  overflow: hidden;
+  /* Unlike hidden, clip cannot be scrolled when a dialog receives focus. */
+  overflow: clip;
   overscroll-behavior: none;
 }
 
@@ -51,7 +52,7 @@ body {
   );
   max-height: 100%;
   aspect-ratio: 16 / 9;
-  overflow: hidden;
+  overflow: clip;
   min-width: 0;
   min-height: 0;
   touch-action: none;
@@ -196,3 +197,11 @@ body {
 #save-error-dialog::backdrop { background: rgb(0 0 0 / 65%); }
 #save-error-dialog button { min-height: 40px; padding: 8px 12px; background: #373229; color: #f4efd9; border: 1px solid #887453; font: inherit; cursor: pointer; }
 #save-error-dialog p { line-height: 1.5; }
+
+/* iPhone focuses small form fields by zooming/panning the entire Web App.
+   Keep controls readable without changing the game's own camera zoom. */
+#game input:not([type='radio']),
+#game select,
+#game textarea {
+  font-size: 16px;
+}

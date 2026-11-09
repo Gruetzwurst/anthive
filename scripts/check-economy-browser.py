@@ -947,6 +947,49 @@ try:
             native_click('[data-action="close-construction"]')
             print('PASS: B3 real touch rectangle, confirmation, scrollable details and cancellation')
 
+        if '--viewport-only' in sys.argv:
+            def geometry(label):
+                result=page("""
+                  const canvas=scene.game.canvas,r=canvas.getBoundingClientRect(),p=canvas.parentElement;
+                  return {canvas:[r.x,r.y,r.width,r.height],window:[innerWidth,innerHeight,scrollX,scrollY],
+                    container:[p.clientWidth,p.clientHeight,p.scrollWidth,p.scrollHeight,p.scrollLeft,p.scrollTop],
+                    visual:visualViewport&&[visualViewport.width,visualViewport.height,visualViewport.offsetLeft,visualViewport.offsetTop,visualViewport.scale],
+                    hud:[scene.hudCamera.scrollX,scene.hudCamera.scrollY,scene.hudCamera.zoom,scene.hudCamera.visible]};
+                """)
+                print(label,result,flush=True)
+                x,y,w,h=result['canvas']
+                vw,vh,sx,sy=result['window']
+                assert sx==sy==0 and result['container'][-2:]==[0,0], 'Page/game shifted after '+label
+                assert result['hud']==[0,0,1,True], 'HUD camera moved after '+label
+                if w and h:
+                    assert x>=-1 and y>=-1 and x+w<=vw+1 and y+h<=vh+1, 'Canvas clipped after '+label
+                    assert abs(w/h-16/9)<.01, 'Game aspect ratio changed after '+label
+                return result
+            for width,height in [(844,480),(1000,560),(480,844),(844,480)]:
+                command('WebDriver:SetWindowRect',{'width':width,'height':height})
+                time.sleep(.3)
+                geometry('resize')
+            click(510,20,touch=True)
+            page("document.querySelector('[name=chamberType]').focus();return true;")
+            geometry('build-menu')
+            native_click('[data-action="draw-plan"]')
+            geometry('drawing')
+            assert page("return [...document.querySelectorAll('#game input:not([type=radio]), #game select')].every(el=>parseFloat(getComputedStyle(el).fontSize)>=16);"), 'Form controls below16px permit iPhone focus zoom'
+            assert page("const p=scene.game.canvas.parentElement,probe=document.createElement('button');probe.style.cssText='position:absolute;left:2000px;top:2000px';p.append(probe);probe.focus();p.scrollTo(100,100);const fixed=p.scrollLeft===0&&p.scrollTop===0;probe.remove();return fixed;"), 'Game container must never scroll, including focus-driven scrolling'
+            page("scene.discardDraft();return true;")
+            click(586,20,touch=True)
+            geometry('groups')
+            native_click('[data-action="close-workforce"]')
+            geometry('groups-closed')
+            for _ in range(3):
+                click(510,20,touch=True)
+                geometry('build-reopened')
+                native_click('[data-action="close-construction"]')
+                geometry('build-closed')
+            print('PASS: stable canvas/HUD through menus, rotation, focus and overflow; controls >=16px')
+            finish_focused()
+            raise SystemExit(0)
+
         if '--pinch-only' in sys.argv:
             command('WebDriver:SetWindowRect', {'width':844,'height':480})
             page("scene.setWorldZoom(1);scene.gathering.clock.setPaused(true);return true;")

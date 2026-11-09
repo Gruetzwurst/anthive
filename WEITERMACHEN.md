@@ -2,6 +2,13 @@
 
 Projekt: `/home/paul/Desktop/anthive`.
 
+**Web-App-Fokuskorrektur09.11.2026:** Nutzer meldet verschobenes Bild und
+verschwundene Leiste nach Baumenüöffnung in installierter iPhone-Web-App.
+Dokument/Spielcontainer jetzt `overflow:clip` statt scrollbarem `hidden`;
+Formularfelder mindestens16px gegen iPhone-Fokuszoom. Eigene Dialogscrollbereiche
+bleiben erhalten. Bericht: `docs/2026-11-09-WEBAPP-VIEWPORT-FIX.md`.
+Echter iPhone-Nachtest erforderlich; GitHub-/Pages-Status gesondert prüfen.
+
 **Neue lokale Änderung09.11.2026: Zwei-Finger-Zoom.** Auf der Karte mit zwei
 Fingern rein-/rauszoomen, weiterhin scharfe Stufen25/50/100/200%. Laufende
 Zeichnung wird bei Beginn abgebrochen; vorhandene Entwurfsflächen bleiben.

@@ -72,3 +72,21 @@ export function chamberDistanceConflicts(cells: Cell[], footprints: readonly (re
   for (const room of footprints) for (const cell of room) if (nearby.has(cellKey(cell))) conflicts.set(cellKey(cell), {...cell});
   return [...conflicts.values()];
 }
+
+export function extendBrushStroke(stroke: Cell[], end: Cell): Cell[] {
+  validate(end);
+  const existing = stroke.findIndex(cell => cellKey(cell) === cellKey(end));
+  if (existing >= 0) return stroke.slice(0, existing + 1).map(cell => ({...cell}));
+  const result = stroke.map(cell => ({...cell}));
+  if (!result.length) return [{...end}];
+  for (const cell of lineSelection(result[result.length - 1], end).slice(1)) {
+    const index = result.findIndex(previous => cellKey(previous) === cellKey(cell));
+    if (index >= 0) result.length = index + 1;
+    else result.push(cell);
+  }
+  return result;
+}
+export function subtractSelection(cells: Cell[], removed: Cell[]): Cell[] {
+  const keys = new Set(removed.map(cellKey));
+  return cells.filter(cell => !keys.has(cellKey(cell))).map(cell => ({...cell}));
+}

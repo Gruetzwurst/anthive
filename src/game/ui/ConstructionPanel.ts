@@ -4,7 +4,7 @@ import type { ConstructionOrderSnapshot, ConstructionStatus } from '../simulatio
 import { CHAMBER_CONFIG, CHAMBER_BUILD_CONFIG } from '../simulation/simulationConfig';
 import { chamberCapacity } from '../simulation/chamberSystem';
 
-export type DrawingTool = 'brush' | 'rectangle' | 'pan' | 'template';
+export type DrawingTool = 'brush' | 'erase' | 'rectangle' | 'pan' | 'template';
 const STATUS_LABELS: Record<ConstructionStatus, string> = {
   planned: 'Geplant', digging: 'Ausgraben', blocked: 'Blockiert', paused: 'Pausiert',
   awaitingFurnishing: 'Einrichtung ausstehend', furnishing: 'Einrichten', furnished: 'Fertig eingerichtet', completed: 'Abgeschlossen', cancelled: 'Abgebrochen',
@@ -82,7 +82,7 @@ export class ConstructionPanel {
 
     this.draft.id = 'construction-draft'; this.draft.hidden = true; this.draft.setAttribute('aria-label', 'Bauentwurf');
     this.toolSelect.name = 'draftTool'; this.toolSelect.setAttribute('aria-label', 'Zeichenwerkzeug');
-    for (const [value, title] of [['brush', 'Pinsel'], ['rectangle', 'Rechteck'], ['pan', 'Karte verschieben']]) this.toolSelect.add(new Option(title, value));
+    for (const [value, title] of [['brush', 'Pinsel'], ['erase', 'Radierer'], ['rectangle', 'Rechteck'], ['pan', 'Karte verschieben']]) this.toolSelect.add(new Option(title, value));
     this.toolSelect.addEventListener('change', () => this.actions.tool(this.toolSelect.value as DrawingTool));
     this.draftStatus.dataset.role = 'draft-status'; this.draftStatus.setAttribute('role', 'status');
     this.confirmButton = this.button('Bestätigen', 'confirm-plan', () => {

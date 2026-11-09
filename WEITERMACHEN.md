@@ -2,6 +2,13 @@
 
 Projekt: `/home/paul/Desktop/anthive`.
 
+**Bauentwurf korrigieren09.11.2026:** Pinselstrich beim Zurückfahren kürzen;
+neues Werkzeug Radierer für Entwurfskacheln. Frühere Striche bleiben erhalten.
+Zusätzlich eventabhängigen Pinch-Stufenwechsel abgesichert.370/370 Gesamttests,
+anschließend13/13 gezielte Tests nach letzter Zoomkorrektur und Build grün.
+Bericht: `docs/2026-11-09-BAUENTWURF-KORRIGIEREN-ERGEBNIS.md`.
+Allgemeines Baumenü/Interface weiterhin gemeinsam planen, noch nicht umbauen.
+
 **Web-App-Fokuskorrektur09.11.2026:** Nutzer meldet verschobenes Bild und
 verschwundene Leiste nach Baumenüöffnung in installierter iPhone-Web-App.
 Dokument/Spielcontainer jetzt `overflow:clip` statt scrollbarem `hidden`;

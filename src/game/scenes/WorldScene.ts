@@ -43,7 +43,7 @@ import { createWorkforceSimulation } from '../simulation/workforceSimulation';
 import { WorkforcePanel } from '../ui/WorkforcePanel';
 import { ConstructionPanel, constructionStatusLabel } from '../ui/ConstructionPanel';
 import type { DrawingTool } from '../ui/ConstructionPanel';
-import { lineSelection, rectangleSelection, mergeSelection, squareTemplate, constructionMaterialEstimate, PLAN_LABELS } from '../simulation/constructionPlanning';
+import { lineSelection, rectangleSelection, mergeSelection, extendBrushStroke, subtractSelection, squareTemplate, constructionMaterialEstimate, PLAN_LABELS } from '../simulation/constructionPlanning';
 import type { PlanType, TemplateSize } from '../simulation/constructionPlanning';
 import { CONSTRUCTION_CONFIG, PLAYABLE_COLONY_CONFIG } from '../simulation/simulationConfig';
 import { cellKey } from '../world/gridPathfinding';
@@ -761,7 +761,8 @@ export class WorldScene extends Phaser.Scene {
       const endpoint = this.pointerCell(pointer);
       if (endpoint) {
         this.previewCells = this.drawingTool === 'rectangle' ? rectangleSelection(this.digStart, endpoint)
-          : mergeSelection(this.previewCells, lineSelection(this.lastBrushCell!, endpoint));
+          : this.drawingTool === 'erase' ? mergeSelection(this.previewCells, lineSelection(this.lastBrushCell!, endpoint))
+          : extendBrushStroke(this.previewCells, endpoint);
         this.lastBrushCell = endpoint;
         this.renderDigPreview();
       }
@@ -781,7 +782,7 @@ export class WorldScene extends Phaser.Scene {
     if (this.pinchZoom?.blocked) return;
     const insideMap = pointer.x >= 0 && pointer.x < 640 && pointer.y > (this.economyHud.collapsed ? 34 : 110) && pointer.y < 310;
     if (this.dragMode === 'dig' && insideMap) {
-      this.draftCells = this.drawingTool === 'template' ? this.previewCells.map(cell => ({...cell})) : mergeSelection(this.draftCells, this.previewCells);
+      this.draftCells = this.draftSelection();
       this.constructionPanel.updateDraft(this.draftCells.length);
     } else if (this.dragMode === 'camera' && !this.dragMoved && !this.planning && insideMap) {
       const cell = this.pointerCell(pointer);
@@ -809,9 +810,15 @@ export class WorldScene extends Phaser.Scene {
     return requiredDiggingGrade(cell, worldMap[cell.row][cell.column]);
   }
 
+  private draftSelection(): DigCell[] {
+    if (this.drawingTool === 'erase') return subtractSelection(this.draftCells, this.previewCells);
+    return this.drawingTool === 'template' && this.previewCells.length
+      ? this.previewCells.map(cell => ({...cell})) : mergeSelection(this.draftCells, this.previewCells);
+  }
+
   private renderDigPreview(): void {
     this.digPreviewGraphics.clear();
-    const cells = this.drawingTool === 'template' && this.previewCells.length ? this.previewCells : mergeSelection(this.draftCells, this.previewCells);
+    const cells = this.draftSelection();
     const validation = this.excavation.validateOrder(cells, this.planType);
     if (this.planning) {
       const unit = this.planType.startsWith('brood-') ? 'Brutplätze' : this.planType === 'rest' ? 'Ruheplätze' : 'Einheiten';

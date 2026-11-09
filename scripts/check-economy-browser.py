@@ -947,6 +947,31 @@ try:
             native_click('[data-action="close-construction"]')
             print('PASS: B3 real touch rectangle, confirmation, scrollable details and cancellation')
 
+        if '--draft-correction-only' in sys.argv:
+            command('WebDriver:SetWindowRect',{'width':844,'height':480})
+            for touch in [False,True]:
+                page("scene.setWorldZoom(1);scene.cameras.main.centerOn(155*24,38*24);scene.cameras.main.preRender();return true;")
+                start_plan('tunnel',touch=touch)
+                def cells_path(cells):
+                    points=page("return "+json.dumps(cells)+".map(([column,row])=>[(column+.5)*24-scene.cameras.main.scrollX,(row+.5)*24-scene.cameras.main.scrollY]);")
+                    pointer_path(points,touch=touch)
+                cells_path([[151,38],[153,38]])
+                assert page("return scene.draftCells.length===3;")
+                cells_path([[153,38],[159,38],[155,38]])
+                assert page("return scene.draftCells.length===5&&Math.max(...scene.draftCells.map(c=>c.column))===155;"), 'Retracing must trim only the running stroke'
+                page("const tool=document.querySelector('[name=draftTool]');tool.value='erase';tool.dispatchEvent(new Event('change',{bubbles:true}));return true;")
+                cells_path([[154,38],[155,38]])
+                assert page("return scene.draftCells.length===3&&Math.max(...scene.draftCells.map(c=>c.column))===153;"), 'Eraser must remove touched draft cells'
+                cells_path([[151,38],[153,38]])
+                assert page("return scene.draftCells.length===0&&document.querySelector('[data-action=confirm-plan]').disabled;"), 'Empty draft must not be confirmed'
+                page("const tool=document.querySelector('[name=draftTool]');tool.value='brush';tool.dispatchEvent(new Event('change',{bubbles:true}));return true;")
+                cells_path([[151,38],[154,38]])
+                assert page("return scene.draftCells.length===4;")
+                page("scene.discardDraft();return true;")
+            print('PASS: mouse/touch retracing, prior stroke preservation, drag erasing, empty draft and redraw')
+            finish_focused()
+            raise SystemExit(0)
+
         if '--viewport-only' in sys.argv:
             def geometry(label):
                 result=page("""

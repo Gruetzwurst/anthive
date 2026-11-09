@@ -34,12 +34,16 @@ export function attachPinchZoom(canvas: HTMLCanvasElement, actions: {
     const current = Math.hypot(a.x-b.x,a.y-b.y);
     if (current < 12) return;
     if (!distance) { distance = current; return; }
-    const ratio = current/distance;
-    if (ratio >= 1.35 || ratio <= 1/1.35) {
-      const zoom = nextWorldZoom(actions.zoom(),ratio>1?1:-1);
-      if (zoom !== actions.zoom()) actions.setZoom(zoom,(a.x+b.x)/2,(a.y+b.y)/2);
-      distance = current;
+    const previous = actions.zoom();
+    let zoom = previous;
+    while (current/distance >= 1.5 || current/distance <= 1/1.5) {
+      const next = nextWorldZoom(zoom,current>distance?1:-1);
+      if (next === zoom) { distance = current; break; }
+      // Consume every crossed level, even when the browser coalesces moves.
+      distance *= next/zoom;
+      zoom = next;
     }
+    if (zoom !== previous) actions.setZoom(zoom,(a.x+b.x)/2,(a.y+b.y)/2);
   };
   const events = ['touchstart','touchmove','touchend','touchcancel'] as const;
   for (const name of events) canvas.addEventListener(name,handle,{capture:true,passive:false});
